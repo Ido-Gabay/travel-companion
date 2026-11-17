@@ -13,6 +13,17 @@ const envSchema = z.object({
   DATABASE_SSL: z.enum(['require', 'disable']).default('require'),
   DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(50).default(10),
   JWT_AUDIENCE: z.string().min(1).default('authenticated'),
+
+  // Optional integrations. Without a key the feature answers NOT_CONFIGURED.
+  GOOGLE_PLACES_API_KEY: z.string().min(20).optional(),
+  ANTHROPIC_API_KEY: z.string().min(20).optional(),
+  AI_MODEL: z.string().min(1).default('claude-haiku-5-5'),
+
+  // Daily caps that keep paid APIs inside their free monthly allowances.
+  // Text Search Pro and Place Details Pro: 5,000 free/month each -> 160/day * 31 = 4,960.
+  GOOGLE_TEXT_SEARCH_DAILY_CAP: z.coerce.number().int().min(0).default(160),
+  GOOGLE_PLACE_DETAILS_DAILY_CAP: z.coerce.number().int().min(0).default(160),
+  AI_DAILY_CAP: z.coerce.number().int().min(0).default(300),
 });
 
 export interface AppConfig {
@@ -26,6 +37,14 @@ export interface AppConfig {
   databaseUrl: string;
   databaseSsl: 'require' | 'disable';
   databasePoolMax: number;
+  googlePlacesApiKey: string | null;
+  anthropicApiKey: string | null;
+  aiModel: string;
+  caps: {
+    googleTextSearch: number;
+    googlePlaceDetails: number;
+    ai: number;
+  };
 }
 
 /**
@@ -55,5 +74,13 @@ export function parseAppConfig(env: NodeJS.ProcessEnv): AppConfig {
     databaseUrl: e.DATABASE_URL,
     databaseSsl: e.DATABASE_SSL,
     databasePoolMax: e.DATABASE_POOL_MAX,
+    googlePlacesApiKey: e.GOOGLE_PLACES_API_KEY ?? null,
+    anthropicApiKey: e.ANTHROPIC_API_KEY ?? null,
+    aiModel: e.AI_MODEL,
+    caps: {
+      googleTextSearch: e.GOOGLE_TEXT_SEARCH_DAILY_CAP,
+      googlePlaceDetails: e.GOOGLE_PLACE_DETAILS_DAILY_CAP,
+      ai: e.AI_DAILY_CAP,
+    },
   };
 }

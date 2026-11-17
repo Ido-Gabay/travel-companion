@@ -1,12 +1,12 @@
-import type { TripPlace } from '@travel-companion/shared';
+import { googleMapsDirectionsUrl, type TripPlace } from '@travel-companion/shared';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Alert, ScrollView, StyleSheet, View } from 'react-native';
+import { useState } from 'react';
+import { Alert, Linking, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import {
   AppText,
   Button,
-  Card,
   EmptyState,
   ErrorState,
   Icon,
@@ -15,8 +15,13 @@ import {
   LoadingState,
   NavHeader,
   Section,
+  SegmentedControl,
 } from '@/components/ui';
+import { groupByCategory } from '@/features/places/categories';
+import { CollectionMap } from '@/features/places/CollectionMap';
 import { openInMaps } from '@/features/places/open-in-maps';
+import { PlaceCard } from '@/features/places/PlaceCard';
+import { usePlaceDisplay } from '@/features/places/use-place-display';
 import { useDeleteTrip, useRemoveTripPlace, useTrip } from '@/features/trips/queries';
 import { useLocale } from '@/i18n/LocaleProvider';
 import { formatTripDates } from '@/lib/dates';
@@ -32,8 +37,10 @@ export default function TripScreen() {
   const removePlace = useRemoveTripPlace(id);
   const deleteTrip = useDeleteTrip();
 
+  const [view, setView] = useState<'list' | 'map'>('list');
   const openAddPlaces = () =>
     router.push({ pathname: '/trips/[id]/add-places', params: { id } });
+  const openDiscover = () => router.push({ pathname: '/trips/[id]/discover', params: { id } });
 
   const confirmDelete = () => {
     Alert.alert(t('tripDetail.deleteTripTitle'), t('tripDetail.deleteTripBody'), [
@@ -76,26 +83,54 @@ export default function TripScreen() {
               </View>
             </View>
 
-            <Section title={t('tripDetail.places')}>
+            <View style={styles.discoverRow}>
+              <View style={styles.flex}>
+                <Button label={t('tripDetail.discover')} icon="sparkles" onPress={openDiscover} />
+              </View>
+              <Button label={t('tripDetail.fromCollection')} variant="secondary" icon="bookmark-outline" onPress={openAddPlaces} block={false} />
+            </View>
+
+            <Section title={`${t('tripDetail.places')} · ${trip.data.places.length}`}>
               {trip.data.places.length === 0 ? (
                 <EmptyState
                   icon="bookmark-outline"
                   title={t('tripDetail.emptyTitle')}
                   body={t('tripDetail.emptyBody')}
-                  action={<Button label={t('tripDetail.addPlaces')} icon="add" onPress={openAddPlaces} />}
                 />
               ) : (
                 <>
-                  {trip.data.places.map((place) => (
-                    <TripPlaceCard
-                      key={place.placeId}
-                      place={place}
-                      removing={removePlace.isPending && removePlace.variables === place.placeId}
-                      onRemove={() => removePlace.mutate(place.placeId)}
+                  <SegmentedControl
+                    accessibilityLabel={t('discover.view')}
+                    options={[
+                      { value: 'list', label: t('discover.list') },
+                      { value: 'map', label: t('discover.map') },
+                    ]}
+                    value={view}
+                    onChange={setView}
+                  />
+                  {view === 'map' ? (
+                    <CollectionMap
+                      places={trip.data.places}
+                      onOpen={(place) => router.push({ pathname: '/places/[id]', params: { id: place.id } })}
                     />
-                  ))}
+                  ) : (
+                    groupByCategory(trip.data.places).map((group) => (
+                      <View key={group.category} style={styles.group}>
+                        <AppText variant="overline" color="tertiary">
+                          {t(`categories.${group.category}`).toUpperCase()}
+                        </AppText>
+                        {group.items.map((place) => (
+                          <TripPlaceCard
+                            key={place.id}
+                            place={place}
+                            removing={removePlace.isPending && removePlace.variables === place.id}
+                            onRemove={() => removePlace.mutate(place.id)}
+                          />
+                        ))}
+                      </View>
+                    ))
+                  )}
                   {removePlace.isError ? <InlineError message={errorMessage(removePlace.error)} /> : null}
-                  <Button label={t('tripDetail.addPlaces')} icon="add" variant="secondary" onPress={openAddPlaces} />
                 </>
               )}
             </Section>
@@ -127,40 +162,31 @@ function TripPlaceCard({
   onRemove: () => void;
 }) {
   const { t } = useTranslation();
+  const display = usePlaceDisplay(place);
+  const navigate = () => {
+    if (place.googlePlaceId) {
+      void Linking.openURL(googleMapsDirectionsUrl(place.googlePlaceId, display.google?.name ?? display.name)).catch(() => undefined);
+    } else {
+      openInMaps(place.name ?? '', place.address);
+    }
+  };
   return (
-    <Card
-      onPress={() => router.push({ pathname: '/places/[id]', params: { id: place.placeId } })}
-      accessibilityLabel={place.name}
-      style={removing ? styles.removing : undefined}
-    >
-      <View style={styles.placeRow}>
-        <View style={styles.placeText}>
-          <AppText variant="heading">{place.name}</AppText>
-          {place.address ? (
-            <AppText variant="caption" color="secondary">
-              {place.address}
-            </AppText>
-          ) : null}
-          {place.notes ? (
-            <AppText variant="body" color="secondary" style={styles.notes}>
-              {place.notes}
-            </AppText>
-          ) : null}
-        </View>
-        <View style={styles.actions}>
-          <IconButton
-            icon="navigate-outline"
-            accessibilityLabel={t('tripDetail.openInMaps')}
-            onPress={() => openInMaps(place.name, place.address)}
-          />
-          <IconButton
-            icon="remove-circle-outline"
-            accessibilityLabel={t('tripDetail.removeFromTrip', { name: place.name })}
-            onPress={onRemove}
-          />
-        </View>
-      </View>
-    </Card>
+    <View style={removing ? styles.removing : undefined}>
+      <PlaceCard
+        place={place}
+        onPress={() => router.push({ pathname: '/places/[id]', params: { id: place.id } })}
+        actions={
+          <View style={styles.actions}>
+            <IconButton icon="navigate-outline" accessibilityLabel={t('places.directions')} onPress={navigate} />
+            <IconButton
+              icon="remove-circle-outline"
+              accessibilityLabel={t('tripDetail.removeFromTrip', { name: display.name })}
+              onPress={onRemove}
+            />
+          </View>
+        }
+      />
+    </View>
   );
 }
 
@@ -175,4 +201,7 @@ const styles = StyleSheet.create({
   actions: { gap: spacing.xs },
   removing: { opacity: 0.4 },
   danger: { marginTop: spacing.lg },
+  discoverRow: { flexDirection: 'row', gap: spacing.md },
+  flex: { flex: 1 },
+  group: { gap: spacing.md },
 });

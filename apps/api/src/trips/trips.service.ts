@@ -3,7 +3,9 @@ import type { CreateTripData, Trip, TripDetail, TripList } from '@travel-compani
 import type { AuthUser } from '../auth/auth.types.js';
 import { notFound } from '../common/api-exception.js';
 import { DatabaseService, type Tx } from '../database/database.service.js';
-import { toTrip, toTripDetail, type TripPlaceRow, type TripRow } from './trips.mapper.js';
+import { placeColumns } from '../places/place-columns.js';
+import type { TripPlaceRow } from '../places/places.mapper.js';
+import { toTrip, toTripDetail, type TripRow } from './trips.mapper.js';
 
 /** Upper bound until the list is paginated. Far above any personal trip count. */
 export const TRIP_LIST_LIMIT = 200;
@@ -114,7 +116,7 @@ export class TripsService {
   private async getInTx(tx: Tx, user: AuthUser, tripId: string): Promise<TripDetail> {
     const trip = await findTrip(tx, user, tripId);
     const places = await tx<TripPlaceRow[]>`
-      select p.id as place_id, p.name, p.address, p.notes, tp.updated_at as added_at
+      select ${placeColumns(tx)}, tp.updated_at as added_at
       from app.trip_places tp
       join app.places p on p.id = tp.place_id and p.deleted_at is null
       where tp.trip_id = ${tripId} and tp.owner_id = ${user.id} and tp.deleted_at is null

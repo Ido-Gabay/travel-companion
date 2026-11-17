@@ -45,6 +45,14 @@ export class DatabaseService implements OnApplicationShutdown {
     return result as unknown as T;
   }
 
+  /**
+   * Runs SQL as the API's own database role (not as a user). Only for
+   * service tables with no user data, such as app.provider_usage.
+   */
+  service(): Sql {
+    return this.sql;
+  }
+
   /** Readiness probe: fails if the database is unreachable. */
   async ping(): Promise<void> {
     await this.sql`select 1`;

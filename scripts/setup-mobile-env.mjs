@@ -58,6 +58,15 @@ const ip = lanAddress();
 const suggested = ip ? `http://${ip}:${port}` : `http://localhost:${port}`;
 const apiUrl =
   (await rl.question(`API URL [${suggested}] (press Enter to accept): `)).trim() || suggested;
+const existingMapsKey = readVar(MOBILE_ENV, 'GOOGLE_MAPS_IOS_API_KEY') ?? '';
+const mapsKey =
+  (
+    await rl.question(
+      existingMapsKey
+        ? 'Google Maps iOS key (press Enter to keep the current one): '
+        : 'Google Maps iOS key (press Enter to skip for now): ',
+    )
+  ).trim() || existingMapsKey;
 rl.close();
 
 writeFileSync(
@@ -67,6 +76,8 @@ writeFileSync(
     `EXPO_PUBLIC_SUPABASE_URL=${supabaseUrl}`,
     `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=${key}`,
     `EXPO_PUBLIC_API_URL=${apiUrl}`,
+    '# Build-time only (app.config.ts). Restricted to the iOS bundle ID + Maps SDK for iOS.',
+    `GOOGLE_MAPS_IOS_API_KEY=${mapsKey}`,
     '',
   ].join('\n'),
 );

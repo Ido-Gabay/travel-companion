@@ -18,10 +18,12 @@ interface PlaceFormProps {
   /** Translated error from the last save attempt, if any. */
   error?: string | null;
   onSubmit: (values: PlaceFormValues) => void;
+  /** Hide the notes field (when notes are edited elsewhere). Default true. */
+  showNotes?: boolean;
 }
 
 /** Name, address/area and free-form notes. Validated with the shared schema. */
-export function PlaceForm({ initial, submitLabel, submitting, error, onSubmit }: PlaceFormProps) {
+export function PlaceForm({ initial, submitLabel, submitting, error, onSubmit, showNotes = true }: PlaceFormProps) {
   const { t } = useTranslation();
   const addressRef = useRef<TextFieldHandle>(null);
   const [name, setName] = useState(initial?.name ?? '');
@@ -33,7 +35,7 @@ export function PlaceForm({ initial, submitLabel, submitting, error, onSubmit }:
     !initial ||
     name.trim() !== initial.name ||
     (address.trim() || null) !== initial.address ||
-    (notes.trim() || null) !== initial.notes;
+    (showNotes && (notes.trim() || null) !== initial.notes);
 
   const submit = () => {
     const parsed = createPlaceSchema.safeParse({ name, address, notes });
@@ -42,7 +44,7 @@ export function PlaceForm({ initial, submitLabel, submitting, error, onSubmit }:
       return;
     }
     setNameError(null);
-    onSubmit(parsed.data);
+    onSubmit({ name: parsed.data.name, address: parsed.data.address, notes: parsed.data.notes });
   };
 
   return (
@@ -71,14 +73,16 @@ export function PlaceForm({ initial, submitLabel, submitting, error, onSubmit }:
         textContentType="fullStreetAddress"
         returnKeyType="next"
       />
-      <TextField
-        label={t('placeForm.notes')}
-        placeholder={t('placeForm.notesPlaceholder')}
-        value={notes}
-        onChangeText={setNotes}
-        maxLength={PLACE_NOTES_MAX}
-        multiline
-      />
+      {showNotes ? (
+        <TextField
+          label={t('placeForm.notes')}
+          placeholder={t('placeForm.notesPlaceholder')}
+          value={notes}
+          onChangeText={setNotes}
+          maxLength={PLACE_NOTES_MAX}
+          multiline
+        />
+      ) : null}
       {error ? <InlineError message={error} /> : null}
       <Button
         label={submitLabel}

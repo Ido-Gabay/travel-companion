@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { placeSchema } from './place.js';
 
 export const TRIP_TITLE_MAX = 120;
 export const TRIP_DESTINATION_MAX = 120;
@@ -51,12 +52,8 @@ export const createTripSchema = z
 export type CreateTripInput = z.input<typeof createTripSchema>;
 export type CreateTripData = z.output<typeof createTripSchema>;
 
-/** A place as it appears inside a trip. */
-export const tripPlaceSchema = z.object({
-  placeId: z.uuid(),
-  name: z.string(),
-  address: z.string().nullable(),
-  notes: z.string().nullable(),
+/** A place in a trip's wishlist: the user's place plus when it was added. */
+export const tripPlaceSchema = placeSchema.extend({
   addedAt: z.iso.datetime({ offset: true }),
 });
 export type TripPlace = z.infer<typeof tripPlaceSchema>;

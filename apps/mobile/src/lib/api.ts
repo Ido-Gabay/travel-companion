@@ -1,5 +1,9 @@
 import {
+  discoverSearchResponseSchema,
+  googlePlaceSchema,
+  interpretResponseSchema,
   meSchema,
+  saveGooglePlacesResponseSchema,
   preferencesSchema,
   placeListSchema,
   placeSchema,
@@ -7,6 +11,14 @@ import {
   tripListSchema,
   tripSchema,
   type CreatePlaceInput,
+  type DiscoverSearchRequest,
+  type DiscoverSearchResponse,
+  type GooglePlace,
+  type InterpretRequest,
+  type InterpretResponse,
+  type SaveGooglePlacesInput,
+  type SaveGooglePlacesResponse,
+  type SupportedLocale,
   type CreateTripInput,
   type Place,
   type PlaceList,
@@ -128,4 +140,15 @@ export const api = {
   updatePlace: (id: string, body: UpdatePlaceInput): Promise<Place> =>
     request('PATCH', `/v1/places/${id}`, placeSchema, body),
   deletePlace: (id: string): Promise<void> => requestNoContent('DELETE', `/v1/places/${id}`),
+  saveGooglePlaces: (body: SaveGooglePlacesInput): Promise<SaveGooglePlacesResponse> =>
+    request('POST', '/v1/places/google', saveGooglePlacesResponseSchema, body),
+
+  /** Fresh Google content for display. Never persisted on the device or server. */
+  getGooglePlace: (placeId: string, lang: SupportedLocale): Promise<GooglePlace> =>
+    request('GET', `/v1/google/places/${encodeURIComponent(placeId)}?lang=${lang}`, googlePlaceSchema),
+
+  interpret: (body: InterpretRequest): Promise<InterpretResponse> =>
+    request('POST', '/v1/discover/interpret', interpretResponseSchema, body),
+  discoverSearch: (body: DiscoverSearchRequest): Promise<DiscoverSearchResponse> =>
+    request('POST', '/v1/discover/search', discoverSearchResponseSchema, body),
 };

@@ -111,5 +111,36 @@ if (trip?.id && place?.id) {
   await step('deleted trip is gone', 'GET', `/v1/trips/${trip.id}`, null, (s) => s === 404);
 }
 
+// Discovery (AI + Google Places). Skipped when the server has no Google key.
+const discoverTrip = await step('create a trip for discovery', 'POST', '/v1/trips', { title: 'Smoke discovery trip', destination: 'New York' }, (s) => s === 201);
+const interp = await step('AI interprets a request', 'POST', '/v1/discover/interpret', { query: 'coffee shops in SoHo', tripId: discoverTrip?.id }, (s, j) => s === 200 && (j.action === 'search' || j.action === 'clarify'));
+if (interp?.action === 'search') console.log(`      interpreted by ${interp.interpretedBy}: "${interp.summary}" -> ${JSON.stringify(interp.plan)}`);
+if (interp?.action === 'search' && discoverTrip?.id) {
+  const res = await fetch(`${API_URL}/v1/discover/search`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ plan: interp.plan, tripId: discoverTrip.id }),
+  });
+  const found = await res.json().catch(() => null);
+  if (res.status === 503 && found?.error?.code === 'NOT_CONFIGURED') {
+    console.log('SKIP  POST /v1/discover/search  -> 503  Google Places key not set on the server');
+  } else {
+    const ok = res.status === 200 && Array.isArray(found?.results) && found.results.length > 0;
+    if (!ok) failures++;
+    console.log(`${ok ? 'PASS' : 'FAIL'}  POST /v1/discover/search  -> ${res.status}  Google returns real places (${found?.results?.length ?? 0})`);
+    if (!ok) console.log(`      response: ${JSON.stringify(found)}`);
+    const first = found?.results?.[0];
+    if (ok && first) {
+      console.log(`      first result: ${first.name} (${first.address ?? 'no address'})`);
+      const saved = await step('save it to collection + trip', 'POST', '/v1/places/google', { items: [{ googlePlaceId: first.placeId, category: interp.plan.category }], tripId: discoverTrip.id }, (s, j) => s === 201 && j.places[0]?.source === 'google' && j.places[0]?.name === null);
+      await step('saving again does not duplicate', 'POST', '/v1/places/google', { items: [{ googlePlaceId: first.placeId, category: 'food' }] }, (s, j) => s === 201 && j.places[0]?.id === saved?.places?.[0]?.id);
+      await step('fresh Google details for the saved place', 'GET', `/v1/google/places/${first.placeId}`, null, (s, j) => s === 200 && j.name === first.name);
+      await step('trip wishlist has it', 'GET', `/v1/trips/${discoverTrip.id}`, null, (s, j) => s === 200 && j.places.some((p) => p.googlePlaceId === first.placeId));
+      if (saved?.places?.[0]?.id) await step('remove the saved place (cleanup)', 'DELETE', `/v1/places/${saved.places[0].id}`, null, (s) => s === 204);
+    }
+  }
+}
+if (discoverTrip?.id) await step('delete the discovery trip (cleanup)', 'DELETE', `/v1/trips/${discoverTrip.id}`, null, (s) => s === 204);
+
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) failed.`);
 process.exit(failures === 0 ? 0 : 1);

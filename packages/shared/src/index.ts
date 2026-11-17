@@ -3,4 +3,6 @@ export * from './profile.js';
 export * from './preferences.js';
 export * from './trip.js';
 export * from './place.js';
+export * from './google.js';
+export * from './discover.js';
 export * from './api-error.js';

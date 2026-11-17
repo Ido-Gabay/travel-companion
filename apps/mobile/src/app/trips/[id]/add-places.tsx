@@ -1,3 +1,4 @@
+import type { Place } from '@travel-companion/shared';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
@@ -14,6 +15,7 @@ import {
   NavHeader,
 } from '@/components/ui';
 import { usePlaces } from '@/features/places/queries';
+import { usePlaceDisplay } from '@/features/places/use-place-display';
 import { useAddTripPlace, useRemoveTripPlace, useTrip } from '@/features/trips/queries';
 import { useErrorMessage } from '@/lib/use-error-message';
 import { colors, radii, spacing } from '@/theme/tokens';
@@ -29,7 +31,7 @@ export default function AddPlacesScreen() {
   const removePlace = useRemoveTripPlace(id);
 
   const inTrip = useMemo(
-    () => new Set(trip.data?.places.map((place) => place.placeId) ?? []),
+    () => new Set(trip.data?.places.map((place) => place.id) ?? []),
     [trip.data],
   );
   const busyId = addPlace.isPending
@@ -39,7 +41,7 @@ export default function AddPlacesScreen() {
       : null;
   const mutationError = addPlace.error ?? removePlace.error;
 
-  const openNewPlace = () => router.push({ pathname: '/places/new', params: { tripId: id } });
+  const openNewPlace = () => router.push({ pathname: '/trips/[id]/discover', params: { id } });
 
   const loading = trip.isPending || places.isPending;
   const failed = trip.isError ? trip.error : places.isError ? places.error : null;
@@ -72,42 +74,16 @@ export default function AddPlacesScreen() {
             </AppText>
             {mutationError ? <InlineError message={errorMessage(mutationError)} /> : null}
             <View style={styles.list}>
-              {places.data?.items.map((place) => {
-                const selected = inTrip.has(place.id);
-                const busy = busyId === place.id;
-                return (
-                  <Pressable
-                    key={place.id}
-                    accessibilityRole="checkbox"
-                    accessibilityState={{ checked: selected, busy, disabled: busyId !== null }}
-                    accessibilityLabel={place.name}
-                    accessibilityHint={selected ? t('addPlaces.added') : t('addPlaces.notAdded')}
-                    disabled={busyId !== null}
-                    onPress={() => (selected ? removePlace.mutate(place.id) : addPlace.mutate(place.id))}
-                    style={({ pressed }) => [
-                      styles.row,
-                      selected && styles.rowSelected,
-                      (pressed || busy) && styles.rowPressed,
-                    ]}
-                  >
-                    <View style={styles.rowText}>
-                      <AppText variant="bodyStrong" numberOfLines={1}>
-                        {place.name}
-                      </AppText>
-                      {place.address ? (
-                        <AppText variant="caption" color="secondary" numberOfLines={1}>
-                          {place.address}
-                        </AppText>
-                      ) : null}
-                    </View>
-                    <Icon
-                      name={selected ? 'checkmark-circle' : 'add-circle-outline'}
-                      size={26}
-                      color={selected ? colors.accent : colors.textTertiary}
-                    />
-                  </Pressable>
-                );
-              })}
+              {places.data?.items.map((place) => (
+                <PickRow
+                  key={place.id}
+                  place={place}
+                  selected={inTrip.has(place.id)}
+                  busy={busyId === place.id}
+                  disabled={busyId !== null}
+                  onPress={() => (inTrip.has(place.id) ? removePlace.mutate(place.id) : addPlace.mutate(place.id))}
+                />
+              ))}
             </View>
             <Button label={t('addPlaces.newPlace')} icon="add" variant="secondary" onPress={openNewPlace} />
             <Button label={t('common.done')} onPress={() => router.back()} />
@@ -115,6 +91,50 @@ export default function AddPlacesScreen() {
         )}
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function PickRow({
+  place,
+  selected,
+  busy,
+  disabled,
+  onPress,
+}: {
+  place: Place;
+  selected: boolean;
+  busy: boolean;
+  disabled: boolean;
+  onPress: () => void;
+}) {
+  const { t } = useTranslation();
+  const display = usePlaceDisplay(place);
+  return (
+    <Pressable
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: selected, busy, disabled }}
+      accessibilityLabel={display.name}
+      accessibilityHint={selected ? t('addPlaces.added') : t('addPlaces.notAdded')}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [styles.row, selected && styles.rowSelected, (pressed || busy) && styles.rowPressed]}
+    >
+      <View style={styles.rowText}>
+        <AppText variant="bodyStrong" numberOfLines={1}>
+          {display.name}
+        </AppText>
+        {display.address ? (
+          <AppText variant="caption" color="secondary" numberOfLines={1}>
+            {display.address}
+          </AppText>
+        ) : null}
+      </View>
+      <Icon
+        name={selected ? 'checkmark-circle' : 'add-circle-outline'}
+        size={26}
+        color={selected ? colors.accent : colors.textTertiary}
+      />
+    </Pressable>
   );
 }
 

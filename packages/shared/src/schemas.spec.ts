@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   addTripPlaceSchema,
+  googleMapsDirectionsUrl,
+  interpretResponseSchema,
+  saveGooglePlacesSchema,
+  searchPlanSchema,
   createPlaceSchema,
   createTripSchema,
   updatePlaceSchema,
@@ -107,6 +111,7 @@ describe('createPlaceSchema', () => {
       name: "Katz's Deli",
       address: null,
       notes: null,
+      category: 'other',
     });
   });
 
@@ -140,5 +145,66 @@ describe('addTripPlaceSchema', () => {
     expect(
       addTripPlaceSchema.safeParse({ placeId: '6f1c2b9e-3d4a-4b5c-8d7e-9f0a1b2c3d4e' }).success,
     ).toBe(true);
+  });
+});
+
+describe('place tags and visited', () => {
+  it('trims and de-duplicates tags', () => {
+    expect(updatePlaceSchema.parse({ tags: [' Brunch ', 'brunch', 'Kids'] })).toEqual({
+      tags: ['Brunch', 'Kids'],
+    });
+  });
+
+  it('accepts visited and category', () => {
+    expect(updatePlaceSchema.parse({ visited: true, category: 'coffee' })).toEqual({
+      visited: true,
+      category: 'coffee',
+    });
+  });
+
+  it('rejects more than 10 tags', () => {
+    expect(updatePlaceSchema.safeParse({ tags: Array.from({ length: 11 }, (_, i) => `t${i}`) }).success).toBe(false);
+  });
+});
+
+describe('saveGooglePlacesSchema', () => {
+  const id = 'ChIJN1t_tDeuEmsRUsoyG83frY4';
+
+  it('accepts Google place ids with a category', () => {
+    expect(saveGooglePlacesSchema.safeParse({ items: [{ googlePlaceId: id, category: 'food' }] }).success).toBe(true);
+  });
+
+  it('rejects malformed ids, empty lists and unknown categories', () => {
+    expect(saveGooglePlacesSchema.safeParse({ items: [{ googlePlaceId: 'x y', category: 'food' }] }).success).toBe(false);
+    expect(saveGooglePlacesSchema.safeParse({ items: [] }).success).toBe(false);
+    expect(saveGooglePlacesSchema.safeParse({ items: [{ googlePlaceId: id, category: 'casino' }] }).success).toBe(false);
+  });
+});
+
+describe('discover contract', () => {
+  it('only allows whitelisted Google types in a plan', () => {
+    const plan = { textQuery: 'pizza in Manhattan', includedType: 'pizza_restaurant', openNow: false, category: 'food' };
+    expect(searchPlanSchema.safeParse(plan).success).toBe(true);
+    expect(searchPlanSchema.safeParse({ ...plan, includedType: 'casino' }).success).toBe(false);
+  });
+
+  it('parses both interpret outcomes', () => {
+    expect(
+      interpretResponseSchema.parse({ action: 'clarify', question: 'Where is your hotel?', options: ['Midtown'] }).action,
+    ).toBe('clarify');
+    expect(
+      interpretResponseSchema.parse({
+        action: 'search',
+        summary: 'Pizza in Manhattan',
+        plan: { textQuery: 'pizza in Manhattan', includedType: null, openNow: false, category: 'food' },
+        interpretedBy: 'ai',
+      }).action,
+    ).toBe('search');
+  });
+
+  it('builds official Google Maps URLs', () => {
+    expect(googleMapsDirectionsUrl('ChIJN1t_tDeuEmsRUsoyG83frY4', "Katz's Deli")).toBe(
+      "https://www.google.com/maps/dir/?api=1&destination=Katz's%20Deli&destination_place_id=ChIJN1t_tDeuEmsRUsoyG83frY4",
+    );
   });
 });

@@ -1,4 +1,5 @@
-import type { Trip, TripDetail, TripPlace } from '@travel-companion/shared';
+import type { Trip, TripDetail } from '@travel-companion/shared';
+import { toTripPlace, type TripPlaceRow } from '../places/places.mapper.js';
 
 export interface TripRow {
   id: string;
@@ -14,14 +15,6 @@ export interface TripRow {
   version: number;
 }
 
-export interface TripPlaceRow {
-  place_id: string;
-  name: string;
-  address: string | null;
-  notes: string | null;
-  added_at: Date;
-}
-
 export function toTrip(row: TripRow): Trip {
   return {
     id: row.id,
@@ -33,16 +26,6 @@ export function toTrip(row: TripRow): Trip {
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
     version: row.version,
-  };
-}
-
-export function toTripPlace(row: TripPlaceRow): TripPlace {
-  return {
-    placeId: row.place_id,
-    name: row.name,
-    address: row.address,
-    notes: row.notes,
-    addedAt: row.added_at.toISOString(),
   };
 }
 

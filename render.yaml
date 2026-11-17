@@ -50,3 +50,17 @@ services:
         sync: false
       - key: DATABASE_URL
         sync: false
+      # Google Places + Claude (secrets: entered in the dashboard).
+      - key: GOOGLE_PLACES_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: AI_MODEL
+        value: claude-haiku-5-5
+      # Daily cost caps (see docs/GOOGLE_AND_AI.md).
+      - key: GOOGLE_TEXT_SEARCH_DAILY_CAP
+        value: "160"
+      - key: GOOGLE_PLACE_DETAILS_DAILY_CAP
+        value: "160"
+      - key: AI_DAILY_CAP
+        value: "300"

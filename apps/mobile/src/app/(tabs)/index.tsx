@@ -1,12 +1,13 @@
 import { router } from 'expo-router';
 import { useMemo } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import {
   AppText,
   Button,
   Card,
   EmptyState,
+  Icon,
   ErrorState,
   LoadingState,
   Screen,
@@ -19,7 +20,7 @@ import { TripCard } from '@/features/trips/TripCard';
 import { upcomingTrips } from '@/features/trips/upcoming';
 import { toIsoDate } from '@/lib/dates';
 import { useErrorMessage } from '@/lib/use-error-message';
-import { spacing } from '@/theme/tokens';
+import { colors, radii, spacing } from '@/theme/tokens';
 
 export default function HomeScreen() {
   const { t } = useTranslation();
@@ -45,6 +46,24 @@ export default function HomeScreen() {
         title={name ? t('home.greeting', { name }) : t('home.greetingNoName')}
         subtitle={t('home.subtitle')}
       />
+
+      <Pressable
+        accessibilityRole="search"
+        accessibilityLabel={t('home.discoverPrompt')}
+        onPress={() => router.navigate('/discover')}
+        style={({ pressed }) => [styles.discover, pressed && styles.discoverPressed]}
+      >
+        <Icon name="sparkles" size={22} color={colors.textOnAccent} />
+        <View style={styles.discoverText}>
+          <AppText variant="heading" color="onAccent">
+            {t('home.discoverPrompt')}
+          </AppText>
+          <AppText variant="caption" style={styles.discoverHint}>
+            {t('home.discoverHint')}
+          </AppText>
+        </View>
+        <Icon name="arrow-forward" size={20} color={colors.textOnAccent} flipInRtl />
+      </Pressable>
 
       <Card>
         <View style={styles.plan}>
@@ -73,4 +92,15 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   plan: { gap: spacing.md },
+  discover: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.xl,
+    borderRadius: radii.xl,
+    backgroundColor: colors.accent,
+  },
+  discoverPressed: { backgroundColor: colors.accentPressed },
+  discoverText: { flex: 1, gap: spacing.xxs },
+  discoverHint: { color: colors.accentSoft },
 });

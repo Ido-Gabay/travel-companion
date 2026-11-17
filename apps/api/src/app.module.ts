@@ -5,13 +5,26 @@ import { AuthModule } from './auth/auth.module.js';
 import { AllExceptionsFilter } from './common/all-exceptions.filter.js';
 import { ConfigModule } from './config/config.module.js';
 import { DatabaseModule } from './database/database.module.js';
+import { DiscoverModule } from './discover/discover.module.js';
+import { GoogleModule } from './google/google.module.js';
 import { HealthController } from './health/health.controller.js';
 import { MeModule } from './me/me.module.js';
 import { PlacesModule } from './places/places.module.js';
 import { TripsModule } from './trips/trips.module.js';
+import { UsageModule } from './usage/usage.module.js';
 
 @Module({
-  imports: [ConfigModule, DatabaseModule, AuthModule, MeModule, TripsModule, PlacesModule],
+  imports: [
+    ConfigModule,
+    DatabaseModule,
+    UsageModule,
+    AuthModule,
+    MeModule,
+    TripsModule,
+    PlacesModule,
+    GoogleModule,
+    DiscoverModule,
+  ],
   controllers: [HealthController],
   providers: [
     { provide: APP_GUARD, useClass: AuthGuard },

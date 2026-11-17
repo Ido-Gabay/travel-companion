@@ -80,6 +80,8 @@ describe('api errors', () => {
     expect(isRetryable(new ApiClientError('INTERNAL', 500, ''))).toBe(true);
     expect(isRetryable(new ApiClientError('VALIDATION_FAILED', 400, ''))).toBe(false);
     expect(isRetryable(new ApiClientError('UNAUTHENTICATED', 401, ''))).toBe(false);
+    expect(isRetryable(new ApiClientError('DAILY_LIMIT_REACHED', 429, ''))).toBe(false);
+    expect(isRetryable(new ApiClientError('NOT_CONFIGURED', 503, ''))).toBe(false);
   });
 });
 
@@ -97,5 +99,20 @@ describe('maps links', () => {
 
   it('uses the name alone without an address', () => {
     expect(mapsSearchQuery('MoMA', null)).toBe('MoMA');
+  });
+});
+
+describe('groupByCategory', () => {
+  it('groups in the fixed order and skips empty categories', async () => {
+    const { groupByCategory } = await import('../features/places/categories');
+    const groups = groupByCategory([
+      { id: 'a', category: 'sights' as const },
+      { id: 'b', category: 'food' as const },
+      { id: 'c', category: 'food' as const },
+    ]);
+    expect(groups.map((g) => [g.category, g.items.length])).toEqual([
+      ['food', 2],
+      ['sights', 1],
+    ]);
   });
 });

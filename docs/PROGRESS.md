@@ -16,6 +16,18 @@ Legend: ✅ done and verified on the Mac · 🟡 written, waiting for verificati
 | M4 | Auth screens, persistent session, API client with real data | ✅ runs in the iOS Simulator (2026-11-17) | Sign up → sign in → profile shows real data; restart keeps session |
 | M5 | Development build on the iPhone (Xcode, free Apple ID), Android check | ⏸ postponed by choice; do by Nov 22 (free-account builds expire after 7 days) | App opens on the phone and reaches the API over Wi-Fi |
 
+## Discovery milestone (current)
+
+| Item | Status |
+| --- | --- |
+| Google Places (Text Search, Place Details) behind daily caps | 🟡 written |
+| Claude request interpretation + clarification | 🟡 written |
+| Discover tab: results list/map, multi-select, save to collection/trip | 🟡 written |
+| Collection by category + map; place detail (directions, visited, notes, tags, trips) | 🟡 written |
+| Trip wishlist by category + map | 🟡 written |
+| Keys configured (Google Cloud, Anthropic, iOS Maps) | ⬜ owner |
+| Full flow on a real iPhone | ⬜ |
+
 ## Trips/places slice (after Phase 1)
 
 | Item | Status |
@@ -51,3 +63,10 @@ Legend: ✅ done and verified on the Mac · 🟡 written, waiting for verificati
   rebuild `packages/shared` first. Hosting decided: zero cost (Render Free + Supabase Free + GitHub),
   no paid services without approval. Region assumption: keep Singapore for both. Added `render.yaml`,
   CI workflow, docs/DEPLOYMENT.md, and cold-start handling in the app.
+- 2026-11-17: New priority: AI place discovery with real Google Places. Approved: Google billing with daily caps,
+  Claude Haiku 5.5, no ratings/photos. Written: migration `google_places` (place ID dedupe, category, tags,
+  visited, provider_usage), Google Places service (Text Search + Place Details, Pro field masks), Claude
+  interpretation service (structured output, clarification, direct fallback), discover/save endpoints, daily caps,
+  Discover tab (search, AI steps, clarification, results list/map, multi-select save to collection + trip),
+  collection by category with map, place detail (directions, visited, category, notes, tags, trips),
+  trip wishlist by category with map. Needs: keys (docs/GOOGLE_AND_AI.md), `react-native-maps`, native rebuild.

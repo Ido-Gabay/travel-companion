@@ -11,10 +11,12 @@ import {
 } from '@nestjs/common';
 import {
   createPlaceSchema,
+  saveGooglePlacesSchema,
   updatePlaceSchema,
   type CreatePlaceData,
   type Place,
   type PlaceList,
+  type SaveGooglePlacesInput,
   type UpdatePlaceData,
 } from '@travel-companion/shared';
 import type { AuthUser } from '../auth/auth.types.js';
@@ -39,6 +41,15 @@ export class PlacesController {
     @Body(new ZodValidationPipe(createPlaceSchema)) body: CreatePlaceData,
   ): Promise<Place> {
     return this.places.create(user, body);
+  }
+
+  /** Save Google places (by place ID) to the collection, optionally into a trip. */
+  @Post('google')
+  saveGoogle(
+    @CurrentUser() user: AuthUser,
+    @Body(new ZodValidationPipe(saveGooglePlacesSchema)) body: SaveGooglePlacesInput,
+  ): Promise<{ places: Place[] }> {
+    return this.places.saveGoogle(user, body);
   }
 
   @Get(':id')

@@ -22,3 +22,6 @@ export const unauthenticated = (message = 'Authentication required.') =>
   new ApiException(401, 'UNAUTHENTICATED', message);
 
 export const notFound = (message = 'Not found.') => new ApiException(404, 'NOT_FOUND', message);
+
+export const notConfigured = (feature: string) =>
+  new ApiException(503, 'NOT_CONFIGURED', `${feature} is not configured on this server.`);

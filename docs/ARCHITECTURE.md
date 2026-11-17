@@ -38,7 +38,11 @@ apps/api            NestJS 12 (ESM, TypeScript strict, Vitest)
   src/health        /health, /health/ready
   src/me            profile + preferences
   src/trips         trips, trip detail, adding/removing places
-  src/places        the global place collection
+  src/places        the global collection (Google place IDs + user data, or custom places)
+  src/google        the only code that calls Google Places API (New)
+  src/ai            Claude: request -> structured search plan / clarification
+  src/discover      interpret + search endpoints (AI proposes, Google finds, user saves)
+  src/usage         daily cost caps for paid APIs (app.provider_usage)
 apps/mobile         Expo SDK 58 app (milestone M3)
 packages/shared     zod schemas = the API contract, used by both sides
 supabase/migrations SQL migrations, applied with `supabase db push`
@@ -81,6 +85,25 @@ are never logged.
 to the service that uses it. Calendar dates are returned as `YYYY-MM-DD` strings
 (selected `::text`) so they never shift with time zones.
 
+## Place discovery (AI + Google)
+
+```
+user text --> POST /discover/interpret --> AiService (Claude Haiku 5.5, structured JSON)
+                                             | sees: user text + their trip title/destination/dates
+                                             v
+                                   plan {textQuery, includedType, openNow, category}  or  clarify
+user sees "Searching for …" --> POST /discover/search --> GooglePlacesService.searchText (Pro fields)
+                                             v
+                     results (+ already saved?) --> user selects --> POST /places/google
+```
+
+- AI proposes, the user chooses, the backend validates and saves. Claude
+  never sees Google results and never names places.
+- Saved Google places store only the place ID; display data is fetched fresh
+  from Google (`GET /google/places/:id`) and kept in app memory for the session.
+- Every paid call passes `UsageGuardService.consume()` first (daily caps).
+- See [GOOGLE_AND_AI.md](GOOGLE_AND_AI.md) for costs, keys and Google's rules.
+
 ## Database conventions
 
 - Private schema `app`; `anon` has no access; `authenticated` has
@@ -97,7 +120,9 @@ to the service that uses it. Calendar dates are returned as `YYYY-MM-DD` strings
   edit a migration that has been applied; add a new one.
 
 Tables today: `profiles`, `user_preferences`, `trips`, `places` (the user's
-collection, user-entered text only) and `trip_places` (which places are in which
+collection: a Google place ID or a user-typed name, plus category, notes, tags,
+visited; constraints forbid copying Google text), `provider_usage` (daily API
+counters) and `trip_places` (which places are in which
 trip; one row per pair, removed/re-added via `deleted_at`). The RLS insert policy
 on `trip_places` also checks that both the trip and the place belong to the
 caller. Itinerary tables (`itinerary_revisions`, `itinerary_items`) are not

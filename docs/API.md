@@ -36,7 +36,9 @@ Every non-2xx response has this body:
 | 403 | `FORBIDDEN` | Authenticated but not allowed. |
 | 404 | `NOT_FOUND` | Route or record does not exist (or is not yours). |
 | 409 | `CONFLICT` | Duplicate record. |
-| 429 | `RATE_LIMITED` | Reserved; no rate limiting yet. |
+| 429 | `RATE_LIMITED` | A provider (Google) is busy; try again shortly. |
+| 429 | `DAILY_LIMIT_REACHED` | Today's cost cap for Google or AI is used up (resets midnight UTC). |
+| 503 | `NOT_CONFIGURED` | The server has no key for this integration. |
 | 503 | `SERVICE_UNAVAILABLE` | Database or Supabase signing keys unreachable. |
 | 500 | `INTERNAL` | Unexpected error. Details are in the server log only. |
 
@@ -159,10 +161,19 @@ trip doesn't exist, is deleted, or belongs to someone else. A malformed id is
   "version": 1,
   "places": [
     {
-      "placeId": "6f1c2b9e-…",
-      "name": "Katz's Delicatessen",
-      "address": "205 E Houston St, New York",
+      "id": "1d2e…",
+      "source": "google",
+      "googlePlaceId": "ChIJ…",
+      "name": null,
+      "address": null,
       "notes": "Pastrami on rye. Keep the ticket!",
+      "category": "food",
+      "tags": ["must eat"],
+      "visitedAt": null,
+      "tripCount": 1,
+      "createdAt": "…",
+      "updatedAt": "…",
+      "version": 1,
       "addedAt": "…"
     }
   ]
@@ -184,58 +195,105 @@ trip changes nothing. `404` if the trip or place isn't the caller's.
 Takes the place out of the trip (it stays in the collection). Returns the trip
 detail (`200`). Idempotent.
 
-## Places
+## Places (the global collection)
 
-The user's global collection. Every field is text the user typed; nothing is
-fetched from or stored for a third-party place provider.
+A place is either:
+
+- **google**: only `googlePlaceId` is stored (Google's terms). `name` and
+  `address` are always `null`; get the current name, address, location and type
+  from `GET /v1/google/places/:googlePlaceId`.
+- **custom**: typed in by the user; `name`/`address` are theirs.
+
+Both carry the user's own `notes`, `category`, `tags` and `visitedAt`.
+Categories: `food, coffee, sights, shopping, nightlife, outdoors, stay, other`.
 
 ### `GET /v1/places`
 
-Newest first, at most 500.
+Newest first, at most 500. `{ "items": [Place, …] }` (shape as in the trip example above, without `addedAt`).
+
+### `POST /v1/places/google`
+
+Save Google places by ID, optionally into a trip's wishlist. One row per Google
+place per user: saving again returns the same place (a deleted one is revived).
 
 ```json
-{
-  "items": [
-    {
-      "id": "6f1c2b9e-…",
-      "name": "Katz's Delicatessen",
-      "address": "205 E Houston St, New York",
-      "notes": "Pastrami on rye.\nCash or card.",
-      "tripCount": 1,
-      "createdAt": "…",
-      "updatedAt": "…",
-      "version": 1
-    }
-  ]
-}
+{ "items": [{ "googlePlaceId": "ChIJ…", "category": "food" }], "tripId": "0b8f…" }
 ```
 
-`tripCount` is how many of the caller's (non-deleted) trips include the place.
+1–20 items. Returns `201 { "places": [Place, …] }`. `404` if the trip isn't the caller's.
 
 ### `POST /v1/places`
 
-```json
-{ "name": "Katz's Delicatessen", "address": "205 E Houston St", "notes": "Pastrami on rye." }
-```
+A custom place: `{ "name", "address"?, "notes"?, "category"? }`. Returns `201` with the place.
 
-- `name`: required, trimmed, 1–120 characters.
-- `address`: optional, up to 200; blank becomes `null`.
-- `notes`: optional, up to 2000, line breaks kept; blank becomes `null`.
+### `GET /v1/places/:id` · `DELETE /v1/places/:id`
 
-Returns `201` with the place.
-
-### `GET /v1/places/:id`
-
-One place. `404` if missing or not the caller's.
+One place / soft-delete it (also removes it from every trip, `204`).
 
 ### `PATCH /v1/places/:id`
 
-Any of `name`, `address`, `notes`; at least one. `null` (or blank) clears
-`address`/`notes`. Returns the place.
+Any of `notes`, `category`, `tags` (≤10, each ≤30 chars, de-duplicated),
+`visited` (boolean), and for custom places `name`, `address`. Sending
+`name`/`address` for a Google place is `400`.
 
-### `DELETE /v1/places/:id`
+## Google
 
-Soft-deletes the place and removes it from every trip. `204`.
+### `GET /v1/google/places/:googlePlaceId?lang=en|he`
+
+Fresh Place Details from Google (Pro fields only), for display. Never stored.
+
+```json
+{
+  "placeId": "ChIJ…",
+  "name": "Katz's Delicatessen",
+  "address": "205 E Houston St, New York",
+  "location": { "latitude": 40.7223, "longitude": -73.9874 },
+  "primaryType": "deli",
+  "typeLabel": "Deli",
+  "googleMapsUri": "https://maps.google.com/?cid=…",
+  "businessStatus": "OPERATIONAL"
+}
+```
+
+Counts against `GOOGLE_PLACE_DETAILS_DAILY_CAP`. `404` if Google no longer knows the place.
+
+## Discover
+
+Two steps so the app can show what it understood before searching.
+
+### `POST /v1/discover/interpret`
+
+```json
+{ "query": "best Italian near our hotel", "tripId": "0b8f…", "clarifications": [{ "question": "Where is your hotel?", "answer": "Midtown" }] }
+```
+
+Claude (if configured) turns the request into a search plan, or asks one question:
+
+```json
+{ "action": "search", "summary": "Italian restaurants in Midtown Manhattan",
+  "plan": { "textQuery": "best Italian restaurants in Midtown Manhattan, New York", "includedType": "italian_restaurant", "openNow": false, "category": "food" },
+  "interpretedBy": "ai" }
+```
+
+```json
+{ "action": "clarify", "question": "Where is your hotel?", "options": ["Midtown", "SoHo", "Upper West Side"] }
+```
+
+`interpretedBy: "direct"` means no AI was used (no key, AI cap reached, or AI
+error) and the user's words go to Google as typed. Claude receives only the
+user's text and their own trip title/destination/dates, never Google data.
+
+### `POST /v1/discover/search`
+
+`{ "plan": SearchPlan, "tripId"? }`, where the plan is validated (Google type
+from a fixed list). Runs Google Text Search (Pro fields, 15 results,
+permanently closed places removed) and marks what's already saved:
+
+```json
+{ "results": [ { …GooglePlace, "savedPlaceId": null, "inTrip": false } ] }
+```
+
+Counts against `GOOGLE_TEXT_SEARCH_DAILY_CAP`.
 
 ## Versioning
 

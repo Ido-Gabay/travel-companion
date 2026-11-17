@@ -14,7 +14,7 @@ This repository is a pnpm monorepo:
 | `supabase/checks` | SQL you can run to confirm a migration did what it should. |
 | `docs/` | Architecture, API reference, and the progress log. |
 
-Read next: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/API.md](docs/API.md),
+Read next: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/API.md](docs/API.md), [docs/GOOGLE_AND_AI.md](docs/GOOGLE_AND_AI.md),
 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md), [docs/PROGRESS.md](docs/PROGRESS.md).
 
 ## Requirements
@@ -123,6 +123,7 @@ Expo picks the native library versions that match SDK 58, so they are added with
 ```sh
 pnpm install
 cd apps/mobile
+npx expo install react-native-maps
 npx expo install react react-native expo-router react-native-screens react-native-safe-area-context expo-linking expo-constants expo-status-bar expo-localization expo-dev-client expo-font @expo/vector-icons @react-native-async-storage/async-storage @react-native-community/datetimepicker react-native-url-polyfill @supabase/supabase-js @tanstack/react-query i18next react-i18next
 npx expo install typescript @types/react -- --save-dev
 npx expo-doctor

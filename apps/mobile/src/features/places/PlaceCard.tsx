@@ -1,38 +1,70 @@
 import type { Place } from '@travel-companion/shared';
-import { StyleSheet, View } from 'react-native';
+import type { ReactNode } from 'react';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { AppText, Card, Icon } from '@/components/ui';
 import { colors, radii, spacing } from '@/theme/tokens';
+import { CATEGORY_ICONS } from './categories';
+import { usePlaceDisplay } from './use-place-display';
 
-export function PlaceCard({ place, onPress }: { place: Place; onPress: () => void }) {
+interface PlaceCardProps {
+  place: Place;
+  onPress: () => void;
+  /** Optional trailing controls (e.g. remove from trip). */
+  actions?: ReactNode;
+  showNotes?: boolean;
+}
+
+export function PlaceCard({ place, onPress, actions, showNotes = true }: PlaceCardProps) {
   const { t } = useTranslation();
+  const display = usePlaceDisplay(place);
+  const visited = place.visitedAt !== null;
+
   return (
-    <Card onPress={onPress} accessibilityLabel={place.name}>
+    <Card onPress={onPress} accessibilityLabel={display.name}>
       <View style={styles.row}>
-        <View style={styles.badge}>
-          <Icon name="location-outline" size={20} color={colors.accent} />
+        <View style={[styles.badge, visited && styles.badgeVisited]}>
+          <Icon
+            name={visited ? 'checkmark' : CATEGORY_ICONS[place.category]}
+            size={20}
+            color={visited ? colors.textOnAccent : colors.accent}
+          />
         </View>
         <View style={styles.text}>
-          <AppText variant="heading" numberOfLines={1}>
-            {place.name}
-          </AppText>
-          {place.address ? (
-            <AppText variant="caption" color="secondary" numberOfLines={1}>
-              {place.address}
+          <View style={styles.titleRow}>
+            <AppText variant="heading" numberOfLines={1} style={styles.flex}>
+              {display.name}
             </AppText>
-          ) : null}
-          {place.notes ? (
+            {display.loading ? <ActivityIndicator size="small" color={colors.textTertiary} /> : null}
+          </View>
+          <AppText variant="caption" color="secondary" numberOfLines={1}>
+            {[display.typeLabel ?? t(`categories.${place.category}`), display.address]
+              .filter(Boolean)
+              .join(' · ')}
+          </AppText>
+          {showNotes && place.notes ? (
             <AppText variant="body" color="secondary" numberOfLines={2}>
               {place.notes}
             </AppText>
           ) : null}
-          {place.tripCount > 0 ? (
-            <AppText variant="caption" color="accent">
-              {t('places.tripCount', { count: place.tripCount })}
+          {place.tags.length > 0 ? (
+            <View style={styles.tags}>
+              {place.tags.map((tag) => (
+                <View key={tag} style={styles.tag}>
+                  <AppText variant="caption" color="secondary">
+                    {tag}
+                  </AppText>
+                </View>
+              ))}
+            </View>
+          ) : null}
+          {place.source === 'google' && display.google ? (
+            <AppText variant="caption" color="tertiary" style={styles.attribution}>
+              Google Maps
             </AppText>
           ) : null}
         </View>
-        <Icon name="chevron-forward" size={18} color={colors.textTertiary} flipInRtl />
+        {actions ?? <Icon name="chevron-forward" size={18} color={colors.textTertiary} flipInRtl />}
       </View>
     </Card>
   );
@@ -48,5 +80,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  badgeVisited: { backgroundColor: colors.success },
   text: { flex: 1, gap: spacing.xxs },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  flex: { flex: 1 },
+  tags: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.xs },
+  tag: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xxs,
+    borderRadius: radii.pill,
+    backgroundColor: colors.surfaceMuted,
+  },
+  attribution: { writingDirection: 'ltr', marginTop: spacing.xxs },
 });

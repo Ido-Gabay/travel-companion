@@ -47,6 +47,21 @@ describe('toTrip', () => {
   });
 });
 
+const placeRow = {
+  id: '6f1c2b9e-3d4a-4b5c-8d7e-9f0a1b2c3d4e',
+  google_place_id: 'ChIJN1t_tDeuEmsRUsoyG83frY4',
+  name: null,
+  address: null,
+  notes: 'Pastrami on rye',
+  category: 'food' as const,
+  tags: ['must'],
+  visited_at: null,
+  trip_count: 1,
+  created_at: created,
+  updated_at: updated,
+  version: 1,
+};
+
 describe('toTripDetail', () => {
   it('matches the shared contract', () => {
     const detail = toTripDetail(
@@ -61,33 +76,26 @@ describe('toTripDetail', () => {
         updated_at: created,
         version: 1,
       },
-      [
-        {
-          place_id: '6f1c2b9e-3d4a-4b5c-8d7e-9f0a1b2c3d4e',
-          name: 'The Met',
-          address: '1000 5th Ave',
-          notes: null,
-          added_at: updated,
-        },
-      ],
+      [{ ...placeRow, added_at: updated }],
     );
     expect(tripDetailSchema.parse(detail)).toEqual(detail);
     expect(detail.places[0]?.addedAt).toBe('2026-11-16T11:30:00.000Z');
+    expect(detail.places[0]?.source).toBe('google');
   });
 });
 
 describe('toPlace', () => {
-  it('matches the shared contract', () => {
-    const place = toPlace({
-      id: '6f1c2b9e-3d4a-4b5c-8d7e-9f0a1b2c3d4e',
-      name: 'The Met',
-      address: null,
-      notes: 'Closed Wednesdays',
-      trip_count: 0,
-      created_at: created,
-      updated_at: updated,
-      version: 1,
-    });
+  it('marks Google places and keeps their copied text empty', () => {
+    const place = toPlace(placeRow);
     expect(placeSchema.parse(place)).toEqual(place);
+    expect(place.source).toBe('google');
+    expect(place.name).toBeNull();
+  });
+
+  it('marks custom places', () => {
+    const place = toPlace({ ...placeRow, google_place_id: null, name: 'Aunt Dina', visited_at: updated });
+    expect(placeSchema.parse(place)).toEqual(place);
+    expect(place.source).toBe('custom');
+    expect(place.visitedAt).toBe('2026-11-16T11:30:00.000Z');
   });
 });
