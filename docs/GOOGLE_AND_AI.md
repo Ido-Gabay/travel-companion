@@ -1,43 +1,72 @@
 # Google Maps Platform and Claude: setup, costs and rules
 
-Approved by the owner on 2026-11-17: Google billing **with daily caps**, Claude
-**Haiku 5.5**, **no ratings or photos** (they're billed at a higher tier).
-Nothing else paid is enabled.
+Owner approvals (2026-11-17), in order:
+
+1. Google billing **with caps**, Claude **Haiku 5.5**, no ratings or photos.
+2. Place preview upgrade: **rating, review count, opening hours and photos;
+   no review text** (reviews and Google's descriptions are a pricier SKU that was
+   not approved). Caps keep every SKU inside Google's free monthly allowance.
+
+Nothing else paid is enabled. Prices below were checked on Google's official
+price list on 2026-11-17 (free usage is per SKU, per month, per billing account).
 
 ## What the app uses
 
-| Purpose | Service | Billing level | Free per month | Our hard daily cap |
+| Purpose | Google SKU (or service) | Free / month | Then (per 1,000) | Our caps (daily / monthly) |
 | --- | --- | --- | --- | --- |
-| Find places from a request | Places API (New) **Text Search** | Pro | 5,000 | 160 (`GOOGLE_TEXT_SEARCH_DAILY_CAP`) |
-| Show a saved place (name, address, location, type) | Places API (New) **Place Details** | Pro | 5,000 | 160 (`GOOGLE_PLACE_DETAILS_DAILY_CAP`) |
-| Map on iPhone | **Maps SDK for iOS** (mobile native map, no map ID) | Free | Unlimited | — |
-| Understand the request | **Claude Haiku 5.5** | Prepaid tokens | — | 300 (`AI_DAILY_CAP`) |
+| Search (standard and AI) | Places API **Text Search Pro** | 5,000 | $32 | 160 / 4,500 |
+| Saved place name, address, location | Places API **Place Details Pro** | 5,000 | $17 | 160 / 4,500 |
+| Place preview: rating, count, opening hours | Places API **Place Details Enterprise** | 1,000 | $20 | 30 / 900 |
+| Photo list in the preview | Place Details **Essentials (IDs Only)** (`photos` field) | Unlimited | — | (part of the preview call) |
+| Each photo image shown | Places API **Place Details Photos** | 1,000 | $7 | 60 / 900 |
+| Maps on iPhone | **Maps SDK** (mobile native) | Unlimited | — | — |
+| "Ask AI" | **Claude Haiku 5.5** (tokens) | — | per token | 300 / 3,000 |
 
-160 a day × 31 days = 4,960, which is under each 5,000 free allowance. The caps are counted
-in our own database (`app.provider_usage`) **before** each call. When a cap is
-reached, the API answers `429 DAILY_LIMIT_REACHED` and the app says the free
-limit for today is used up. Caps reset at midnight UTC.
+Env vars: `GOOGLE_TEXT_SEARCH_DAILY_CAP` / `_MONTHLY_CAP`, `GOOGLE_PLACE_DETAILS_*`,
+`GOOGLE_PLACE_PREVIEW_*`, `GOOGLE_PLACE_PHOTO_*`, `AI_DAILY_CAP` / `AI_MONTHLY_CAP`.
 
-**Fields requested** (field masks in `apps/api/src/google/google-places.mapper.ts`):
-`id, displayName, formattedAddress, shortFormattedAddress, location, primaryType,
-primaryTypeDisplayName, googleMapsUri, businessStatus`. All are Pro-level fields. We never request
-ratings, review counts, opening hours, price level, photos or reviews, which
-are Enterprise-level. A unit test fails if one of those slips into a mask.
+**How the caps work.** Every paid call is counted in our database
+(`app.provider_usage`) **before** it is made. Over the daily cap the API answers
+`429 DAILY_LIMIT_REACHED`; over the monthly cap `429 MONTHLY_LIMIT_REACHED`.
+Monthly caps sit 10% below the free allowance as a margin (our UTC month and
+Google's billing month may not line up exactly). When the preview or photo cap
+is reached, the preview quietly falls back to the free basic version
+(`detail: "basic"`) instead of failing.
+
+**Cost monitoring.** `GET /v1/usage` (in the app: Profile → Costs → Google & AI
+usage) shows today's and this month's count per SKU, the caps, the free
+allowance and the estimated charge (stays $0 inside the free allowances).
+Google Cloud billing is the final word: keep the budget alert below.
+
+**Field masks** (`apps/api/src/google/google-places.mapper.ts`):
+
+- Search and basic details: `id, displayName, formattedAddress, shortFormattedAddress,
+  location, primaryType, primaryTypeDisplayName, googleMapsUri, businessStatus` (Pro).
+- Preview: the same plus `rating, userRatingCount, currentOpeningHours, photos`
+  (Enterprise). Unit tests fail if `reviews`, `reviewSummary`, `editorialSummary`,
+  `generativeSummary` or other Atmosphere fields slip in, or if any Enterprise
+  field slips into the search or basic masks.
+
+**Photos.** The preview lists up to 10 photos (free metadata). The app loads the
+first image only; more load only when the user taps "Show more photos" (up to 4).
+The API asks Google for a short-lived image URL (`skipHttpRedirect`), so the key
+never reaches the app, and nothing is stored. Each photo shows its author.
 
 **Claude cost estimate:** a request is roughly 1,000 input tokens and a few hundred output tokens. At
 Haiku 5.5's $0.10 / $0.50 per million tokens, that's a small fraction of a cent.
-Even the full daily cap of 300 is well under $1 a day. Set a spend limit in the
+Even the full monthly cap of 3,000 is well under $5. Set a spend limit in the
 Anthropic console anyway.
 
 **Saved places:** each Google place in your collection is looked up once per
-app session (kept in memory for up to 6 hours, never written to disk), so 30
-saved places cost about 30 lookups per app launch.
+app session (kept in memory for up to 6 hours, never written to disk). Search
+results are reused for the preview and for saving, so those cost no extra lookup.
 
 ## Google's rules and how we follow them
 
 | Rule (Places API policies) | What the code does |
 | --- | --- |
-| Store only place IDs (indefinitely); lat/lng at most 30 days; don't store names, addresses, etc. | `app.places` keeps `google_place_id` + the user's own fields. A database constraint forbids `name`/`address` on Google rows. We store no coordinates at all. |
+| Store only place IDs (indefinitely); lat/lng at most 30 days; don't store names, addresses, etc. | `app.places` keeps `google_place_id` + the user's own fields. A database constraint forbids `name`/`address` on Google rows. The pinned hotel is stored as a place ID only (`trips.base_google_place_id`). We store no coordinates, ratings, hours or photos. |
+| Show photo authors | Every photo shows "Photo: <author>" linking to their Google Maps profile. |
 | Fetch fresh details when needed | `GET /v1/google/places/:id` calls Google every time (no server cache). |
 | Places shown on a map must be on a Google map | Maps use `react-native-maps` with `PROVIDER_GOOGLE` on iOS. |
 | Without a Google map, show Google attribution | Lists of Google results and Google-sourced place text show "Google Maps" text attribution. **To do:** swap the text for the official logo asset. |
@@ -60,10 +89,13 @@ Server key and iOS key are different keys. The server key never ships in the app
    - **ios-maps**: *Application restrictions* → **iOS apps**, bundle ID
      `com.idogabay.travelcompanion`. *API restrictions* → **Maps SDK for iOS** only.
      Put it in `apps/mobile/.env` as `GOOGLE_MAPS_IOS_API_KEY` (or run `pnpm setup:mobile`).
-5. Optional extra safety: **Google Maps Platform → Quotas → Places API (New)**:
-   lower `SearchText` and `GetPlace` requests per minute (e.g. 30).
+5. Recommended second safety net (Google's side): **APIs & Services → Places API (New)
+   → Quotas & System Limits**. Lower the per-day limits, e.g. *SearchText requests
+   per day* ≈ 160, *GetPlace requests per day* ≈ 250 (basic + preview),
+   *GetPhotoMedia requests per day* ≈ 60. Google then refuses calls even if our
+   counter were wrong.
 6. **Billing → Budgets & alerts** → create a budget of **$1** with email alerts at
-   50 / 90 / 100 %. Alerts don't stop spending; our daily caps do.
+   50 / 90 / 100 %. Alerts don't stop spending; the caps do.
 
 ### Anthropic (about 5 minutes)
 
@@ -77,8 +109,11 @@ Without `GOOGLE_PLACES_API_KEY`, discovery answers `NOT_CONFIGURED`.
 
 ## Changing the limits
 
-Edit the cap env vars in Render (and `apps/api/.env`). Raising them past the
-free allowance can cost money. Get the owner's approval first.
+Edit the cap env vars in Render (and `apps/api/.env`). Raising a monthly cap
+past the free allowance can cost money. Get the owner's approval first. Not
+approved yet (would need approval, with numbers): review text and Google's
+descriptions (Place Details Enterprise + Atmosphere, 1,000 free then $25 per
+1,000), and Routes API travel times (for Live Today, M9).
 
 ## Sources
 

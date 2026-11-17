@@ -87,3 +87,12 @@ Legend: ✅ done and verified on the Mac · 🟡 written, waiting for verificati
   planned / wishlist / days-planned counts and a "where you stay" hint; during the trip today's plan with the next
   stop, directions, "Done", and a tick list of today's stops. "Done" also on each itinerary stop; visited updates
   instantly in every loaded trip (rolled back if saving fails). App-only change: no migration or API deploy.
+- 2026-11-17: M8 (Google-first Discover + Live Companion groundwork). Owner direction: Google Maps search is the
+  standard way, AI optional; keep Collection / Trip Wishlist / Itinerary distinct; Live Today answers four questions.
+  Verified Google prices on the official list; owner approved rating + review count + hours + photos (no review text)
+  with caps inside the free allowance. Written: search areas (near text / circle / map bounds), category per result
+  from Google type, monthly caps for every paid API, `GET /v1/usage` + in-app usage screen, place preview endpoint
+  (Enterprise fields, falls back to basic at the cap) and photo endpoint, hotel pin (`trips.base_google_place_id`,
+  ID only) used for "near my hotel" (also by AI via `nearBase`), Discover with Search / Ask AI modes, where + category
+  chips, near me (foreground location via expo-location), "Search this area", place preview sheet, trip tabs renamed
+  Itinerary / Wishlist, docs/LIVE_COMPANION.md (architecture + roadmap M9 Live Today, M10 reminders).

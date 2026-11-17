@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common';
-import { GoogleController } from './google.controller.js';
+import { GoogleController, GooglePhotosController } from './google.controller.js';
 import { GooglePlacesService } from './google-places.service.js';
 
 @Module({
-  controllers: [GoogleController],
+  controllers: [GoogleController, GooglePhotosController],
   providers: [GooglePlacesService],
   exports: [GooglePlacesService],
 })

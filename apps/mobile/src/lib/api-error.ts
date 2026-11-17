@@ -40,7 +40,13 @@ export function toClientErrorCode(error: unknown): ClientErrorCode {
 /** Client errors (4xx) won't succeed on retry; network and server errors might. */
 export function isRetryable(error: unknown): boolean {
   if (!(error instanceof ApiClientError)) return true;
-  if (error.code === 'DAILY_LIMIT_REACHED' || error.code === 'NOT_CONFIGURED') return false;
+  if (
+    error.code === 'DAILY_LIMIT_REACHED' ||
+    error.code === 'MONTHLY_LIMIT_REACHED' ||
+    error.code === 'NOT_CONFIGURED'
+  ) {
+    return false;
+  }
   if (error.status === null) return true;
   return error.status >= 500 || error.status === 429;
 }

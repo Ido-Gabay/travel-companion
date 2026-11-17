@@ -114,6 +114,7 @@ then newest first. At most 200 (pagination comes when needed).
       "startDate": "2026-11-23",
       "endDate": "2026-11-29",
       "baseLocation": "Midtown Manhattan",
+      "basePlaceId": "ChIJ…",
       "placeCount": 3,
       "createdAt": "2026-11-16T10:00:00.000Z",
       "updatedAt": "2026-11-16T10:00:00.000Z",
@@ -183,8 +184,11 @@ trip doesn't exist, is deleted, or belongs to someone else. A malformed id is
 
 ### `PATCH /v1/trips/:id`
 
-Any of `title`, `destination`, `baseLocation` (where the user stays, e.g. a
-hotel or area; used by discovery for "near my hotel"), `startDate`, `endDate`.
+Any of `title`, `destination`, `baseLocation` (where the user stays, in the
+user's own words; sent to the AI), `basePlaceId` (the hotel pinned on Google
+Maps: only the place ID is stored; "near my hotel" searches around its real
+location; `null` unpins), `startDate`, `endDate`. `POST /v1/trips` accepts
+`basePlaceId` too.
 Blank or `null` clears a text field or date. End before start is
 `400 VALIDATION_FAILED` (checked against the stored dates too). Returns the trip.
 
@@ -326,15 +330,62 @@ user's text and their own trip title/destination/dates, never Google data.
 
 ### `POST /v1/discover/search`
 
-`{ "plan": SearchPlan, "tripId"? }`, where the plan is validated (Google type
-from a fixed list). Runs Google Text Search (Pro fields, 15 results,
-permanently closed places removed) and marks what's already saved:
+`{ "plan": SearchPlan, "tripId"?, "area"? }`, where the plan is validated (Google
+type from a fixed list). Used by both modes:
+
+- **Standard search** (the default in the app): the app builds the plan from what
+  the user typed or the category chip they tapped, with no AI call, and sends an
+  `area`:
+  - `{ "kind": "near", "text": "Pod Times Square" }`: added to the text
+    ("coffee near Pod Times Square"); used for the trip destination or hotel.
+  - `{ "kind": "circle", "center": {lat,lng}, "radiusMeters": 100–50000 }`:
+    biases results toward a point (the user's current location). The location
+    is passed to Google for this search only and never stored.
+  - `{ "kind": "bounds", "low": {lat,lng}, "high": {lat,lng} }`: only results
+    inside the visible map ("Search this area").
+- **AI search**: the plan from `/discover/interpret` (already names a location);
+  no area.
+
+Runs Google Text Search (Pro fields, 15 results, permanently closed places
+removed) and marks what's already saved. `category` is our category for each
+result, from Google's type (falling back to the plan's category):
 
 ```json
-{ "results": [ { …GooglePlace, "savedPlaceId": null, "inTrip": false } ] }
+{ "results": [ { …GooglePlace, "savedPlaceId": null, "inTrip": false, "category": "coffee" } ] }
 ```
 
 Counts against `GOOGLE_TEXT_SEARCH_DAILY_CAP`.
+
+### `GET /v1/google/places/:placeId/preview?lang=en|he`
+
+The place preview: everything from the basic details plus `rating`,
+`userRatingCount`, `openNow`, `weekdayHours` (text lines in the requested
+language) and `photos` (up to 10: `name`, size, author `attributions`). One
+Place Details Enterprise call (owner-approved, capped: `GOOGLE_PLACE_PREVIEW_*`).
+When the cap is reached it returns the free basic fields with `detail: "basic"`
+(otherwise `"full"`). No review text.
+
+### `GET /v1/google/photos?name=places/…/photos/…&maxWidth=100–1200`
+
+`{ "uri": "https://…" }`: a short-lived image URL for one photo from a preview
+(no API key in it). One Place Details Photos call per request, capped
+(`GOOGLE_PLACE_PHOTO_*`). Show the photo's author with it.
+
+## Usage (cost monitoring)
+
+### `GET /v1/usage`
+
+This server's paid API usage (all users together; no user data):
+
+```json
+{ "day": "2026-11-17", "month": "2026-11", "items": [
+  { "metric": "google_text_search", "sku": "Places API Text Search Pro", "today": 12, "month": 140,
+    "dailyCap": 160, "monthlyCap": 4500, "freePerMonth": 5000, "usdPer1000": 32, "estimatedCostUsd": 0 } ] }
+```
+
+Metrics: `google_text_search`, `google_place_details`, `google_place_preview`,
+`google_place_photo`, `ai_interpret`. When a cap is used up, the feature answers
+`429 DAILY_LIMIT_REACHED` or `429 MONTHLY_LIMIT_REACHED`.
 
 ## Versioning
 

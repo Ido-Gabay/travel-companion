@@ -22,6 +22,7 @@ import { openInMaps } from '@/features/places/open-in-maps';
 import { PlaceCard } from '@/features/places/PlaceCard';
 import { usePlaceDisplay } from '@/features/places/use-place-display';
 import { DayPickerSheet } from '@/features/trips/DayPickerSheet';
+import { HotelPinSheet } from '@/features/trips/HotelPinSheet';
 import { countByDay, dayShort, formatStartTime } from '@/features/trips/itinerary';
 import { ItineraryView } from '@/features/trips/ItineraryView';
 import {
@@ -46,6 +47,7 @@ export default function TripScreen() {
   const schedule = useScheduleTripPlace(id);
 
   const [view, setView] = useState<'plan' | 'places' | 'map'>('plan');
+  const [pinOpen, setPinOpen] = useState(false);
   const [planning, setPlanning] = useState<{ place: TripPlace; name: string } | null>(null);
   const days = useMemo(
     () => tripDays(trip.data?.startDate ?? null, trip.data?.endDate ?? null),
@@ -111,13 +113,20 @@ export default function TripScreen() {
                   </AppText>
                 </View>
               ) : null}
-              {trip.data.baseLocation ? (
-                <View style={styles.meta}>
+              {trip.data.baseLocation || trip.data.basePlaceId ? (
+                <Pressable accessibilityRole="button" onPress={() => setPinOpen(true)} style={styles.meta}>
                   <Icon name="bed-outline" size={16} color={colors.textSecondary} />
-                  <AppText variant="body" color="secondary">
-                    {t('tripDetail.stayingAt', { place: trip.data.baseLocation })}
+                  <AppText variant="body" color="secondary" style={styles.flexShrink}>
+                    {t('tripDetail.stayingAt', { place: trip.data.baseLocation ?? t('hotelPin.pinnedShort') })}
                   </AppText>
-                </View>
+                  {trip.data.basePlaceId ? (
+                    <Icon name="location" size={16} color={colors.accent} />
+                  ) : (
+                    <AppText variant="caption" color="accent" style={styles.pinLink}>
+                      {t('hotelPin.pinOnMap')}
+                    </AppText>
+                  )}
+                </Pressable>
               ) : null}
               <View style={styles.meta}>
                 <Icon name="calendar-outline" size={16} color={colors.textSecondary} />
@@ -219,6 +228,7 @@ export default function TripScreen() {
               </View>
             )}
 
+            <HotelPinSheet trip={trip.data} visible={pinOpen} onClose={() => setPinOpen(false)} />
             <DayPickerSheet
               visible={planning !== null}
               placeName={planning?.name ?? ''}
@@ -315,6 +325,8 @@ const styles = StyleSheet.create({
   discoverRow: { flexDirection: 'row', gap: spacing.md },
   flex: { flex: 1 },
   group: { gap: spacing.md },
+  flexShrink: { flexShrink: 1 },
+  pinLink: { fontWeight: '600' },
   placesBody: { gap: spacing.lg },
   progressRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   progressText: { flex: 1, gap: spacing.xs },

@@ -1,6 +1,7 @@
 import type {
   CreatePlaceInput,
   GooglePlace,
+  GooglePlacePreview,
   Place,
   PlaceList,
   SaveGooglePlacesInput,
@@ -156,5 +157,63 @@ export function useSetVisited() {
       );
     },
     onSettled: () => void queryClient.invalidateQueries({ queryKey: tripsPrefix }),
+  });
+}
+
+/**
+ * Puts Google results the app already has (e.g. from a search) into the
+ * in-memory details cache, so opening or saving one doesn't need another
+ * Google request. Memory only, like all Google content in the app.
+ */
+export function usePrimeGooglePlaces() {
+  const queryClient = useQueryClient();
+  const { locale } = useLocale();
+  return (places: readonly GooglePlace[]) => {
+    for (const place of places) {
+      const { placeId, name, address, location, primaryType, typeLabel, googleMapsUri, businessStatus } = place;
+      queryClient.setQueryData<GooglePlace>(googlePlaceKey(placeId, locale), {
+        placeId,
+        name,
+        address,
+        location,
+        primaryType,
+        typeLabel,
+        googleMapsUri,
+        businessStatus,
+      });
+    }
+  };
+}
+
+/**
+ * Rating, hours and photo list for the place preview. Kept in memory for the
+ * session only, so reopening a place costs nothing extra.
+ */
+export function useGooglePlacePreview(placeId: string | null) {
+  const { session } = useAuth();
+  const { locale } = useLocale();
+  return useQuery<GooglePlacePreview>({
+    queryKey: ['google-place-preview', placeId ?? '', locale],
+    queryFn: () => api.getGooglePlacePreview(placeId ?? '', locale),
+    enabled: session !== null && placeId !== null,
+    staleTime: GOOGLE_DETAILS_STALE_MS,
+    gcTime: GOOGLE_DETAILS_STALE_MS,
+    retry: 1,
+  });
+}
+
+/** Google photo URLs expire; keep one for a short while within the session. */
+const PHOTO_URL_STALE_MS = 30 * 60 * 1000;
+
+/** Loads one photo's image URL (billed per photo, so only when it's actually shown). */
+export function useGooglePhoto(name: string | null, maxWidth = 800) {
+  const { session } = useAuth();
+  return useQuery({
+    queryKey: ['google-photo', name ?? '', maxWidth],
+    queryFn: () => api.getGooglePhoto(name ?? '', maxWidth),
+    enabled: session !== null && name !== null,
+    staleTime: PHOTO_URL_STALE_MS,
+    gcTime: PHOTO_URL_STALE_MS,
+    retry: false,
   });
 }

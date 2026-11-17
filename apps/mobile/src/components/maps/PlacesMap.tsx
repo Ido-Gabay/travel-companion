@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useTranslation } from 'react-i18next';
+import { regionToBounds, type Bounds } from '@/features/companion/geo';
 import { AppText, Icon } from '@/components/ui';
 import { colors, radii, spacing } from '@/theme/tokens';
 
@@ -22,9 +23,16 @@ interface PlacesMapProps {
   height?: number;
   /** Draw a line through the points in order (a day's route, as the crow flies). */
   connect?: boolean;
+  /** Called after the user moves or zooms the map by hand (not when it fits the points). */
+  onUserMove?: (bounds: Bounds) => void;
+  /** Show the blue "you are here" dot (only after location permission was granted). */
+  showsUserLocation?: boolean;
 }
 
 /** True when the app was built with a Google Maps iOS key (see app.config.ts). */
+/** Moves within this long after fitting the points count as the map's own. */
+const AUTO_MOVE_SETTLE_MS = 1500;
+
 export const googleMapsEnabled = Boolean(
   (Constants.expoConfig?.extra as { googleMapsEnabled?: boolean } | undefined)?.googleMapsEnabled,
 );
@@ -33,9 +41,19 @@ export const googleMapsEnabled = Boolean(
  * A Google map with one marker per point. Google Places content shown on a
  * map must be on a Google map, so this always uses PROVIDER_GOOGLE.
  */
-export function PlacesMap({ points, selectedId, onSelect, height, connect = false }: PlacesMapProps) {
+export function PlacesMap({
+  points,
+  selectedId,
+  onSelect,
+  height,
+  connect = false,
+  onUserMove,
+  showsUserLocation = false,
+}: PlacesMapProps) {
   const { t } = useTranslation();
   const ref = useRef<MapView>(null);
+  /** When the map last moved by itself, so that move isn't reported as the user's. */
+  const lastAutoMove = useRef(0);
   const coordinates = useMemo(
     () => points.map((p) => ({ latitude: p.latitude, longitude: p.longitude })),
     [points],
@@ -43,7 +61,9 @@ export function PlacesMap({ points, selectedId, onSelect, height, connect = fals
 
   useEffect(() => {
     if (coordinates.length === 0) return;
+    lastAutoMove.current = Date.now();
     const timer = setTimeout(() => {
+      lastAutoMove.current = Date.now();
       ref.current?.fitToCoordinates(coordinates, {
         edgePadding: { top: 60, right: 40, bottom: 60, left: 40 },
         animated: true,
@@ -77,6 +97,13 @@ export function PlacesMap({ points, selectedId, onSelect, height, connect = fals
         }
         onPress={() => onSelect?.(null)}
         toolbarEnabled={false}
+        showsUserLocation={showsUserLocation}
+        onRegionChangeComplete={(region, details) => {
+          if (!onUserMove) return;
+          const byHand =
+            details?.isGesture ?? Date.now() - lastAutoMove.current > AUTO_MOVE_SETTLE_MS;
+          if (byHand) onUserMove(regionToBounds(region));
+        }}
       >
         {connect && coordinates.length > 1 ? (
           <Polyline

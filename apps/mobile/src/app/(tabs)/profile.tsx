@@ -5,6 +5,7 @@ import {
   type DistanceUnit,
   type SupportedLocale,
 } from '@travel-companion/shared';
+import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
@@ -164,6 +165,15 @@ export default function ProfileScreen() {
         {updatePreferences.isError ? (
           <InlineError message={errorMessage(updatePreferences.error)} />
         ) : null}
+      </Section>
+
+      <Section title={t('profile.costs')}>
+        <Button
+          label={t('usage.title')}
+          icon="speedometer-outline"
+          variant="secondary"
+          onPress={() => router.push('/settings/usage')}
+        />
       </Section>
 
       <Button

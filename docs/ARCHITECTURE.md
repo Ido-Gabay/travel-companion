@@ -85,24 +85,38 @@ are never logged.
 to the service that uses it. Calendar dates are returned as `YYYY-MM-DD` strings
 (selected `::text`) so they never shift with time zones.
 
-## Place discovery (AI + Google)
+## Place discovery (Google first, AI optional)
 
 ```
-user text --> POST /discover/interpret --> AiService (Claude Haiku 5.5, structured JSON)
-                                             | sees: user text + their trip title/destination/dates
-                                             v
-                                   plan {textQuery, includedType, openNow, category}  or  clarify
-user sees "Searching for …" --> POST /discover/search --> GooglePlacesService.searchText (Pro fields)
-                                             v
-                     results (+ already saved?) --> user selects --> POST /places/google
+Search (default):  typed text / category chip + area ──────────────┐
+                   area = near destination | circle around hotel    │
+                          (pinned place) or user | map bounds        v
+Ask AI (optional): user text -> POST /discover/interpret -> plan -> POST /discover/search
+                   (Claude Haiku 5.5 sees only the user's        (GooglePlacesService.searchText,
+                    words + their own trip fields)                 Pro fields, category per result)
+                                                                     v
+                 results (+ already saved / in trip?) -> preview (GET /google/places/:id/preview)
+                                                     -> save: POST /places/google (+ optional tripId)
 ```
 
+- **Google Maps search is the standard experience; AI enhances it.** Both modes
+  end in the same Google search and the same results UI.
 - AI proposes, the user chooses, the backend validates and saves. Claude
   never sees Google results and never names places.
+- Saving is deduplicated by Google place ID: one collection row per place; a
+  saved place can be added to any number of trip wishlists.
 - Saved Google places store only the place ID; display data is fetched fresh
-  from Google (`GET /google/places/:id`) and kept in app memory for the session.
-- Every paid call passes `UsageGuardService.consume()` first (daily caps).
+  from Google and kept in app memory for the session.
+- Every paid call passes `UsageGuardService.consume()` first (daily and monthly
+  caps); `GET /v1/usage` reports usage and estimated cost.
 - See [GOOGLE_AND_AI.md](GOOGLE_AND_AI.md) for costs, keys and Google's rules.
+
+## Live Travel Companion
+
+The long-term core of the product: Today answers *where am I in my day, what's
+next and when to leave, what fits the time I have, should I change my plan*.
+The app suggests; the user decides. Design, data needs, privacy and the
+milestone plan: [LIVE_COMPANION.md](LIVE_COMPANION.md).
 
 ## Database conventions
 

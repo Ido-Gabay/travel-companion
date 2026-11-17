@@ -26,6 +26,7 @@ function tripColumns(tx: Tx) {
     t.start_date::text as start_date,
     t.end_date::text as end_date,
     t.base_location,
+    t.base_google_place_id,
     (
       select count(*)::int
       from app.trip_places tp
@@ -62,12 +63,13 @@ export class TripsService {
       // The profile row is created at sign-up; make sure it exists before the FK insert.
       await tx`insert into app.profiles (id) values (${user.id}) on conflict (id) do nothing`;
       const [inserted] = await tx<{ id: string }[]>`
-        insert into app.trips (owner_id, title, destination, base_location, start_date, end_date)
+        insert into app.trips (owner_id, title, destination, base_location, base_google_place_id, start_date, end_date)
         values (
           ${user.id},
           ${input.title},
           ${input.destination},
           ${input.baseLocation},
+          ${input.basePlaceId},
           ${input.startDate}::date,
           ${input.endDate}::date
         )
@@ -85,6 +87,7 @@ export class TripsService {
       if (input.title !== undefined) sets.push(tx`title = ${input.title}`);
       if (input.destination !== undefined) sets.push(tx`destination = ${input.destination}`);
       if (input.baseLocation !== undefined) sets.push(tx`base_location = ${input.baseLocation}`);
+      if (input.basePlaceId !== undefined) sets.push(tx`base_google_place_id = ${input.basePlaceId}`);
       if (input.startDate !== undefined) sets.push(tx`start_date = ${input.startDate}::date`);
       if (input.endDate !== undefined) sets.push(tx`end_date = ${input.endDate}::date`);
       const assignments = sets.reduce((all, next) => tx`${all}, ${next}`);

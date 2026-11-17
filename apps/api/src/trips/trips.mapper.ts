@@ -9,6 +9,7 @@ export interface TripRow {
   start_date: string | null;
   end_date: string | null;
   base_location: string | null;
+  base_google_place_id: string | null;
   /** Selected as ::int (Postgres count() is bigint, which the driver returns as a string). */
   place_count: number;
   created_at: Date;
@@ -24,6 +25,7 @@ export function toTrip(row: TripRow): Trip {
     startDate: row.start_date,
     endDate: row.end_date,
     baseLocation: row.base_location,
+    basePlaceId: row.base_google_place_id,
     placeCount: row.place_count,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),

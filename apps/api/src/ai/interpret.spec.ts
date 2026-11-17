@@ -35,6 +35,13 @@ describe('parseInterpretOutput', () => {
     expect(result?.action === 'search' && result.plan.includedType).toBeNull();
   });
 
+  it('marks hotel searches so the app can use the pinned hotel location', () => {
+    const result = parseInterpretOutput(JSON.stringify({ ...search, nearBase: true }), false);
+    expect(result?.action === 'search' && result.plan.nearBase).toBe(true);
+    const plain = parseInterpretOutput(JSON.stringify({ ...search, nearBase: false }), false);
+    expect(plain?.action === 'search' && 'nearBase' in plain.plan).toBe(false);
+  });
+
   it('returns a clarification', () => {
     const result = parseInterpretOutput(
       JSON.stringify({ ...search, action: 'clarify', question: 'Where is your hotel?', options: ['Midtown', 'SoHo'] }),

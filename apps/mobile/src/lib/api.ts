@@ -1,6 +1,9 @@
 import {
   discoverSearchResponseSchema,
+  googlePhotoMediaSchema,
+  googlePlacePreviewSchema,
   googlePlaceSchema,
+  usageReportSchema,
   interpretResponseSchema,
   meSchema,
   saveGooglePlacesResponseSchema,
@@ -13,7 +16,10 @@ import {
   type CreatePlaceInput,
   type DiscoverSearchRequest,
   type DiscoverSearchResponse,
+  type GooglePhotoMedia,
   type GooglePlace,
+  type GooglePlacePreview,
+  type UsageReport,
   type InterpretRequest,
   type InterpretResponse,
   type SaveGooglePlacesInput,
@@ -155,6 +161,17 @@ export const api = {
   /** Fresh Google content for display. Never persisted on the device or server. */
   getGooglePlace: (placeId: string, lang: SupportedLocale): Promise<GooglePlace> =>
     request('GET', `/v1/google/places/${encodeURIComponent(placeId)}?lang=${lang}`, googlePlaceSchema),
+  /** Rating, opening hours and photo list (capped on the server; falls back to basic). */
+  getGooglePlacePreview: (placeId: string, lang: SupportedLocale): Promise<GooglePlacePreview> =>
+    request(
+      'GET',
+      `/v1/google/places/${encodeURIComponent(placeId)}/preview?lang=${lang}`,
+      googlePlacePreviewSchema,
+    ),
+  /** A short-lived image URL for one photo. Each call is billed by Google (capped). */
+  getGooglePhoto: (name: string, maxWidth: number): Promise<GooglePhotoMedia> =>
+    request('GET', `/v1/google/photos?name=${encodeURIComponent(name)}&maxWidth=${maxWidth}`, googlePhotoMediaSchema),
+  getUsage: (): Promise<UsageReport> => request('GET', '/v1/usage', usageReportSchema),
 
   interpret: (body: InterpretRequest): Promise<InterpretResponse> =>
     request('POST', '/v1/discover/interpret', interpretResponseSchema, body),

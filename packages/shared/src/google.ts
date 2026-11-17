@@ -98,3 +98,44 @@ export function googleMapsRouteUrl(
   }
   return `https://www.google.com/maps/dir/?${params.join('&')}`;
 }
+
+/** A photo's resource name, e.g. "places/ChIJ.../photos/AXCi...". */
+export const googlePhotoNameSchema = z
+  .string()
+  .max(1000)
+  .regex(/^places\/[A-Za-z0-9_-]{10,255}\/photos\/[A-Za-z0-9_-]{10,800}$/);
+
+/** Photo metadata (free to request). Loading the image itself is billed per photo. */
+export const googlePhotoSchema = z.object({
+  name: googlePhotoNameSchema,
+  widthPx: z.number().int().nonnegative(),
+  heightPx: z.number().int().nonnegative(),
+  /** Photo authors; must be shown with the photo. */
+  attributions: z.array(z.object({ displayName: z.string(), uri: z.string().nullable() })),
+});
+export type GooglePhoto = z.infer<typeof googlePhotoSchema>;
+
+/**
+ * Response of GET /v1/google/places/:placeId/preview: the place plus rating,
+ * opening hours and photo list (Place Details Enterprise, approved by the
+ * owner with caps inside the free allowance). No review text.
+ * detail "basic" means the preview cap was reached and only the free fields came back.
+ */
+export const googlePlacePreviewSchema = googlePlaceSchema.extend({
+  rating: z.number().min(0).max(5).nullable(),
+  userRatingCount: z.number().int().nonnegative().nullable(),
+  /** From current opening hours; null when Google doesn't know. */
+  openNow: z.boolean().nullable(),
+  /** e.g. "Monday: 8:00 AM – 6:00 PM", in the requested language. */
+  weekdayHours: z.array(z.string()),
+  photos: z.array(googlePhotoSchema).max(10),
+  detail: z.enum(['full', 'basic']),
+});
+export type GooglePlacePreview = z.infer<typeof googlePlacePreviewSchema>;
+
+/** Response of GET /v1/google/photos: a short-lived image URL (no API key in it). */
+export const googlePhotoMediaSchema = z.object({ uri: z.url() });
+export type GooglePhotoMedia = z.infer<typeof googlePhotoMediaSchema>;
+
+/** Largest photo width the app asks for (pixels). */
+export const GOOGLE_PHOTO_MAX_WIDTH = 1200;

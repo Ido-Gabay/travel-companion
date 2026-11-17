@@ -30,10 +30,11 @@ export const INTERPRET_OUTPUT_SCHEMA = {
     includedType: { type: 'string', enum: [...GOOGLE_PLACE_TYPES, 'none'] },
     category: { type: 'string', enum: [...PLACE_CATEGORIES] },
     openNow: { type: 'boolean' },
+    nearBase: { type: 'boolean', description: 'True when the request is about where the traveler stays (near my hotel / where we stay).' },
     question: { type: 'string', description: 'One short clarification question in the user language. Empty when searching.' },
     options: { type: 'array', items: { type: 'string' }, description: 'Up to 4 short suggested answers. Empty when searching.' },
   },
-  required: ['action', 'summary', 'textQuery', 'includedType', 'category', 'openNow', 'question', 'options'],
+  required: ['action', 'summary', 'textQuery', 'includedType', 'category', 'openNow', 'nearBase', 'question', 'options'],
   additionalProperties: false,
 } as const;
 
@@ -44,7 +45,7 @@ export function buildSystemPrompt(): string {
     '',
     'Rules:',
     '- textQuery: a concise Google Maps query in English that always contains a concrete area (neighborhood, landmark or city). Keep quality words the user used ("best", "recommended", "cheap").',
-    '- "Near my hotel", "near where we stay" and similar mean the trip\'s "staying at" location when one is given; search near it.',
+    '- "Near my hotel", "near where we stay" and similar mean the trip\'s "staying at" location when one is given; search near it and set nearBase true. Otherwise nearBase is false.',
     '- If the request has no area, use the trip destination. If there is no destination either, or the area depends on something unknown (e.g. "near my hotel" without knowing the hotel), choose action "clarify".',
     '- Ask at most one short question. Offer up to 4 short options when natural (e.g. neighborhoods). If clarification answers are provided, you MUST choose "search".',
     '- includedType: the single best matching type from the list, or "none" if unsure or the request spans several kinds of places.',

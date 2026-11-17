@@ -41,7 +41,7 @@ export class AiService {
 
     // Over the AI cap: still let the user search, just without interpretation.
     try {
-      await this.usage.consume('ai_interpret', this.config.caps.ai);
+      await this.usage.consume('ai_interpret');
     } catch {
       return fallback();
     }

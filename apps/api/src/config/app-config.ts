@@ -1,4 +1,10 @@
+import type { UsageMetric } from '@travel-companion/shared';
 import { z } from 'zod';
+
+export interface UsageCap {
+  daily: number;
+  monthly: number;
+}
 
 export const APP_CONFIG = Symbol('APP_CONFIG');
 
@@ -19,11 +25,22 @@ const envSchema = z.object({
   ANTHROPIC_API_KEY: z.string().min(20).optional(),
   AI_MODEL: z.string().min(1).default('claude-haiku-5-5'),
 
-  // Daily caps that keep paid APIs inside their free monthly allowances.
-  // Text Search Pro and Place Details Pro: 5,000 free/month each -> 160/day * 31 = 4,960.
+  // Caps that keep paid APIs inside Google's free monthly allowances (see
+  // packages/shared/src/usage.ts and docs/GOOGLE_AND_AI.md). Daily caps spread
+  // usage; monthly caps stay below the free allowance with a safety margin.
+  // Text Search Pro and Place Details Pro: 5,000 free/month each.
   GOOGLE_TEXT_SEARCH_DAILY_CAP: z.coerce.number().int().min(0).default(160),
+  GOOGLE_TEXT_SEARCH_MONTHLY_CAP: z.coerce.number().int().min(0).default(4500),
   GOOGLE_PLACE_DETAILS_DAILY_CAP: z.coerce.number().int().min(0).default(160),
+  GOOGLE_PLACE_DETAILS_MONTHLY_CAP: z.coerce.number().int().min(0).default(4500),
+  // Place preview (Place Details Enterprise: rating, hours) and photos: 1,000 free/month each.
+  GOOGLE_PLACE_PREVIEW_DAILY_CAP: z.coerce.number().int().min(0).default(30),
+  GOOGLE_PLACE_PREVIEW_MONTHLY_CAP: z.coerce.number().int().min(0).default(900),
+  GOOGLE_PLACE_PHOTO_DAILY_CAP: z.coerce.number().int().min(0).default(60),
+  GOOGLE_PLACE_PHOTO_MONTHLY_CAP: z.coerce.number().int().min(0).default(900),
+  // Claude is paid per token (no free allowance); caps bound the spend.
   AI_DAILY_CAP: z.coerce.number().int().min(0).default(300),
+  AI_MONTHLY_CAP: z.coerce.number().int().min(0).default(3000),
 });
 
 export interface AppConfig {
@@ -40,11 +57,8 @@ export interface AppConfig {
   googlePlacesApiKey: string | null;
   anthropicApiKey: string | null;
   aiModel: string;
-  caps: {
-    googleTextSearch: number;
-    googlePlaceDetails: number;
-    ai: number;
-  };
+  /** Daily and monthly call caps per paid metric. */
+  caps: Record<UsageMetric, UsageCap>;
 }
 
 /**
@@ -78,9 +92,11 @@ export function parseAppConfig(env: NodeJS.ProcessEnv): AppConfig {
     anthropicApiKey: e.ANTHROPIC_API_KEY ?? null,
     aiModel: e.AI_MODEL,
     caps: {
-      googleTextSearch: e.GOOGLE_TEXT_SEARCH_DAILY_CAP,
-      googlePlaceDetails: e.GOOGLE_PLACE_DETAILS_DAILY_CAP,
-      ai: e.AI_DAILY_CAP,
+      google_text_search: { daily: e.GOOGLE_TEXT_SEARCH_DAILY_CAP, monthly: e.GOOGLE_TEXT_SEARCH_MONTHLY_CAP },
+      google_place_details: { daily: e.GOOGLE_PLACE_DETAILS_DAILY_CAP, monthly: e.GOOGLE_PLACE_DETAILS_MONTHLY_CAP },
+      google_place_preview: { daily: e.GOOGLE_PLACE_PREVIEW_DAILY_CAP, monthly: e.GOOGLE_PLACE_PREVIEW_MONTHLY_CAP },
+      google_place_photo: { daily: e.GOOGLE_PLACE_PHOTO_DAILY_CAP, monthly: e.GOOGLE_PLACE_PHOTO_MONTHLY_CAP },
+      ai_interpret: { daily: e.AI_DAILY_CAP, monthly: e.AI_MONTHLY_CAP },
     },
   };
 }

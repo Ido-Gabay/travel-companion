@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { googlePlaceIdSchema } from './google.js';
 import { placeSchema } from './place.js';
 
 export const TRIP_TITLE_MAX = 120;
@@ -17,6 +18,8 @@ export const tripSchema = z.object({
   endDate: calendarDateSchema.nullable(),
   /** Where the user stays (hotel or area), as they typed it. */
   baseLocation: z.string().nullable(),
+  /** The hotel pinned on Google Maps (only the place ID is stored). Used for "near my hotel". */
+  basePlaceId: googlePlaceIdSchema.nullable(),
   /** Number of places added to this trip. */
   placeCount: z.number().int().nonnegative(),
   createdAt: z.iso.datetime({ offset: true }),
@@ -46,6 +49,7 @@ export const createTripSchema = z
     title: z.string().trim().min(1).max(TRIP_TITLE_MAX),
     destination: optionalText(TRIP_DESTINATION_MAX),
     baseLocation: optionalText(TRIP_BASE_LOCATION_MAX),
+    basePlaceId: googlePlaceIdSchema.nullable().optional().transform((value) => value ?? null),
     startDate: calendarDateSchema.nullable().optional().transform((value) => value ?? null),
     endDate: calendarDateSchema.nullable().optional().transform((value) => value ?? null),
   })
@@ -75,6 +79,7 @@ export const updateTripSchema = z
     title: z.string().trim().min(1).max(TRIP_TITLE_MAX).optional(),
     destination: patchText(TRIP_DESTINATION_MAX),
     baseLocation: patchText(TRIP_BASE_LOCATION_MAX),
+    basePlaceId: googlePlaceIdSchema.nullable().optional(),
     startDate: calendarDateSchema.nullable().optional(),
     endDate: calendarDateSchema.nullable().optional(),
   })

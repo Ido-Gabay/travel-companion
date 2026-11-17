@@ -92,6 +92,8 @@ await step('preference was saved', 'GET', '/v1/me/preferences', null, (s, j) => 
 await step('switch back to English', 'PATCH', '/v1/me/preferences', { locale: 'en' }, (s, j) => s === 200 && j.locale === 'en');
 await step('invalid language is rejected', 'PATCH', '/v1/me/preferences', { locale: 'xx' }, (s, j) => s === 400 && j.error.code === 'VALIDATION_FAILED');
 await step('trips list loads', 'GET', '/v1/trips', null, (s, j) => s === 200 && Array.isArray(j.items));
+await step('usage report (cost monitoring)', 'GET', '/v1/usage', null, (s, j) => s === 200 && j.items.length === 5 && j.items.every((i) => i.monthlyCap >= 0 && (i.freePerMonth === null || i.monthlyCap <= i.freePerMonth)));
+await step('a bad hotel pin is rejected', 'POST', '/v1/trips', { title: 'x', basePlaceId: 'bad id!' }, (s, j) => s === 400 && j.error.code === 'VALIDATION_FAILED');
 await step('trip without a title is rejected', 'POST', '/v1/trips', { title: '  ' }, (s, j) => s === 400 && j.error.code === 'VALIDATION_FAILED');
 
 // Trips + places round trip. Everything created here is deleted at the end.
@@ -144,10 +146,23 @@ if (interp?.action === 'search' && discoverTrip?.id) {
       const saved = await step('save it to collection + trip', 'POST', '/v1/places/google', { items: [{ googlePlaceId: first.placeId, category: interp.plan.category }], tripId: discoverTrip.id }, (s, j) => s === 201 && j.places[0]?.source === 'google' && j.places[0]?.name === null);
       await step('saving again does not duplicate', 'POST', '/v1/places/google', { items: [{ googlePlaceId: first.placeId, category: 'food' }] }, (s, j) => s === 201 && j.places[0]?.id === saved?.places?.[0]?.id);
       await step('fresh Google details for the saved place', 'GET', `/v1/google/places/${first.placeId}`, null, (s, j) => s === 200 && j.name === first.name);
+      await step('place preview (rating, hours, photo list)', 'GET', `/v1/google/places/${first.placeId}/preview`, null, (s, j) => s === 200 && j.placeId === first.placeId && (j.detail === 'full' || j.detail === 'basic') && Array.isArray(j.photos));
       await step('trip wishlist has it', 'GET', `/v1/trips/${discoverTrip.id}`, null, (s, j) => s === 200 && j.places.some((p) => p.googlePlaceId === first.placeId));
       if (saved?.places?.[0]?.id) await step('remove the saved place (cleanup)', 'DELETE', `/v1/places/${saved.places[0].id}`, null, (s) => s === 204);
     }
   }
+}
+if (interp?.action === 'search') {
+  await step(
+    'standard search near a point (no AI)',
+    'POST',
+    '/v1/discover/search',
+    {
+      plan: { textQuery: 'coffee', includedType: 'coffee_shop', openNow: false, category: 'coffee' },
+      area: { kind: 'circle', center: { latitude: 40.758, longitude: -73.9855 }, radiusMeters: 1000 },
+    },
+    (s, j) => (s === 200 && j.results.length > 0 && j.results.every((r) => typeof r.category === 'string')) || (s === 503 && j.error.code === 'NOT_CONFIGURED'),
+  );
 }
 if (discoverTrip?.id) await step('delete the discovery trip (cleanup)', 'DELETE', `/v1/trips/${discoverTrip.id}`, null, (s) => s === 204);
 

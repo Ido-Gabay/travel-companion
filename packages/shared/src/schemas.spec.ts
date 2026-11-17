@@ -4,6 +4,10 @@ import {
   scheduleTripPlaceSchema,
   reorderTripDaySchema,
   tripDays,
+  estimatedCostUsd,
+  googlePhotoNameSchema,
+  categoryForGoogleType,
+  discoverSearchRequestSchema,
   addTripPlaceSchema,
   googleMapsDirectionsUrl,
   googleMapsRouteUrl,
@@ -66,6 +70,7 @@ describe('tripSchema', () => {
       startDate: '2026-11-23',
       endDate: null,
       baseLocation: null,
+      basePlaceId: null,
       placeCount: 0,
       createdAt: '2026-11-16T10:00:00.000Z',
       updatedAt: '2026-11-16T10:00:00.000Z',
@@ -280,5 +285,73 @@ describe('googleMapsRouteUrl', () => {
       'https://www.google.com/maps/dir/?api=1&destination=A&destination_place_id=ChIJaaaaaaaaaa&travelmode=transit',
     );
     expect(googleMapsRouteUrl([])).toBeNull();
+  });
+});
+
+describe('standard search', () => {
+  const plan = { textQuery: 'coffee', includedType: null, openNow: false, category: 'coffee' };
+
+  it('accepts the three kinds of area', () => {
+    expect(discoverSearchRequestSchema.safeParse({ plan, area: { kind: 'near', text: 'Pod Times Square' } }).success).toBe(true);
+    expect(
+      discoverSearchRequestSchema.safeParse({
+        plan,
+        area: { kind: 'circle', center: { latitude: 40.75, longitude: -73.98 }, radiusMeters: 1500 },
+      }).success,
+    ).toBe(true);
+    expect(
+      discoverSearchRequestSchema.safeParse({
+        plan,
+        area: { kind: 'bounds', low: { latitude: 40.7, longitude: -74.0 }, high: { latitude: 40.8, longitude: -73.9 } },
+      }).success,
+    ).toBe(true);
+    expect(discoverSearchRequestSchema.safeParse({ plan }).success).toBe(true);
+  });
+
+  it('rejects bad areas', () => {
+    expect(
+      discoverSearchRequestSchema.safeParse({
+        plan,
+        area: { kind: 'circle', center: { latitude: 40.75, longitude: -73.98 }, radiusMeters: 90_000 },
+      }).success,
+    ).toBe(false);
+    expect(
+      discoverSearchRequestSchema.safeParse({
+        plan,
+        area: { kind: 'bounds', low: { latitude: 40.8, longitude: -74.0 }, high: { latitude: 40.7, longitude: -73.9 } },
+      }).success,
+    ).toBe(false);
+    expect(discoverSearchRequestSchema.safeParse({ plan, area: { kind: 'near', text: ' ' } }).success).toBe(false);
+  });
+
+  it('maps Google types to our categories', () => {
+    expect(categoryForGoogleType('italian_restaurant')).toBe('food');
+    expect(categoryForGoogleType('coffee_shop')).toBe('coffee');
+    expect(categoryForGoogleType('wine_bar')).toBe('nightlife');
+    expect(categoryForGoogleType('museum')).toBe('sights');
+    expect(categoryForGoogleType('park')).toBe('outdoors');
+    expect(categoryForGoogleType('book_store')).toBe('shopping');
+    expect(categoryForGoogleType('hotel')).toBe('stay');
+    expect(categoryForGoogleType('dentist', 'food')).toBe('food');
+    expect(categoryForGoogleType(null)).toBe('other');
+  });
+});
+
+describe('cost control', () => {
+  it('costs nothing inside the free allowance', () => {
+    expect(estimatedCostUsd('google_text_search', 4999)).toBe(0);
+    expect(estimatedCostUsd('google_place_preview', 1000)).toBe(0);
+  });
+
+  it('prices calls above it', () => {
+    expect(estimatedCostUsd('google_text_search', 6000)).toBe(32);
+    expect(estimatedCostUsd('google_place_photo', 1500)).toBe(3.5);
+    expect(estimatedCostUsd('ai_interpret', 50)).toBeNull();
+  });
+
+  it('accepts only real photo names', () => {
+    expect(googlePhotoNameSchema.safeParse('places/ChIJN1t_tDeuEmsRUsoyG83frY4/photos/AXCi2Q6abcdefghijk').success).toBe(true);
+    expect(googlePhotoNameSchema.safeParse('places/ChIJN1t_tDeuEmsRUsoyG83frY4/photos/../../x').success).toBe(false);
+    expect(googlePhotoNameSchema.safeParse('https://evil.example/photo').success).toBe(false);
   });
 });

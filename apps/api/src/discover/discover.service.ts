@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
+  categoryForGoogleType,
   DEFAULT_LOCALE,
   localeSchema,
   type DiscoverSearchRequest,
@@ -21,8 +22,10 @@ type InterpretBody = {
 };
 
 /**
- * The discovery flow: the AI proposes a search, Google returns real places,
- * and the user chooses what to save (POST /v1/places/google).
+ * Discovery. Standard search: the app sends a plan built from what the user
+ * typed or tapped (plus an area) straight to search. AI search: interpret
+ * first, then search with the AI's plan. Either way Google returns real
+ * places and the user chooses what to save (POST /v1/places/google).
  * Google results are never passed to the AI.
  */
 @Injectable()
@@ -52,7 +55,7 @@ export class DiscoverService {
       return userLocale(tx, user);
     });
 
-    const places = await this.google.searchText(body.plan, locale);
+    const places = await this.google.searchText(body.plan, locale, body.area);
     if (places.length === 0) return { results: [] };
 
     // Which results the user already has (by Google place ID), and in this trip.
@@ -78,7 +81,12 @@ export class DiscoverService {
     return {
       results: places.map((place) => {
         const row = byGoogleId.get(place.placeId);
-        return { ...place, savedPlaceId: row?.id ?? null, inTrip: row?.in_trip ?? false };
+        return {
+          ...place,
+          savedPlaceId: row?.id ?? null,
+          inTrip: row?.in_trip ?? false,
+          category: categoryForGoogleType(place.primaryType, body.plan.category),
+        };
       }),
     };
   }

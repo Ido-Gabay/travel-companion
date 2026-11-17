@@ -13,6 +13,7 @@ const claudeOutputSchema = z.object({
   includedType: z.union([googlePlaceTypeSchema, z.literal('none')]),
   category: placeCategorySchema,
   openNow: z.boolean(),
+  nearBase: z.boolean().optional(),
   question: z.string().max(300),
   options: z.array(z.string().max(80)),
 });
@@ -51,6 +52,7 @@ export function parseInterpretOutput(text: string, mustSearch: boolean): Interpr
       includedType: out.includedType === 'none' ? null : out.includedType,
       openNow: out.openNow,
       category: out.category,
+      ...(out.nearBase ? { nearBase: true } : {}),
     },
     interpretedBy: 'ai',
   };
