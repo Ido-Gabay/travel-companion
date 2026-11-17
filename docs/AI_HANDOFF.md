@@ -3,7 +3,7 @@
 Give this file to any AI coding assistant (Claude Code, GitHub Copilot with
 Claude, …) that picks up this repository. Keep it current.
 
-**Last updated: 2026-11-17, after U1 (UX/UI redesign) was written.**
+**Last updated: 2026-11-17, after M12a (offline-tolerant trip mode) was written.**
 
 ## 1. What this project is
 
@@ -30,15 +30,14 @@ Google rules), `docs/LIVE_COMPANION.md` (Today + reminders design),
 
 ## 3. Current state
 
-- `main` is at M10 (`52c49b6`); the iOS project was rebuilt with reminders.
-  M11 trip readiness (trip time zone everywhere, API rate limiting, Google
-  attribution to policy) is written but **uncommitted/unverified** until the
-  owner runs the steps in DEVELOPMENT_STATUS.md.
-- 150 tests and all three typechecks passed in the M11 session (run outside
-  vitest). Device behavior of M9–M11 (Today, reminders) is not confirmed.
-- **U1 UX/UI redesign** is written on top of M11 (app only: no API, database or
-  route changes): new design system, four tabs, every main screen simplified.
-  App `tsc` clean and 70 app tests pass; **nothing was looked at on a screen yet**.
+- The Mac's repo has M11 and U1 committed (`a82061b`). **M12a is written but
+  uncommitted**: app, shared schema, API and one migration
+  (`20261118090000_place_my_label`, not yet pushed).
+- M12a session: app 112, shared 45, API 38 tests passed (Node TypeScript mode +
+  vitest stand-in, not real vitest); `tsc` clean for shared, API, app; en/he parity clean.
+- **Nothing from U1 or M12a has been looked at on a screen yet.** Device behavior
+  of M9–M11 (Today, reminders) is also unconfirmed in writing.
+- Offline design: docs/ARCHITECTURE.md → "Offline-tolerant trip mode (M12a)".
 
 ## 4. Decisions that need the owner's approval to change
 
@@ -54,27 +53,37 @@ Google rules), `docs/LIVE_COMPANION.md` (Today + reminders design),
 - English + Hebrew RTL for every string (P11).
 - Minimal UI rules (P13, P14, docs/DESIGN_SYSTEM.md): don't add a second primary
   button, stacked bordered cards or uppercase labels; put new item actions in the menu.
+- Offline (P15, T16–T18): never cancel reminders because data failed to load; never
+  discard or overwrite local changes silently; cache only the user's own data plus
+  Google coordinates ≤ 30 days (enforced in code); `myLabel` is user-typed only; no
+  new native dependency before the trip; full PowerSync/SQLite is later (M12).
 
 ## 5. Completed
 
 M0–M4 foundation, auth, en/he; trips and places; zero-cost deploy; Discovery v1;
 M6 itinerary; M7 Home trip mode; M8 Google-first Discover + preview + hotel pin
 + cost caps/usage (owner verified); M9 Today v1 (committed); M10 reminders (committed, rebuilt);
-M11 trip readiness (written); U1 UX/UI redesign (written).
+M11 trip readiness and U1 UX/UI redesign (committed by the owner, not verified on
+screen); M12a offline-tolerant trip mode (written: stages 1 reminders, 2 offline
+viewing, 3 offline edits + sync, 4 `myLabel`).
 
 ## 6. Remaining
 
-- Owner verification of M9, M10, M11 and U1 on the Mac/Simulator (commands in DEVELOPMENT_STATUS.md).
-- Proposed, not decided: offline-tolerant trip mode (cache the trip for flaky subway signal).
+- Owner verification of M9–M11, U1 and M12a on the Mac/Simulator, including the
+  M12a airplane-mode checklist (commands and steps in DEVELOPMENT_STATUS.md).
+- Migration push for `my_label` before the API deploy.
 - R1: iPhone Release install on Nov 21–22 and the on-device checklist.
 - M11b: fixes from R1; optional official Google Maps logo.
 - Later: offline (PowerSync POCs), sharing, background location (opt-in), Android.
 
 ## 7. Exact next task
 
-Help the owner verify M11 + U1 (and the M10 reminder checks): `pnpm test &&
-pnpm typecheck`, fix any failure, commit, push, `pnpm smoke:api` after the
-Render deploy, `pnpm ios`, and walk the checks in DEVELOPMENT_STATUS.md →
-"Exact next steps" (including the U1 screen checklist in both languages).
-Fix visual issues found there against docs/DESIGN_SYSTEM.md. Then R1 on Nov 21–22. Update DEVELOPMENT_STATUS.md,
-ROADMAP.md and this file with what was actually verified.
+Help the owner verify M12a (plus U1, M11 and the M10 reminder checks), in this order:
+`pnpm test && pnpm typecheck` (fix any failure; the session ran tests outside vitest),
+`npx supabase db push --remote` (my_label) **before** pushing the API, commit, push,
+`pnpm smoke:api` after the Render deploy, `pnpm ios` (no native rebuild), then the
+U1 checklist and the M12a airplane-mode checklist in DEVELOPMENT_STATUS.md →
+"Exact next steps". Fix what fails, keeping the itinerary, Today and reminders
+working above all. Then R1 (iPhone Release install) on Nov 21–22, repeating the
+airplane-mode steps on the phone. Update DEVELOPMENT_STATUS.md, ROADMAP.md and this
+file with what was actually verified.

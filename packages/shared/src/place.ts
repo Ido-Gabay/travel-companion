@@ -6,6 +6,8 @@ export const PLACE_ADDRESS_MAX = 200;
 export const PLACE_NOTES_MAX = 2000;
 export const PLACE_TAGS_MAX = 10;
 export const PLACE_TAG_MAX = 30;
+/** The user's own label for a place (M12a). */
+export const PLACE_LABEL_MAX = 60;
 
 /** Our own categories (user-owned classification, not Google data). */
 export const PLACE_CATEGORIES = [
@@ -39,6 +41,12 @@ export const placeSchema = z.object({
   /** Custom places only. Always null for Google places. */
   address: z.string().nullable(),
   notes: z.string().nullable(),
+  /**
+   * The user's own label (M12a), typed by them and never filled from Google data.
+   * Shown when Google's name can't be loaded (offline). Defaults to null so a newer
+   * app works against an older server.
+   */
+  myLabel: z.string().nullable().default(null),
   category: placeCategorySchema,
   tags: z.array(z.string()),
   visitedAt: z.iso.datetime({ offset: true }).nullable(),
@@ -99,6 +107,7 @@ export const updatePlaceSchema = z
     name: placeName.optional(),
     address: nullableText(PLACE_ADDRESS_MAX).optional(),
     notes: nullableText(PLACE_NOTES_MAX).optional(),
+    myLabel: nullableText(PLACE_LABEL_MAX).optional(),
     category: placeCategorySchema.optional(),
     tags: placeTagsSchema.optional(),
     visited: z.boolean().optional(),

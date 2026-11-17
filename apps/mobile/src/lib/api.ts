@@ -41,6 +41,7 @@ import {
   type UpdateProfileInput,
 } from '@travel-companion/shared';
 import type { z } from 'zod';
+import { reportReachable, reportUnreachable } from '@/features/offline/connection';
 import { ApiClientError, errorFromResponse } from './api-error';
 import { envResult } from './env';
 import { supabase } from './supabase';
@@ -56,8 +57,20 @@ const REQUEST_TIMEOUT_MS = 75_000;
  * sleeping API host starts waking up before the user's first real request.
  */
 export function wakeApi(): void {
-  if (!envResult.ok) return;
-  fetch(`${envResult.env.apiUrl}/health`).catch(() => undefined);
+  void pingApi();
+}
+
+/** Public health check; true when the server answered. Updates the connection state. */
+export async function pingApi(): Promise<boolean> {
+  if (!envResult.ok) return false;
+  try {
+    await fetch(`${envResult.env.apiUrl}/health`);
+    reportReachable();
+    return true;
+  } catch {
+    reportUnreachable();
+    return false;
+  }
 }
 
 async function accessToken(): Promise<string> {
@@ -91,6 +104,7 @@ async function send(method: Method, path: string, body?: unknown): Promise<Respo
   } catch (error) {
     if (error instanceof ApiClientError) throw error;
     const aborted = error instanceof Error && error.name === 'AbortError';
+    reportUnreachable();
     throw new ApiClientError(
       aborted ? 'TIMEOUT' : 'NETWORK',
       null,
@@ -100,6 +114,8 @@ async function send(method: Method, path: string, body?: unknown): Promise<Respo
     clearTimeout(timer);
   }
 
+  // Any answer from the server (even an error) means it is reachable.
+  reportReachable();
   if (!response.ok) {
     const json: unknown = await response.json().catch(() => null);
     throw errorFromResponse(response.status, json);

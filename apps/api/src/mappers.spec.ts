@@ -55,6 +55,7 @@ const placeRow = {
   name: null,
   address: null,
   notes: 'Pastrami on rye',
+  my_label: null,
   category: 'food' as const,
   tags: ['must'],
   visited_at: null,
@@ -97,6 +98,13 @@ describe('toPlace', () => {
     expect(placeSchema.parse(place)).toEqual(place);
     expect(place.source).toBe('google');
     expect(place.name).toBeNull();
+    expect(place.myLabel).toBeNull();
+  });
+
+  it("returns the user's own label", () => {
+    const place = toPlace({ ...placeRow, my_label: 'Best bagels' });
+    expect(placeSchema.parse(place)).toEqual(place);
+    expect(place.myLabel).toBe('Best bagels');
   });
 
   it('marks custom places', () => {

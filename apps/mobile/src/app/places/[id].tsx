@@ -25,10 +25,11 @@ import {
   useActionMenu,
 } from '@/components/ui';
 import { CategoryChips } from '@/features/places/CategoryChips';
+import { LabelEditor } from '@/features/places/LabelEditor';
 import { NotesTagsEditor } from '@/features/places/NotesTagsEditor';
 import { openInMaps } from '@/features/places/open-in-maps';
 import { PlaceForm } from '@/features/places/PlaceForm';
-import { useDeletePlace, usePlace, useUpdatePlace } from '@/features/places/queries';
+import { useDeletePlace, usePlace, useSetVisited, useUpdatePlace } from '@/features/places/queries';
 import { TripMembership } from '@/features/places/TripMembership';
 import { usePlaceDisplay } from '@/features/places/use-place-display';
 import { useErrorMessage } from '@/lib/use-error-message';
@@ -45,12 +46,12 @@ export default function PlaceScreen() {
       <NavHeader action={place.data ? <PlaceMenu place={place.data} /> : undefined} />
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          {place.isPending ? (
-            <LoadingState />
-          ) : place.isError ? (
-            <ErrorState message={errorMessage(place.error)} onRetry={() => void place.refetch()} />
-          ) : (
+          {place.data ? (
             <PlaceDetail place={place.data} />
+          ) : place.isPending ? (
+            <LoadingState />
+          ) : (
+            <ErrorState message={errorMessage(place.error)} onRetry={() => void place.refetch()} />
           )}
         </ScrollView>
       </KeyboardAvoidingView>
@@ -63,6 +64,7 @@ function PlaceDetail({ place }: { place: Place }) {
   const errorMessage = useErrorMessage();
   const display = usePlaceDisplay(place);
   const update = useUpdatePlace(place.id);
+  const setVisited = useSetVisited();
   const visited = place.visitedAt !== null;
   const google = display.google;
   const placeId = place.googlePlaceId;
@@ -118,14 +120,15 @@ function PlaceDetail({ place }: { place: Place }) {
           trailing={
             <Switch
               value={visited}
-              disabled={update.isPending}
-              onValueChange={(value) => update.mutate({ visited: value })}
+              onValueChange={(value) => setVisited.mutate({ id: place.id, visited: value })}
               trackColor={{ true: colors.success, false: colors.surfaceMuted }}
               accessibilityLabel={t('places.markVisited')}
             />
           }
         />
       </ListGroup>
+
+      <LabelEditor key={place.myLabel ?? ''} place={place} />
 
       <Section title={t('places.category')}>
         <CategoryChips

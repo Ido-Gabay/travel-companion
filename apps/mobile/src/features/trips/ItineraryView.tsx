@@ -33,6 +33,8 @@ import {
   wishlistPlaces,
 } from './itinerary';
 import { muteKey, useMutedStops, useToggleMuted } from '@/features/companion/reminder-settings';
+import { usePendingState } from '@/features/offline/ops-store';
+import { pendingPlaceIds } from '@/features/offline/pending-ops';
 import { useReorderTripDay, useScheduleTripPlace } from './queries';
 import { formatDurationShort, TimeSheet } from './TimeSheet';
 
@@ -359,6 +361,7 @@ function StopRow({ place, number, first, last, onTime, onToggleVisited, onMenu }
   const { locale } = useLocale();
   const display = usePlaceDisplay(place);
   const visited = place.visitedAt !== null;
+  const pending = pendingPlaceIds(usePendingState().ops).has(place.id);
 
   return (
     <View style={styles.stopRow}>
@@ -406,6 +409,11 @@ function StopRow({ place, number, first, last, onTime, onToggleVisited, onMenu }
             {formatDurationShort(visitMinutes(place), t)}
             {place.durationMinutes === null ? ' ' + t('itinerary.approx') : ''}
           </AppText>
+          {pending ? (
+            <View accessible accessibilityLabel={t('offline.waiting')}>
+              <Icon name="cloud-upload-outline" size={16} color={colors.accent} />
+            </View>
+          ) : null}
           <Icon name="ellipsis-horizontal" size={18} color={colors.textTertiary} />
         </View>
         <AppText

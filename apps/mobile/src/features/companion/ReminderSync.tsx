@@ -4,7 +4,9 @@ import { router } from 'expo-router';
 import { useEffect, useMemo, useRef } from 'react';
 import { AppState } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { useOfflineCoords } from '@/features/offline/OfflineProvider';
 import { useGooglePlace, useGooglePlaces } from '@/features/places/queries';
+import { fallbackName } from '@/features/places/use-place-display';
 import { tripMode, placesForDay } from '@/features/trips/itinerary';
 import { useTrip, useTrips } from '@/features/trips/queries';
 import { useLocale } from '@/i18n/LocaleProvider';
@@ -21,7 +23,15 @@ import {
 } from './notifications';
 import { useMutedStops, useReminderSettings } from './reminder-settings';
 import { reminderText } from './reminder-text';
-import { diffReminders, planReminders, reminderFingerprint, type ReminderDay } from './reminders';
+import {
+  diffReminders,
+  diffRemindersPreserving,
+  planReminders,
+  reminderFingerprint,
+  reminderPlanKey,
+  reminderSyncMode,
+  type ReminderDay,
+} from './reminders';
 
 /** Last sync outcome, shown on the Reminders settings screen. */
 export const reminderStatusKey = ['reminders', 'status'] as const;
@@ -33,6 +43,8 @@ export interface ReminderStatus {
   timeZone: string | null;
   tripId: string | null;
   error: string | null;
+  /** Last sync ran without Google details (offline): earlier reminders were kept as they are. */
+  preserved: boolean;
 }
 
 /** Wait for inputs (Google details, settings) to settle before touching the schedule. */
@@ -69,22 +81,29 @@ function SignedInSync() {
   const mode = useMemo(() => tripMode(trips.data?.items ?? [], today), [trips.data, today]);
   const tripId = mode?.trip.id ?? '';
   const detail = useTrip(tripId);
-  return <Scheduler trip={mode ? (detail.data ?? null) : null} hasTrip={mode !== null} />;
+  return (
+    <Scheduler
+      trip={mode ? (detail.data ?? null) : null}
+      hasTrip={mode !== null}
+      // Known = we have data (fresh or the saved copy), even if the last refresh failed.
+      tripsKnown={trips.data !== undefined}
+    />
+  );
 }
 
-function Scheduler({ trip, hasTrip }: { trip: TripDetail | null; hasTrip: boolean }) {
+function Scheduler({ trip, hasTrip, tripsKnown }: { trip: TripDetail | null; hasTrip: boolean; tripsKnown: boolean }) {
   const { t } = useTranslation();
   const { locale } = useLocale();
   const queryClient = useQueryClient();
   const settings = useReminderSettings();
   const muted = useMutedStops();
   const hotel = useGooglePlace(trip?.basePlaceId ?? null);
+  const coordsFor = useOfflineCoords();
 
   const timedStops = useMemo(
     () => (trip ? trip.places.filter((place) => place.day !== null && place.startTime !== null && place.visitedAt === null) : []),
     [trip],
   );
-  // Locations for timed stops and the stops just before them (travel is measured from the previous stop).
   const googleIds = useMemo(
     () =>
       trip
@@ -99,43 +118,62 @@ function Scheduler({ trip, hasTrip }: { trip: TripDetail | null; hasTrip: boolea
   const inputs = useMemo(() => {
     if (!trip || !settings.data || !muted.data) return null;
     const mutedSet = new Set(muted.data.filter((key) => key.startsWith(`${trip.id}:`)).map((key) => key.slice(trip.id.length + 1)));
+    let missing = false;
     const reminderDays: ReminderDay[] = tripDays(trip.startDate, trip.endDate).map((day) => ({
       day,
-      stops: placesForDay(trip.places, day).map((place) => ({
-        id: place.id,
-        name: (place.googlePlaceId ? details.get(place.googlePlaceId)?.name : place.name) ?? place.name ?? '',
-        category: place.category,
-        startTime: place.startTime,
-        visited: place.visitedAt !== null,
-        location: place.googlePlaceId ? (details.get(place.googlePlaceId)?.location ?? null) : null,
-        google: place.googlePlaceId !== null,
-      })),
+      stops: placesForDay(trip.places, day).map((place) => {
+        const google = place.googlePlaceId ? details.get(place.googlePlaceId) : undefined;
+        if (place.googlePlaceId && !google && place.startTime && place.visitedAt === null) missing = true;
+        return {
+          id: place.id,
+          // Without Google details (offline): never a blank name. Category until M12a labels.
+          name: google?.name ?? place.name ?? fallbackName(place, t),
+          category: place.category,
+          startTime: place.startTime,
+          visited: place.visitedAt !== null,
+          location: google?.location ?? coordsFor(place.googlePlaceId),
+          // Attribution only when the text really contains Google's name.
+          google: google !== undefined,
+        };
+      }),
     }));
+    if (trip.basePlaceId && !hotel.data) missing = true;
     return {
       tripId: trip.id,
       timeZone: hotel.data?.timeZone ?? null,
-      hotel: hotel.data?.location ?? null,
+      hotel: hotel.data?.location ?? coordsFor(trip.basePlaceId),
       days: reminderDays,
       muted: mutedSet,
       settings: settings.data,
+      degraded: missing,
     };
-  }, [trip, settings.data, muted.data, details, hotel.data]);
+  }, [trip, settings.data, muted.data, details, hotel.data, t, coordsFor]);
 
   const running = useRef(false);
-  const latest = useRef<{ inputs: typeof inputs; hasTrip: boolean; locale: string }>({ inputs, hasTrip, locale });
-  latest.current = { inputs, hasTrip, locale };
+  const latest = useRef({ inputs, hasTrip, tripsKnown, locale });
+  latest.current = { inputs, hasTrip, tripsKnown, locale };
 
   useEffect(() => {
     const sync = async () => {
       if (running.current) return;
       running.current = true;
-      const { inputs: current, hasTrip: anyTrip, locale: lang } = latest.current;
+      const { inputs: current, hasTrip: anyTrip, tripsKnown: known, locale: lang } = latest.current;
       try {
-        const enabled = settings.data?.enabled ?? false;
         const permission = await getPermission();
-        if (!enabled || permission !== 'granted' || (!current && !anyTrip)) {
-          // Off, not allowed, or no current/upcoming trip: nothing of ours should stay scheduled.
-          if (settings.data) await cancelAllOurs();
+        const mode = reminderSyncMode({
+          settingsLoaded: settings.data !== undefined,
+          enabled: settings.data?.enabled ?? false,
+          permission,
+          tripsKnown: known,
+          hasTrip: anyTrip,
+          tripKnown: current !== null,
+          degraded: current?.degraded ?? false,
+        });
+        // Data not loaded (offline, server asleep): leave the phone's reminders exactly as they are.
+        if (mode === 'wait') return;
+        if (mode === 'cancelAll' || !current) {
+          // Off, not allowed, or the trip list is known and has no current/upcoming trip.
+          await cancelAllOurs();
           queryClient.setQueryData<ReminderStatus>(reminderStatusKey, {
             at: Date.now(),
             scheduled: 0,
@@ -143,15 +181,19 @@ function Scheduler({ trip, hasTrip }: { trip: TripDetail | null; hasTrip: boolea
             timeZone: current?.timeZone ?? null,
             tripId: current?.tripId ?? null,
             error: null,
+            preserved: false,
           });
           return;
         }
-        if (!current) return; // Trip still loading.
         await ensureAndroidChannel(t('reminders.channel'));
-        const desired = planReminders({ ...current, nowMs: Date.now() });
+        const plan = { ...current, nowMs: Date.now() };
+        const desired = planReminders(plan);
         const scheduled = await getOurScheduled();
-        // Reminders from another trip are not in the plan: the diff cancels them too.
-        const { cancel, schedule } = diffReminders(scheduled, desired, lang);
+        // Reminders from another trip are not in the plan: both diffs cancel them too.
+        const { cancel, schedule } =
+          mode === 'preserve'
+            ? diffRemindersPreserving(scheduled, planReminders(plan, { raw: true }), desired)
+            : diffReminders(scheduled, desired, lang);
         for (const id of cancel) await cancelReminder(id);
         for (const reminder of schedule) {
           const text = reminderText(reminder, t, lang);
@@ -162,17 +204,19 @@ function Scheduler({ trip, hasTrip }: { trip: TripDetail | null; hasTrip: boolea
             ...(text.subtitle ? { subtitle: text.subtitle } : {}),
             fireAtMs: reminder.fireAtMs,
             fingerprint: reminderFingerprint(reminder, lang),
+            planKey: reminderPlanKey(reminder),
             tripId: reminder.tripId,
             placeId: reminder.placeId,
           });
         }
         queryClient.setQueryData<ReminderStatus>(reminderStatusKey, {
           at: Date.now(),
-          scheduled: desired.length,
+          scheduled: scheduled.length - cancel.length + schedule.length,
           permission,
           timeZone: current.timeZone,
           tripId: current.tripId,
           error: null,
+          preserved: mode === 'preserve',
         });
       } catch (error) {
         queryClient.setQueryData<ReminderStatus>(reminderStatusKey, (previous) => ({
@@ -182,6 +226,7 @@ function Scheduler({ trip, hasTrip }: { trip: TripDetail | null; hasTrip: boolea
           timeZone: previous?.timeZone ?? null,
           tripId: previous?.tripId ?? null,
           error: error instanceof Error ? error.message : String(error),
+          preserved: previous?.preserved ?? false,
         }));
       } finally {
         running.current = false;
@@ -196,7 +241,7 @@ function Scheduler({ trip, hasTrip }: { trip: TripDetail | null; hasTrip: boolea
       clearTimeout(timer);
       subscription.remove();
     };
-  }, [inputs, hasTrip, locale, settings.data, queryClient, t]);
+  }, [inputs, hasTrip, tripsKnown, locale, settings.data, queryClient, t]);
 
   return null;
 }

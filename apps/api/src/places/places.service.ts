@@ -114,6 +114,8 @@ export class PlacesService {
       if (input.name !== undefined) changes.name = input.name;
       if (input.address !== undefined) changes.address = input.address;
       if (input.notes !== undefined) changes.notes = input.notes;
+      // The user's own label: allowed on Google places too (it is theirs, not Google's).
+      if (input.myLabel !== undefined) changes.my_label = input.myLabel;
       if (input.category !== undefined) changes.category = input.category;
 
       if (Object.keys(changes).length > 0) {

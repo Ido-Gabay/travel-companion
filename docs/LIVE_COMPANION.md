@@ -111,6 +111,20 @@ tests, so it can move to `packages/shared` if the server ever needs it.
 - **Not done (future):** snooze/actions on the notification, reminders that
   react to location (needs background location), server-side scheduling.
 
+## Offline behavior (M12a)
+
+- **Today and the itinerary** run from the phone's saved copy of the trip when the
+  server can't be reached. Google places show the user's `myLabel` or the category
+  (Google names can't be stored); travel estimates use cached Google coordinates
+  (≤ 30 days, expiry enforced) or are omitted.
+- **Done, reorder, time, length and day** work offline; they're queued and synced
+  later with a conflict check (docs/ARCHITECTURE.md → "Offline-tolerant trip mode").
+  Accepting a Today suggestion still needs a connection.
+- **Reminders** are never cancelled because data failed to load. When Google
+  details are missing, reminders scheduled earlier (with names and the trip's time
+  zone) are kept; only stops whose own plan changed are rescheduled, with the
+  label/category as the name and, before the trip, the phone's time zone.
+
 ## Location and privacy
 
 - **Now (M8–M9): foreground only.** "While Using the App" permission, asked the

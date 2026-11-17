@@ -6,6 +6,8 @@ export interface PlaceRow {
   name: string | null;
   address: string | null;
   notes: string | null;
+  /** User-typed (M12a); never from Google. */
+  my_label: string | null;
   category: PlaceCategory;
   tags: string[];
   visited_at: Date | null;
@@ -34,6 +36,7 @@ export function toPlace(row: PlaceRow): Place {
     name: row.name,
     address: row.address,
     notes: row.notes,
+    myLabel: row.my_label,
     category: row.category,
     tags: row.tags,
     visitedAt: row.visited_at ? row.visited_at.toISOString() : null,

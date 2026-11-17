@@ -21,6 +21,7 @@ yet verified by the owner · ⏳ in progress · ⬜ not started.
 | M10 | Local reminders | 🟡 committed (`52c49b6`); native rebuild done | Reminder behavior on the device not confirmed in writing |
 | M11 | Trip readiness: Today/Home in the trip's time zone, API rate limiting, Google attribution to policy (one component, photo links, notification subtitle), shorter Hebrew tab label | 🟡 written | See below |
 | U1 | UX/UI redesign: design system (DESIGN_SYSTEM.md), four tabs, Home, Today, trip overview, itinerary, wishlist, Discover, place preview, Saved, place detail, Profile | 🟡 written | See below |
+| M12a | Offline-tolerant trip mode (travel MVP): reminder reliability, per-user saved copy, offline itinerary/Today, offline Done/reorder/time/length/day with safe sync and conflicts, `myLabel`, 30-day coordinate cache | 🟡 written | See below |
 
 ### M10 – Local reminders: acceptance criteria
 
@@ -51,13 +52,24 @@ yet verified by the owner · ⏳ in progress · ⬜ not started.
 - [x] No feature removed; no API, database or navigation route changed; en/he parity; `tsc` clean; 70 app tests pass (incl. new `pastTrips`).
 - [ ] Owner: Simulator walkthrough in English and Hebrew on a small (iPhone SE/mini) and a large iPhone; every menu action works (checklist in DEVELOPMENT_STATUS.md).
 
+### M12a – Offline-tolerant trip mode: acceptance criteria
+
+- [x] Stage 1: reminders are never cancelled because data failed to load; offline keeps reminders scheduled earlier; only stops changed offline are replaced (tests).
+- [x] Stage 2: per-user saved copy (trip list, trip details, profile) restored before screens render; Home/Trip/Itinerary/Today/place show it with "Offline · saved copy from …"; wiped on sign-out; other users' copies removed on sign-in (tests).
+- [x] Coordinates only: ≤ 30 days, source + timestamp stored, expiry enforced in code (never used after 30 days, deleted at launch/foreground/write) (tests). No Google names, addresses, photos, hours or time zone stored (test).
+- [x] Stage 3: Done, reorder, time, length, day work offline; pending queue saved before sending; three-way sync (no duplicates, no silent overwrite, conflicts kept for the user); sign-out warns about unsynced changes (tests with an API stand-in).
+- [x] Stage 4: `myLabel` (migration, shared, API, app); user-typed only; used offline (tests for schema and mapper).
+- [x] No new native dependency; no paid service; no background location.
+- [ ] Owner: `pnpm test && pnpm typecheck`, migration push, deploy, smoke test.
+- [ ] Owner: airplane-mode checklist in DEVELOPMENT_STATUS.md (Simulator, then on the iPhone during R1).
+
 ## Next
 
 | # | Milestone | Status | Notes / acceptance |
 | --- | --- | --- | --- |
 | R1 | **iPhone Release install for the trip** | ⬜ | `pnpm ios:release` on **Nov 21–22** (free builds expire after 7 days); walk the test checklist in DEVELOPMENT_STATUS.md on cellular |
 | M11b | Fixes from R1 | ⬜ | Whatever the iPhone test finds; official Google Maps logo (optional) |
-| M12 | Offline foundation | ⬜ | POCs 1–2 (PowerSync + op-sqlite/SQLCipher), D5a/D11/D15/D17; per-trip "Available offline" (D16) |
+| M12 | Offline foundation (full offline-first, after the trip) | ⬜ | POCs 1–2 (PowerSync + op-sqlite/SQLCipher), D5a/D11/D15/D17; per-trip "Available offline" (D16). Replaces M12a's AsyncStorage copy and queue behind the same module boundary (`features/offline`) |
 | — | Background location / nearby alerts (geofencing) | ⬜ | Separate opt-in phase (P8, D2) |
 | — | Sharing a trip, Android release, route optimization (D3), open place data (D12) | ⬜ | After the NY trip |
 

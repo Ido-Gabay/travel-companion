@@ -1,17 +1,17 @@
 # Development status
 
-**Last updated: 2026-11-17 (U1 UX/UI redesign written on top of M11).**
+**Last updated: 2026-11-17 (M12a offline-tolerant trip mode written on top of U1).**
 Update this file at the end of every milestone or meaningful change.
 
 ## Snapshot
 
-- **Last commit on `main`:** `52c49b6` "M10: local reminders, trip time zone; AI handoff docs".
-- **Last commit seen on the Mac:** `42f0ae6` "M11: trip readiness" (committed by the owner).
-- **Uncommitted when this was written:** U1 UX/UI redesign (app only) and these doc updates.
+- **Last commit seen on the Mac:** `a82061b` "U1: UX/UI redesign" (committed by the owner).
+- **Uncommitted when this was written:** M12a (app, shared, API, one migration) and these doc updates.
 - **Native build:** the iOS project was regenerated after M10 (contains
   `expo-notifications`, entitlements empty = no push). M11 needs no native rebuild.
-- **Current milestone:** U1 written. Next: owner verification (M11 + U1), then the
-  iPhone Release install for the trip (R1, Nov 21–22). U1 needs no native rebuild.
+- **Current milestone:** M12a written (stages 1–4). Next: owner verification (tests,
+  migration push, deploy, Simulator airplane-mode checklist), then the iPhone Release
+  install for the trip (R1, Nov 21–22). M12a adds **no native dependency**: no rebuild.
 - **Trip:** New York, Nov 23–29, 2026. Install the Release build on Nov 21–22.
 
 ## What works (verified by the owner)
@@ -34,7 +34,40 @@ Update this file at the end of every milestone or meaningful change.
 | M11 | Everything: vitest on the Mac, deploy, Simulator check of Today with a pinned hotel, attribution labels, photo links, rate limits against the live API. |
 | U1 redesign | Everything visual: no screen was rendered. Typecheck and logic tests only. See the U1 checklist in "Exact next steps". |
 
+## M12a – Offline-tolerant trip mode (written; device checks pending)
+
+Stages (owner's priority order) and their state. Design: docs/ARCHITECTURE.md → "Offline-tolerant trip mode".
+
+| Stage | Scope | Code | Tests run in session | Unverified |
+| --- | --- | --- | --- | --- |
+| 1 | Reminder reliability: never cancel because data failed to load; offline keeps reminders scheduled earlier (only stops changed offline are replaced) | ✅ written | `reminders.spec.ts` 21/21 (10 new); app `tsc` clean; i18n parity clean | On-device: airplane-mode launch keeps reminders |
+| 2 | Offline viewing: per-user saved copy (AsyncStorage) of trip list, trip details, profile; restored before screens render; Home/Trip/Itinerary/Today/place show the copy when refresh fails, with an "Offline · saved copy from …" line; category names offline; Google coordinates ≤ 30 days (auto-deleted); wiped on sign-out | ✅ written | `coords` 6/6, `trip-cache` 7/7, `offline-today` 3/3 (all new); `today-engine` 18/18, `reminders` 21/21, `logic` 13/13; app `tsc` clean; i18n parity clean | Everything on a device (airplane mode) |
+| 3 | Offline edits + sync: Done, reorder, time, length and day are recorded on the phone first (shown at once, saved before sending) and synced with a three-way check (already there → drop; unchanged on server → send; changed → conflict kept for the user: Keep mine / Use the server's / Discard). One sync at a time; edits made during a sync are kept. Status lines for pending changes and conflicts; a marker on stops with an unsynced change; sign-out warns about unsynced changes | ✅ written | `pending-ops` 8/8, `sync` 8/8 (all new); app `tsc` clean; i18n parity clean | Everything on a device; real API round trips (the sync tests use an in-memory API stand-in with the server's rules) |
+| 4 | `myLabel`: user-typed label on places (migration `20261118090000_place_my_label`, shared schema with default null, API select/update, place screen "Your label" sheet, never prefilled from Google); shown offline instead of the category | ✅ written | shared `schemas.spec` 45/45 (+1), API `mappers` 6/6 (+1) and other API specs 32/32; shared build + `tsc` clean for shared, API, app | Migration push; deploy; label round trip on a device |
+
 ## Tests
+
+### Executed in the M12a session (2026-11-17)
+
+Same method (Node TypeScript mode + vitest stand-in on the Mac's Linux shell; real spec files, real code):
+
+| Suite | Result |
+| --- | --- |
+| App: `reminders` 21, `today-engine` 18, `logic` 13, `itinerary` 8, `zoned-time` 6, `search-presets` 4, `auth-errors` 4, `geo` 3, `resources` 3; new offline suites `coords` 6, `trip-cache` 7, `offline-today` 3, `pending-ops` 8, `sync` 8 | **112 passed, 0 failed** |
+| `packages/shared` `schemas.spec.ts` (against the freshly built `dist`) | 45 passed, 0 failed |
+| API: `mappers` 6, `google-places` 10, `interpret` 10, `app-config` 3, `common` 5, `rate-limit` 4 | 38 passed, 0 failed |
+| Translation parity (en/he) | clean |
+| `tsc --noEmit` for `packages/shared`, `apps/api`, `apps/mobile`; shared `tsc -p tsconfig.build.json` | all clean |
+
+What these tests cover for M12a (owner's list): opening Today and the itinerary from
+the saved copy with no network (`offline-today`); marking Done, reordering, time and
+length offline and syncing after reconnecting, duplicate prevention, conflicts
+(`pending-ops`, `sync`); reminders kept offline and never cancelled because data
+failed to load (`reminders`); per-user isolation, sign-out wipe, no Google names
+stored, 30-day coordinate expiry (`trip-cache`, `coords`).
+**Not covered by tests:** React screens and hooks (no component test setup), the
+real API (sync uses an in-memory stand-in), real notifications, AsyncStorage on a
+device. These are in the airplane-mode checklist below.
 
 ### Executed in the U1 session (2026-11-17)
 
@@ -89,6 +122,7 @@ spec files, real code:
 | `20261117180000_itinerary` | `trip_places.day/start_time/position` | Applied |
 | `20261117200000_trip_base_place_and_usage` | `trips.base_google_place_id`, usage index | Applied (M8 verified) |
 | `20261117220000_visit_duration` | `trip_places.duration_minutes` | **Confirm**: M9 committed; push not confirmed in writing. Check with `npx supabase migration list --linked`. |
+| `20261118090000_place_my_label` | `places.my_label` (user-typed, 1–60 chars, trimmed) | **Not applied** (M12a). Push before deploying the API. |
 
 M10 adds no migration.
 
@@ -130,43 +164,76 @@ M10 adds no migration.
 - **Render cold start** (~1 min after 15 min idle); **Supabase Free pause** after ~1 week idle.
 - **Free Apple ID**: rebuild every 7 days; after `expo prebuild --clean` set the signing Team again in Xcode.
 - The iOS Maps key was once shared in a chat; the owner may regenerate it (restricted to the bundle ID).
-- No offline mode yet (D5a/D11/D15/D17 pending POCs).
+- **Offline (M12a) limits:** the saved copy covers trips, the itinerary, Today and
+  the profile; Discover, maps, photos, adding/removing places, editing/deleting trips
+  and accepting Today suggestions need a connection. Offline, Google places show the
+  user's label or category (Google names may not be stored); maps have no tiles.
+  The saved copy is unencrypted AsyncStorage in the app sandbox (included in device
+  backups); encryption is D15 (later). A change made offline before the trip uses the
+  phone's time zone for its new reminder (the trip zone comes from Google and isn't
+  stored); during the trip the phone is on New York time. Conflict check has a
+  seconds-long window between reading and writing (fine for one user). Full
+  offline-first (PowerSync/SQLite) is still later (D5a/D11/D15/D17).
 
 ## Exact next steps
 
-1. **Owner (M11 verification):**
+1. **Owner: test, migrate, commit, deploy**
    ```sh
    cd ~/Programing/travel-companion
    pnpm test && pnpm typecheck
-   git add -A && git commit -m "M11: trip readiness" && git push
-   pnpm smoke:api                 # after Render shows the new deploy as Live
-   pnpm ios                       # no native rebuild needed for M11
+   npx supabase db push --remote            # applies 20261118090000_place_my_label
+   npx supabase migration list --linked      # also confirms visit_duration is applied
+   git add -A && git commit -m "M12a: offline-tolerant trip mode" && git push
+   pnpm smoke:api                            # after Render shows the new deploy as Live
+   pnpm ios                                  # no native rebuild needed (no new native module)
    ```
-   Check: Today with the NY hotel pinned shows New York's day/time (Preview is
-   used before the trip); "Google Maps" label under Google content; tapping a
-   preview photo opens Google Maps; Hebrew trip tabs fit.
-   Also the M10 checks: Profile → Reminders → on → allow → "Send a test
-   reminder" (~5 s); a stop timed ~20 min ahead on a trip day that includes
-   today → "Leave in 10 min".
-   **U1 checklist** (English, then Profile → Language → עברית; on an iPhone SE or
-   mini Simulator and a Pro Max):
+   Push the migration **before** the API deploy (the API now selects `my_label`).
+2. **U1 checklist** (English, then Profile → Language → עברית; small and large iPhone):
    - Tabs: Home · Discover (magnifier) · Saved · Profile.
    - Home: trip card with one primary button; "Your trips"/"Other trips" list; "New trip"; past trips.
    - Trip: "…" menu (edit, pin hotel, search, from saved, delete with confirm); "Add places" menu;
      itinerary row tap → menu (each item works, incl. earlier/later, move day, mute, remove time);
      number toggles done; time chip opens time sheet; wishlist "…" menu; hide/show visited.
    - Today: next stop, Done, hints only when late, ≤ 2 suggestions, Discover nearby, preview pills.
-   - Discover: "Ask AI" pill ↔ "Back to search"; context line opens the sheet (where + save to;
-     "Near my hotel" without a pin opens the hotel sheet); category chips; list/map toggle; save bar.
+   - Discover: "Ask AI" pill ↔ "Back to search"; context line opens the sheet; category chips; list/map; save bar.
    - Preview: one primary button; Directions / Google Maps; rating · open · distance line.
-   - Saved: "+" menu; category chips; list/map icon. Place: "…" (Google Maps, delete); Visited switch.
+   - Saved: "+" menu; chips; list/map icon. Place: "…" (Google Maps, delete); Visited switch; "Your label".
    - Profile: name row → sheet; language and distance menus; Reminders; Usage; Sign out.
-   - Hebrew: rows, chevrons and menus mirror; nothing truncated badly.
-2. Confirm the `visit_duration` migration is applied (`npx supabase migration list --linked`).
-3. **R1 (Nov 21–22):** set Team in Xcode, `pnpm ios:release`, walk the checklist:
-   cellular data only; sign in; pin hotel; Discover near hotel; save; plan days
-   with times; Today preview; reminders test; relaunch keeps session; Hebrew.
-4. Then M11 trip-readiness polish (see ROADMAP.md).
+3. **M12a airplane-mode checklist** (Simulator: turn the Mac's Wi-Fi off, or on the
+   iPhone: Airplane Mode on, Wi-Fi off). Prepare online first: sign in, open the NY
+   trip, its itinerary and Today once; give one stop a label ("Your label"); turn
+   reminders on; time a stop ~20 min ahead on a trip day that includes today (or use
+   "Send a test reminder").
+   1. **Cold launch offline:** force-quit the app, go offline, open it. Expected: no
+      endless spinner; Home shows the trips with "Offline · saved copy from HH:MM".
+   2. **Home and a trip:** open the NY trip. Dates, "Staying at", Itinerary/Wishlist load.
+   3. **Today:** opens; next stop, times, lengths, Done status; leave-by time shown if
+      coordinates were cached online (≤ 30 days); names = your label or the category.
+   4. **Itinerary and hotel:** days, order, times, lengths, notes (tap a stop → Open
+      place), "Staying at …" line.
+   5. **Done offline:** mark a stop Done. It shows at once; "Changes waiting to sync: 1";
+      a cloud marker on the stop.
+   6. **Reorder offline:** stop menu → Move earlier. Order changes at once.
+   7. **Time and length offline:** time chip → change both → Save. Shown at once.
+   8. **Reminders offline:** Profile → Reminders: "Offline: reminders scheduled
+      earlier are kept…"; the scheduled list still shows them; the test/real reminder
+      fires while offline. Reminders of the stop you changed are updated.
+   9. **Reconnect and sync:** go online, reopen the app (or wait ≤ 30 s / tap "Sync
+      now"). The waiting line disappears; on another device or after a fresh
+      launch online, the server has Done, the new order, time and length.
+   10. **Conflict:** go offline on the phone and change stop X's time to 11:00. On the
+       Simulator/another session (online) change the same stop's time to 09:00. Go
+       online on the phone. Expected: "Changes that need your choice: 1" → Review shows
+       "Yours: 11:00 · Now on the server: 09:00". Try "Keep mine" (server becomes 11:00)
+       and, in a second run, "Use the server's" (stays 09:00, nothing lost silently).
+   11. **Sign-out isolation:** with a change waiting, Sign out → a warning lists the
+       unsynced changes; confirm. Sign in (online) as a second test user, then go offline
+       and relaunch: none of the first user's trips appear. Sign back in as the owner
+       online: trips load again from the server (the first user's saved copy was wiped).
+4. **R1 (Nov 21–22):** set Team in Xcode, `pnpm ios:release`, walk the R1 checklist
+   (cellular only; sign in; pin hotel; Discover near hotel; save; plan days with
+   times; Today; reminders test; relaunch keeps session; Hebrew) **and repeat steps
+   3.1–3.9 on the iPhone**.
 
 ## How Claude sessions worked on this repo (useful context for any assistant)
 

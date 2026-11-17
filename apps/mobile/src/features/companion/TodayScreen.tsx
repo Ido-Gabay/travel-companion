@@ -2,6 +2,7 @@ import {
   googleMapsDirectionsUrl,
   tripDays,
   type LatLng,
+  type PlaceCategory,
   type TripDetail,
 } from '@travel-companion/shared';
 import { router } from 'expo-router';
@@ -21,6 +22,9 @@ import { formatDurationShort, TimeSheet } from '@/features/trips/TimeSheet';
 import { useLocale } from '@/i18n/LocaleProvider';
 import { useErrorMessage } from '@/lib/use-error-message';
 import { colors, radii, spacing } from '@/theme/tokens';
+import { OfflineStatus } from '@/features/offline/OfflineStatus';
+import { useOfflineCoords } from '@/features/offline/OfflineProvider';
+import { fallbackName } from '@/features/places/use-place-display';
 import { useDismissals } from './dismissals';
 import { formatDistance } from './geo';
 import { useCurrentLocation } from './location';
@@ -29,6 +33,7 @@ import { zonedNow } from './zoned-time';
 import {
   computeToday,
   toClock,
+  toEngineStops,
   toMinutes,
   type Candidate,
   type EngineStop,
@@ -71,12 +76,20 @@ export function TodayScreen({ tripId, forcePreview }: { tripId: string; forcePre
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <NavHeader title={t('today.title')} />
-      {trip.isPending ? (
+      {/* M12a: the saved copy is shown even when refreshing fails (offline). */}
+      {trip.data ? (
+        <TodayContent
+          trip={trip.data}
+          forcePreview={forcePreview}
+          onRefreshTrip={() => void trip.refetch()}
+          refreshing={trip.isRefetching}
+          savedAt={trip.dataUpdatedAt}
+          stale={trip.isError}
+        />
+      ) : trip.isPending ? (
         <LoadingState />
-      ) : trip.isError ? (
-        <ErrorState message={errorMessage(trip.error)} onRetry={() => void trip.refetch()} />
       ) : (
-        <TodayContent trip={trip.data} forcePreview={forcePreview} onRefreshTrip={() => void trip.refetch()} refreshing={trip.isRefetching} />
+        <ErrorState message={errorMessage(trip.error)} onRetry={() => void trip.refetch()} />
       )}
     </SafeAreaView>
   );
@@ -87,11 +100,15 @@ function TodayContent({
   forcePreview,
   onRefreshTrip,
   refreshing,
+  savedAt,
+  stale,
 }: {
   trip: TripDetail;
   forcePreview: boolean;
   onRefreshTrip: () => void;
   refreshing: boolean;
+  savedAt: number;
+  stale: boolean;
 }) {
   const { t } = useTranslation();
   const { locale } = useLocale();
@@ -101,6 +118,7 @@ function TodayContent({
   const location = useCurrentLocation();
   const setVisited = useSetVisited();
   const now = useNow();
+  const coordsFor = useOfflineCoords();
 
   const days = useMemo(() => tripDays(trip.startDate, trip.endDate), [trip.startDate, trip.endDate]);
   // "Today" and "now" in the trip's time zone (pinned hotel), so they're right
@@ -155,20 +173,13 @@ function TodayContent({
     [stops, candidatePlaces],
   );
   const details = useGooglePlaces(googleIds);
-  const nameOf = (place: { googlePlaceId: string | null; name: string | null }) =>
-    (place.googlePlaceId ? details.get(place.googlePlaceId)?.name : place.name) ?? place.name ?? t('common.loading');
+  // Offline: the place's category instead of Google's name; cached coordinates (≤ 30 days) for travel.
+  const nameOf = (place: { googlePlaceId: string | null; name: string | null; category: PlaceCategory; myLabel?: string | null }) =>
+    (place.googlePlaceId ? details.get(place.googlePlaceId)?.name : place.name) ?? place.name ?? fallbackName(place, t);
   const locationOf = (place: { googlePlaceId: string | null }) =>
-    place.googlePlaceId ? (details.get(place.googlePlaceId)?.location ?? null) : null;
+    place.googlePlaceId ? (details.get(place.googlePlaceId)?.location ?? coordsFor(place.googlePlaceId)) : null;
 
-  const engineStops: EngineStop[] = stops.map((stop) => ({
-    id: stop.id,
-    name: nameOf(stop),
-    category: stop.category,
-    startTime: stop.startTime,
-    durationMinutes: stop.durationMinutes,
-    visited: stop.visitedAt !== null,
-    location: locationOf(stop),
-  }));
+  const engineStops: EngineStop[] = toEngineStops(stops, nameOf, locationOf);
   const candidates: Candidate[] = candidatePlaces.map(({ place, source }) => ({
     id: place.id,
     name: nameOf(place),
@@ -182,7 +193,7 @@ function TodayContent({
     stops: engineStops,
     nowMinutes,
     here,
-    hotel: hotel.data?.location ?? null,
+    hotel: hotel.data?.location ?? coordsFor(trip.basePlaceId),
     candidates,
     dismissed,
     hasTomorrow: tomorrow !== null,
@@ -309,6 +320,8 @@ function TodayContent({
           </AppText>
         </View>
       ) : null}
+
+      <OfflineStatus savedAt={savedAt} stale={stale} />
 
       {act.isError ? <InlineError message={errorMessage(act.error)} /> : null}
       {setVisited.isError ? <InlineError message={errorMessage(setVisited.error)} /> : null}

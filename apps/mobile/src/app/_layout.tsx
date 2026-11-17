@@ -10,6 +10,7 @@ import { ActionMenuProvider } from '@/components/ui/ActionMenu';
 import { AuthProvider, useAuth } from '@/features/auth/AuthProvider';
 import { ReminderSync } from '@/features/companion/ReminderSync';
 import { LocaleSync } from '@/features/me/LocaleSync';
+import { OfflineProvider } from '@/features/offline/OfflineProvider';
 import { AppLocaleProvider, useLocale } from '@/i18n/LocaleProvider';
 import { wakeApi } from '@/lib/api';
 import { envResult } from '@/lib/env';
@@ -52,39 +53,53 @@ function RootNavigator() {
 
   const signedIn = session !== null;
 
+  const stack = (
+    <ActionMenuProvider>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: colors.background },
+        }}
+      >
+        {/* SDK 58: redirectTo names where a blocked route goes (signed out -> welcome). */}
+        <Stack.Protected guard={signedIn} redirectTo="/welcome">
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="trips/new" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="trips/[id]/index" />
+          <Stack.Screen name="trips/[id]/add-places" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="trips/[id]/discover" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="trips/[id]/edit" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="places/new" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="places/[id]" />
+          <Stack.Screen name="today" />
+          <Stack.Screen name="settings/usage" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="settings/reminders" options={{ presentation: 'modal' }} />
+        </Stack.Protected>
+        <Stack.Protected guard={!signedIn} redirectTo="/">
+          <Stack.Screen name="(auth)" />
+        </Stack.Protected>
+      </Stack>
+    </ActionMenuProvider>
+  );
+
   return (
     <LocaleProvider direction={direction}>
       {/* `direction` flips the whole layout immediately when the language changes. */}
       <View style={[styles.root, { direction }]}>
         <StatusBar style="dark" />
-        {signedIn ? <LocaleSync /> : null}
-        <ReminderSync signedIn={signedIn} />
-        <ActionMenuProvider>
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: colors.background },
-          }}
-        >
-          {/* SDK 58: redirectTo names where a blocked route goes (signed out -> welcome). */}
-          <Stack.Protected guard={signedIn} redirectTo="/welcome">
-            <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="trips/new" options={{ presentation: 'modal' }} />
-            <Stack.Screen name="trips/[id]/index" />
-            <Stack.Screen name="trips/[id]/add-places" options={{ presentation: 'modal' }} />
-            <Stack.Screen name="trips/[id]/discover" options={{ presentation: 'modal' }} />
-            <Stack.Screen name="trips/[id]/edit" options={{ presentation: 'modal' }} />
-            <Stack.Screen name="places/new" options={{ presentation: 'modal' }} />
-            <Stack.Screen name="places/[id]" />
-            <Stack.Screen name="today" />
-            <Stack.Screen name="settings/usage" options={{ presentation: 'modal' }} />
-            <Stack.Screen name="settings/reminders" options={{ presentation: 'modal' }} />
-          </Stack.Protected>
-          <Stack.Protected guard={!signedIn} redirectTo="/">
-            <Stack.Screen name="(auth)" />
-          </Stack.Protected>
-        </Stack>
-        </ActionMenuProvider>
+        {session ? (
+          // M12a: the user's saved copy is restored before any screen or reminder sync reads it.
+          <OfflineProvider userId={session.user.id}>
+            <LocaleSync />
+            <ReminderSync signedIn />
+            {stack}
+          </OfflineProvider>
+        ) : (
+          <>
+            <ReminderSync signedIn={false} />
+            {stack}
+          </>
+        )}
       </View>
     </LocaleProvider>
   );

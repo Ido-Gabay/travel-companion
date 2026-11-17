@@ -9,7 +9,10 @@ import type {
   UpdatePlaceInput,
 } from '@travel-companion/shared';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback } from 'react';
 import { useAuth } from '@/features/auth/AuthProvider';
+import { addOps, syncPending, usePendingState } from '@/features/offline/ops-store';
+import { applyVisitedOps, newOpId } from '@/features/offline/pending-ops';
 import { useLocale } from '@/i18n/LocaleProvider';
 import { api } from '@/lib/api';
 
@@ -33,10 +36,24 @@ export function usePlaces() {
 
 export function usePlace(id: string) {
   const { session } = useAuth();
+  const queryClient = useQueryClient();
+  const { ops } = usePendingState();
+  const select = useCallback((place: Place) => applyVisitedOps(place, ops), [ops]);
   return useQuery({
+    select,
     queryKey: placeKey(id),
     queryFn: () => api.getPlace(id),
     enabled: session !== null && id.length > 0,
+    // M12a: a stop opened from a saved trip starts from its own data in that trip (kept if
+    // refreshing fails offline); updatedAt 0 = always refreshed from the server when possible.
+    initialDataUpdatedAt: 0,
+    initialData: () => {
+      for (const [, detail] of queryClient.getQueriesData<TripDetail>({ queryKey: [...tripsPrefix, 'detail'] })) {
+        const match = detail?.places.find((place) => place.id === id);
+        if (match) return match;
+      }
+      return undefined;
+    },
   });
 }
 
@@ -128,35 +145,18 @@ export function useDeletePlace() {
 }
 
 /**
- * Mark any place visited or not visited. The check shows at once in every
- * loaded trip (and is undone if saving fails), so ticking off stops feels instant.
+ * Mark any place visited or not visited. M12a: recorded on the phone first (the
+ * check shows at once in every trip, and works offline), then synced.
  */
 export function useSetVisited() {
   const queryClient = useQueryClient();
-  const tripDetails = { queryKey: [...tripsPrefix, 'detail'] };
   return useMutation({
-    mutationFn: ({ id, visited }: { id: string; visited: boolean }) => api.updatePlace(id, { visited }),
-    onMutate: async ({ id, visited }) => {
-      await queryClient.cancelQueries(tripDetails);
-      const previous = queryClient.getQueriesData<TripDetail>(tripDetails);
-      const visitedAt = visited ? new Date().toISOString() : null;
-      queryClient.setQueriesData<TripDetail>(tripDetails, (detail) =>
-        detail
-          ? { ...detail, places: detail.places.map((place) => (place.id === id ? { ...place, visitedAt } : place)) }
-          : detail,
-      );
-      return { previous };
+    mutationFn: async ({ id, visited }: { id: string; visited: boolean }) => {
+      const now = Date.now();
+      // A new change starts from what the screen showed (the opposite); merged changes keep the first base.
+      await addOps([{ id: newOpId(now), kind: 'visited', placeId: id, value: visited, base: !visited, createdAt: now }]);
+      void syncPending(queryClient);
     },
-    onError: (_error, _vars, context) => {
-      for (const [key, data] of context?.previous ?? []) queryClient.setQueryData(key, data);
-    },
-    onSuccess: (place: Place) => {
-      queryClient.setQueryData(placeKey(place.id), place);
-      queryClient.setQueryData<PlaceList>(placeListKey, (list) =>
-        list ? { items: list.items.map((item) => (item.id === place.id ? place : item)) } : list,
-      );
-    },
-    onSettled: () => void queryClient.invalidateQueries({ queryKey: tripsPrefix }),
   });
 }
 

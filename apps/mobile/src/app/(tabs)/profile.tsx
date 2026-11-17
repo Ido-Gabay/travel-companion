@@ -7,7 +7,7 @@ import {
 } from '@travel-companion/shared';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Alert, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import {
   AppText,
@@ -24,6 +24,7 @@ import {
   useActionMenu,
 } from '@/components/ui';
 import { signOut } from '@/features/auth/auth-actions';
+import { getPendingState } from '@/features/offline/ops-store';
 import { useMe, useUpdatePreferences, useUpdateProfile } from '@/features/me/queries';
 import { useLocale } from '@/i18n/LocaleProvider';
 import { useErrorMessage } from '@/lib/use-error-message';
@@ -179,8 +180,21 @@ export default function ProfileScreen() {
           chevron={false}
           onPress={() => {
             if (signingOut) return;
-            setSigningOut(true);
-            void signOut().finally(() => setSigningOut(false));
+            const doSignOut = () => {
+              setSigningOut(true);
+              void signOut().finally(() => setSigningOut(false));
+            };
+            // M12a: never drop unsynced changes without the user knowing.
+            const { ops, conflicts } = getPendingState();
+            const unsynced = ops.length + conflicts.length;
+            if (unsynced === 0) {
+              doSignOut();
+              return;
+            }
+            Alert.alert(t('offline.signOutTitle'), t('offline.signOutBody', { count: unsynced }), [
+              { text: t('common.cancel'), style: 'cancel' },
+              { text: t('offline.signOutAnyway'), style: 'destructive', onPress: doSignOut },
+            ]);
           }}
         />
       </ListGroup>

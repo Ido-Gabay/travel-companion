@@ -25,6 +25,9 @@ and [AGENTS.md](AGENTS.md).**
 - **Today**: timeline, next stop with leave-by and travel estimate, free time
   with suggestions that fit, running-late hints (accept or dismiss), preview mode.
 - **Local reminders**: leave soon, time to leave, heads-up, morning summary.
+- **Offline-tolerant trip mode**: trips, itinerary and Today open without a
+  connection (saved copy per user); Done, reorder, time, length and day work
+  offline and sync later with conflict checks; reminders keep working.
 - **Cost control**: hard caps on every paid API and an in-app usage screen.
 
 ## Technology

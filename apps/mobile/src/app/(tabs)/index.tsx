@@ -12,6 +12,7 @@ import {
   Section,
 } from '@/components/ui';
 import { useMe } from '@/features/me/queries';
+import { OfflineStatus } from '@/features/offline/OfflineStatus';
 import { useTrips } from '@/features/trips/queries';
 import { tripMode } from '@/features/trips/itinerary';
 import { TripCard } from '@/features/trips/TripCard';
@@ -56,10 +57,13 @@ export default function HomeScreen() {
     >
       <ScreenHeader title={name ? t('home.greeting', { name }) : t('home.greetingNoName')} />
 
-      {trips.isPending ? (
-        <LoadingState />
-      ) : trips.isError ? (
-        <ErrorState message={errorMessage(trips.error)} onRetry={() => void trips.refetch()} />
+      {/* M12a: show the saved copy whenever there is one, even if refreshing failed. */}
+      {!trips.data ? (
+        trips.isPending ? (
+          <LoadingState />
+        ) : (
+          <ErrorState message={errorMessage(trips.error)} onRetry={() => void trips.refetch()} />
+        )
       ) : items.length === 0 ? (
         <EmptyState
           icon="airplane-outline"
@@ -69,6 +73,7 @@ export default function HomeScreen() {
         />
       ) : (
         <>
+          <OfflineStatus savedAt={trips.dataUpdatedAt} stale={trips.isError} />
           {mode ? <TripModeCard mode={mode} today={today} /> : null}
 
           <Section title={mode ? t('home.otherTrips') : t('home.yourTrips')} action={newTripAction}>

@@ -1,4 +1,4 @@
-import type { LatLng, PlaceCategory } from '@travel-companion/shared';
+import type { LatLng, PlaceCategory, TripPlace } from '@travel-companion/shared';
 import { DEFAULT_VISIT_MINUTES } from '@travel-companion/shared';
 import { distanceMeters } from './geo';
 import { estimateTravel, type TravelEstimate } from './travel';
@@ -173,6 +173,26 @@ function visitFor(item: { durationMinutes: number | null; category: PlaceCategor
 
 function travelBetween(from: LatLng | null, to: LatLng | null): TravelEstimate | null {
   return from && to ? estimateTravel(from, to) : null;
+}
+
+/**
+ * The day's trip places as engine stops. Names and locations come from the caller:
+ * Google's when loaded; offline, the place's category and cached coordinates (M12a).
+ */
+export function toEngineStops(
+  places: readonly Pick<TripPlace, 'id' | 'category' | 'startTime' | 'durationMinutes' | 'visitedAt' | 'googlePlaceId' | 'name'>[],
+  nameOf: (place: Pick<TripPlace, 'googlePlaceId' | 'name' | 'category'>) => string,
+  locationOf: (place: Pick<TripPlace, 'googlePlaceId'>) => LatLng | null,
+): EngineStop[] {
+  return places.map((place) => ({
+    id: place.id,
+    name: nameOf(place),
+    category: place.category,
+    startTime: place.startTime,
+    durationMinutes: place.durationMinutes,
+    visited: place.visitedAt !== null,
+    location: locationOf(place),
+  }));
 }
 
 export function computeToday(input: TodayInput): TodayResult {

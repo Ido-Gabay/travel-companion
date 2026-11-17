@@ -74,6 +74,7 @@ export async function getOurScheduled(): Promise<OurScheduled[]> {
       {
         id: request.identifier,
         fingerprint: typeof data.fp === 'string' ? data.fp : '',
+        planKey: typeof data.pk === 'string' ? data.pk : null,
         title: request.content.title ?? '',
         fireAtMs: typeof data.fireAtMs === 'number' ? data.fireAtMs : null,
         tripId: typeof data.tripId === 'string' ? data.tripId : null,
@@ -100,6 +101,8 @@ export interface ReminderContent {
   subtitle?: string;
   fireAtMs: number;
   fingerprint: string;
+  /** reminderPlanKey: lets an offline sync keep this reminder when the plan didn't change. */
+  planKey: string;
   tripId: string;
   placeId: string | null;
 }
@@ -115,6 +118,7 @@ export async function scheduleReminder(content: ReminderContent): Promise<void> 
       data: {
         tc: 1,
         fp: content.fingerprint,
+        pk: content.planKey,
         fireAtMs: content.fireAtMs,
         tripId: content.tripId,
         placeId: content.placeId,

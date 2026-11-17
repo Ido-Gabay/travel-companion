@@ -215,6 +215,27 @@ place belong to the caller. Migration list and status: DEVELOPMENT_STATUS.md.
   (`enableRemoteNotifications: false`, so no push entitlement; decision T10).
 - No control is shown unless it works.
 
+## Offline-tolerant trip mode (M12a)
+
+A travel MVP, not full offline-first. All code is in `apps/mobile/src/features/offline/`
+(pure modules have specs next to them).
+
+| Piece | Module | What it does |
+| --- | --- | --- |
+| Saved copy | `trip-cache.ts`, `storage.ts` | AsyncStorage JSON per user (`tc.offline.v1.<userId>.trips / trip.<id> / me / coords / ops / conflicts`). Validated with the shared zod schemas on load; Google places' name/address stripped. Wiped on sign-out (`AuthProvider`); other users' keys removed on sign-in. |
+| Restore and keep current | `OfflineProvider.tsx` | Before any screen (or ReminderSync) renders, puts the saved copy into the TanStack Query cache with `updatedAt` = when it came from the server (so it refreshes). Saves trip list/details/profile as server data arrives; prefetches up to 3 upcoming trips' details; caches coordinates of trip places. |
+| Connectivity | `connection.ts`, `lib/api.ts` | Online/offline learned from real requests (any HTTP answer = online; network error/timeout = offline). While offline: `/health` ping every 30 s and on foreground; when back, refetch active queries and sync. No NetInfo (no native module). |
+| Coordinates | `coords.ts` | Google lat/lng only, ≤ 30 days (Google terms), with source and fetch time; expiry enforced on every read and deleted at launch/foreground/write. Used offline for travel estimates (Today, reminders). |
+| Pending changes | `pending-ops.ts`, `ops-store.ts` | Done (`visited`), `reorder`, and per-field `schedule` (day, startTime, durationMinutes) are recorded and persisted before sending, merged per target (undo cancels out). Screens show server copy + pending changes (`useTrip`/`usePlace` `select`), so the cache and saved copy stay pure server data. |
+| Sync | `sync.ts`, `ops-store.ts` | One run at a time, in creation order: re-read the server; already there → drop; still the starting value → send; otherwise → conflict (kept, never sent). 404 → "gone", 400/409/403 → "rejected" (kept for the user); network → stop and retry later; 5xx/429/401 → retry later. Edits made during a run survive (`settleQueue`). Triggers: after each change, reconnect, foreground, every 30 s while pending, "Sync now". |
+| UI | `OfflineStatus.tsx`, `ConflictSheet.tsx` | One quiet status box (offline/saved copy time, changes waiting, changes needing a choice → Keep mine / Use the server's / Discard). Cloud marker on stops with a pending change. Sign-out warns about unsynced changes. |
+| Names offline | `places/use-place-display.ts` | `myLabel` (user-typed) or the category; never a stored Google name. |
+| Reminders | `companion/reminders.ts`, `ReminderSync.tsx` | `reminderSyncMode`: cancel only for a known reason (off, no permission, trip list known and no trip); missing data → wait. Missing Google details → "preserve": keep reminders scheduled earlier unless the user's own plan for them changed (`reminderPlanKey`, stored with each notification). |
+
+Needs a connection: Discover, maps tiles, photos, add/remove places, edit/delete
+trips, accepting Today suggestions. Future PowerSync/SQLite (M12) replaces the copy
+and queue behind the same module boundary; the queue already has upload-queue shape.
+
 ## Deliberately postponed (and how the design keeps the door open)
 
 | Later | What keeps it possible now |

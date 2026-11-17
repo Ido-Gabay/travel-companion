@@ -64,10 +64,12 @@ export function TripModeCard({ mode, today }: { mode: TripMode; today: string })
         <Icon name="chevron-forward" size={18} color={colors.textTertiary} flipInRtl />
       </Pressable>
 
-      {detail.isPending ? (
-        <ActivityIndicator color={colors.accent} />
-      ) : detail.isError ? (
-        <Button label={t('tripMode.openTrip')} onPress={openTrip} />
+      {!detail.data ? (
+        detail.isPending ? (
+          <ActivityIndicator color={colors.accent} />
+        ) : (
+          <Button label={t('tripMode.openTrip')} onPress={openTrip} />
+        )
       ) : mode.phase === 'before' ? (
         <BeforeTrip
           places={detail.data.places}

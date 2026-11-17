@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_REMINDER_SETTINGS,
   diffReminders,
+  diffRemindersPreserving,
   MAX_SCHEDULED,
   planReminders,
   reminderFingerprint,
+  reminderPlanKey,
+  reminderSyncMode,
   type ReminderInput,
   type ReminderStop,
 } from './reminders';
@@ -159,5 +162,103 @@ describe('diffReminders', () => {
 
   it('cancels everything when reminders are turned off', () => {
     expect(diffReminders(scheduled, [], 'en').cancel).toHaveLength(scheduled.length);
+  });
+});
+
+describe('reminderSyncMode (M12a: never cancel because data is missing)', () => {
+  const base = {
+    settingsLoaded: true,
+    enabled: true,
+    permission: 'granted' as const,
+    tripsKnown: true,
+    hasTrip: true,
+    tripKnown: true,
+    degraded: false,
+  };
+
+  it('waits, never cancels, when the trip list could not be loaded (offline cold start)', () => {
+    expect(reminderSyncMode({ ...base, tripsKnown: false, hasTrip: false, tripKnown: false })).toBe('wait');
+  });
+
+  it('waits when the trip itself could not be loaded', () => {
+    expect(reminderSyncMode({ ...base, tripKnown: false })).toBe('wait');
+  });
+
+  it('waits until settings are read', () => {
+    expect(reminderSyncMode({ ...base, settingsLoaded: false, enabled: false })).toBe('wait');
+  });
+
+  it('cancels only for a known reason', () => {
+    expect(reminderSyncMode({ ...base, enabled: false })).toBe('cancelAll');
+    expect(reminderSyncMode({ ...base, permission: 'denied' })).toBe('cancelAll');
+    expect(reminderSyncMode({ ...base, hasTrip: false, tripKnown: false })).toBe('cancelAll');
+  });
+
+  it('preserves earlier reminders when Google details are missing, full sync otherwise', () => {
+    expect(reminderSyncMode({ ...base, degraded: true })).toBe('preserve');
+    expect(reminderSyncMode(base)).toBe('full');
+  });
+});
+
+describe('diffRemindersPreserving (offline)', () => {
+  const day = '2026-11-23';
+  const settings = { ...ON, morningSummary: false };
+  // Online: Google name and location known, New York zone.
+  const online = input({ settings, days: [{ day, stops: [stop('moma', { startTime: '11:00' }), stop('bryant', { startTime: '15:00', location: BRYANT })] }] });
+  const scheduledFrom = (plan: ReminderInput) =>
+    planReminders(plan).map((r) => ({ id: r.id, fingerprint: reminderFingerprint(r, 'en'), planKey: reminderPlanKey(r) }));
+  // Offline: no Google name/location, no trip zone (phone zone), same own plan.
+  const offlineStops = (extra: Record<string, Partial<ReminderStop>> = {}) =>
+    [stop('moma', { startTime: '11:00', name: 'Sights', location: null, google: false, ...extra.moma }),
+     stop('bryant', { startTime: '15:00', name: 'Sights', location: null, google: false, ...extra.bryant })];
+  const offline = (extra: Record<string, Partial<ReminderStop>> = {}) =>
+    input({ settings, timeZone: null, hotel: null, days: [{ day, stops: offlineStops(extra) }] });
+
+  it('keeps every reminder scheduled online when the plan did not change', () => {
+    const scheduled = scheduledFrom(online);
+    const plan = offline();
+    const result = diffRemindersPreserving(scheduled, planReminders(plan, { raw: true }), planReminders(plan));
+    expect(result).toEqual({ cancel: [], schedule: [] });
+    // The plain diff would have replaced them all with worse ones (the M11 behavior).
+    expect(diffReminders(scheduled, planReminders(plan), 'en').cancel.length).toBe(scheduled.length);
+  });
+
+  it('replaces only the reminders of a stop whose time changed offline', () => {
+    const scheduled = scheduledFrom(online);
+    const plan = offline({ bryant: { startTime: '16:30' } });
+    const result = diffRemindersPreserving(scheduled, planReminders(plan, { raw: true }), planReminders(plan));
+    expect(result.cancel.sort()).toEqual(['tc:leaveNow:trip:bryant', 'tc:leaveSoon:trip:bryant']);
+    expect(result.schedule.map((r) => r.id).sort()).toEqual(['tc:leaveNow:trip:bryant', 'tc:leaveSoon:trip:bryant']);
+    expect(result.schedule[0]?.vars.time).toBe('16:30');
+  });
+
+  it('cancels reminders of a stop marked done offline and schedules a newly timed stop', () => {
+    const scheduled = scheduledFrom(online);
+    const plan = input({
+      settings,
+      timeZone: null,
+      hotel: null,
+      days: [{ day, stops: [...offlineStops({ moma: { visited: true } }), stop('park', { startTime: '18:00', location: null, google: false })] }],
+    });
+    const result = diffRemindersPreserving(scheduled, planReminders(plan, { raw: true }), planReminders(plan));
+    expect(result.cancel.sort()).toEqual(['tc:leaveNow:trip:moma', 'tc:leaveSoon:trip:moma']);
+    expect(result.schedule.map((r) => r.id).sort()).toEqual(['tc:leaveNow:trip:park', 'tc:leaveSoon:trip:park']);
+  });
+
+  it('keeps reminders scheduled before plan keys existed (no key = assume still valid)', () => {
+    const scheduled = scheduledFrom(online).map(({ id, fingerprint }) => ({ id, fingerprint }));
+    const plan = offline();
+    expect(diffRemindersPreserving(scheduled, planReminders(plan, { raw: true }), planReminders(plan))).toEqual({
+      cancel: [],
+      schedule: [],
+    });
+  });
+
+  it('does not cancel a still-wanted reminder just because offline math puts it in the past', () => {
+    const scheduled = scheduledFrom(online);
+    // "Now" is after every offline-computed time, but the stops are still planned.
+    const plan = { ...offline(), nowMs: Date.UTC(2026, 10, 24) };
+    const result = diffRemindersPreserving(scheduled, planReminders(plan, { raw: true }), planReminders(plan));
+    expect(result.cancel).toEqual([]);
   });
 });

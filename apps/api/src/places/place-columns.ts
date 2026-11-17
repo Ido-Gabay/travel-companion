@@ -3,7 +3,7 @@ import type { Tx } from '../database/database.service.js';
 /** Columns for a PlaceRow from `app.places p`, including how many live trips it's in. */
 export function placeColumns(tx: Tx) {
   return tx`
-    p.id, p.google_place_id, p.name, p.address, p.notes, p.category, p.tags, p.visited_at,
+    p.id, p.google_place_id, p.name, p.address, p.notes, p.my_label, p.category, p.tags, p.visited_at,
     (
       select count(*)::int
       from app.trip_places tp

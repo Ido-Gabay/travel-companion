@@ -147,6 +147,12 @@ describe('updatePlaceSchema', () => {
     expect(updatePlaceSchema.parse({ address: '' })).toEqual({ address: null });
   });
 
+  it('accepts the user label (trimmed, blank clears, max 60)', () => {
+    expect(updatePlaceSchema.parse({ myLabel: '  Grandma bakery ' })).toEqual({ myLabel: 'Grandma bakery' });
+    expect(updatePlaceSchema.parse({ myLabel: '  ' })).toEqual({ myLabel: null });
+    expect(updatePlaceSchema.safeParse({ myLabel: 'a'.repeat(61) }).success).toBe(false);
+  });
+
   it('rejects an empty body and unknown keys', () => {
     expect(updatePlaceSchema.safeParse({}).success).toBe(false);
     expect(updatePlaceSchema.safeParse({ name: 'x', rating: 5 }).success).toBe(false);

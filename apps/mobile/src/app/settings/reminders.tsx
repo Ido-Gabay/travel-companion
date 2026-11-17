@@ -133,7 +133,16 @@ export default function RemindersScreen() {
           </Row>
         </Card>
 
-        {enabled && status?.tripId && !status.timeZone ? (
+        {enabled && status?.preserved ? (
+          <View style={styles.notice}>
+            <Icon name="cloud-offline-outline" size={18} color={colors.accent} />
+            <AppText variant="body" style={styles.flex}>
+              {t('reminders.preservedOffline')}
+            </AppText>
+          </View>
+        ) : null}
+
+        {enabled && status?.tripId && !status.timeZone && !status.preserved ? (
           <Pressable
             accessibilityRole="button"
             onPress={() => status.tripId && router.push({ pathname: '/trips/[id]', params: { id: status.tripId } })}

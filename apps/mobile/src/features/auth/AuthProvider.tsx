@@ -1,5 +1,8 @@
 import type { Session } from '@supabase/supabase-js';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { resetPending } from '@/features/offline/ops-store';
+import { deviceStore } from '@/features/offline/storage';
+import { clearAllOffline } from '@/features/offline/trip-cache';
 import { queryClient } from '@/lib/query-client';
 import { supabase } from '@/lib/supabase';
 
@@ -40,8 +43,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!mounted) return;
       setSession(next);
       if (event === 'SIGNED_OUT') {
-        // Never show one user's cached data to the next.
+        // Never show one user's cached data to the next: memory and the offline copy.
         queryClient.clear();
+        resetPending();
+        void clearAllOffline(deviceStore).catch(() => undefined);
       }
     });
 

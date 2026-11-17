@@ -254,7 +254,9 @@ A place is either:
   from `GET /v1/google/places/:googlePlaceId`.
 - **custom**: typed in by the user; `name`/`address` are theirs.
 
-Both carry the user's own `notes`, `category`, `tags` and `visitedAt`.
+Both carry the user's own `notes`, `myLabel` (M12a: the user's short label, typed by
+them, never filled from Google; `null` when unset; older servers omit it and the app
+defaults it to `null`), `category`, `tags` and `visitedAt`.
 Categories: `food, coffee, sights, shopping, nightlife, outdoors, stay, other`.
 
 ### `GET /v1/places`
@@ -282,7 +284,8 @@ One place / soft-delete it (also removes it from every trip, `204`).
 
 ### `PATCH /v1/places/:id`
 
-Any of `notes`, `category`, `tags` (≤10, each ≤30 chars, de-duplicated),
+Any of `notes`, `myLabel` (≤60 chars, trimmed; blank or `null` clears; allowed on
+Google places too), `category`, `tags` (≤10, each ≤30 chars, de-duplicated),
 `visited` (boolean), and for custom places `name`, `address`. Sending
 `name`/`address` for a Google place is `400`.
 

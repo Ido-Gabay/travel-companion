@@ -33,6 +33,7 @@ import {
   useScheduleTripPlace,
   useTrip,
 } from '@/features/trips/queries';
+import { OfflineStatus } from '@/features/offline/OfflineStatus';
 import { useLocale } from '@/i18n/LocaleProvider';
 import { formatTripDates } from '@/lib/dates';
 import { useErrorMessage } from '@/lib/use-error-message';
@@ -123,10 +124,12 @@ export default function TripScreen() {
         }
       />
       <ScrollView contentContainerStyle={styles.content}>
-        {trip.isPending ? (
-          <LoadingState />
-        ) : trip.isError ? (
-          <ErrorState message={errorMessage(trip.error)} onRetry={() => void trip.refetch()} />
+        {!trip.data ? (
+          trip.isPending ? (
+            <LoadingState />
+          ) : (
+            <ErrorState message={errorMessage(trip.error)} onRetry={() => void trip.refetch()} />
+          )
         ) : (
           <>
             <View style={styles.hero}>
@@ -157,6 +160,8 @@ export default function TripScreen() {
                 </Pressable>
               ) : null}
             </View>
+
+            <OfflineStatus savedAt={trip.dataUpdatedAt} stale={trip.isError} />
 
             <Button label={t('tripDetail.addPlaces')} icon="add" variant="secondary" onPress={openAddMenu} />
 

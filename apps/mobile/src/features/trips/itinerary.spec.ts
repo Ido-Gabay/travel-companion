@@ -21,6 +21,7 @@ function place(id: string, day: string | null, position: number, addedAt = '2026
     name: id,
     address: null,
     notes: null,
+    myLabel: null,
     category: 'food',
     tags: [],
     visitedAt: null,

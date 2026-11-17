@@ -111,7 +111,11 @@ function minutesOf(time: string): number {
   return (h ?? 0) * 60 + (m ?? 0);
 }
 
-export function planReminders(input: ReminderInput): PlannedReminder[] {
+/**
+ * The reminders the plan calls for. `raw` skips the "already past" filter and the
+ * cap: used offline to tell whether a scheduled reminder is still wanted at all.
+ */
+export function planReminders(input: ReminderInput, options: { raw?: boolean } = {}): PlannedReminder[] {
   const { settings, tripId, timeZone, nowMs } = input;
   if (!settings.enabled) return [];
   const at = (day: string, minutes: number) =>
@@ -182,6 +186,7 @@ export function planReminders(input: ReminderInput): PlannedReminder[] {
     });
   }
 
+  if (options.raw) return planned;
   return planned
     .filter((reminder) => reminder.fireAtMs > nowMs + MIN_LEAD_MS)
     .sort((a, b) => a.fireAtMs - b.fireAtMs || a.id.localeCompare(b.id))
@@ -193,9 +198,24 @@ export function reminderFingerprint(reminder: PlannedReminder, locale: string): 
   return JSON.stringify([reminder.fireAtMs, reminder.kind, reminder.vars, locale]);
 }
 
+/**
+ * What a reminder depends on from the user's own plan only (kind, day, planned time,
+ * lead, stop count), not Google names or travel estimates. Stored with each
+ * scheduled reminder so an offline sync can tell "the plan changed" from "Google
+ * details are just unavailable right now".
+ */
+export function reminderPlanKey(reminder: PlannedReminder): string {
+  const { vars } = reminder;
+  return reminder.kind === 'morning'
+    ? JSON.stringify([reminder.kind, reminder.day, vars.count ?? 0, vars.time ?? null])
+    : JSON.stringify([reminder.kind, reminder.day, reminder.placeId, vars.time ?? null, vars.lead ?? null]);
+}
+
 export interface ScheduledReminder {
   id: string;
   fingerprint: string;
+  /** reminderPlanKey at scheduling time; null for reminders scheduled before M12a. */
+  planKey?: string | null;
 }
 
 /**
@@ -213,4 +233,75 @@ export function diffReminders(
     cancel: scheduled.filter((item) => want.get(item.id) !== item.fingerprint).map((item) => item.id),
     schedule: desired.filter((reminder) => have.get(reminder.id) !== want.get(reminder.id)),
   };
+}
+
+/**
+ * Offline / degraded sync (M12a). Used when Google details (names, locations) or the
+ * trip time zone can't be loaded. Reminders scheduled earlier with full information
+ * stay as they are unless the user's own plan for them changed:
+ * - still wanted and plan unchanged (or scheduled before plan keys existed): keep;
+ * - still wanted but the plan changed (new time, lead…): replace with the new one;
+ * - no longer wanted at all (stop done, muted, unscheduled, removed, setting off): cancel;
+ * - newly wanted (a stop timed offline): schedule.
+ * `raw` = planReminders(input, { raw: true }); `desired` = planReminders(input).
+ */
+export function diffRemindersPreserving(
+  scheduled: readonly ScheduledReminder[],
+  raw: readonly PlannedReminder[],
+  desired: readonly PlannedReminder[],
+): { cancel: string[]; schedule: PlannedReminder[] } {
+  const rawById = new Map(raw.map((reminder) => [reminder.id, reminder]));
+  const desiredById = new Map(desired.map((reminder) => [reminder.id, reminder]));
+  const cancel: string[] = [];
+  const schedule: PlannedReminder[] = [];
+  const kept = new Set<string>();
+
+  for (const item of scheduled) {
+    const wanted = rawById.get(item.id);
+    if (!wanted) {
+      cancel.push(item.id);
+      continue;
+    }
+    if (item.planKey == null || item.planKey === reminderPlanKey(wanted)) {
+      kept.add(item.id);
+      continue;
+    }
+    cancel.push(item.id);
+    const replacement = desiredById.get(item.id);
+    if (replacement) {
+      schedule.push(replacement);
+      kept.add(item.id);
+    }
+  }
+  for (const reminder of desired) {
+    if (!kept.has(reminder.id) && !scheduled.some((item) => item.id === reminder.id)) schedule.push(reminder);
+  }
+  return { cancel, schedule };
+}
+
+export type ReminderSyncMode = 'wait' | 'cancelAll' | 'full' | 'preserve';
+
+/**
+ * What a reminder sync may do (M12a). The key rule: reminders are only cancelled
+ * for a known reason (turned off, no permission, or the trip list is known and has
+ * no current/upcoming trip), never because data couldn't be loaded.
+ */
+export function reminderSyncMode(state: {
+  settingsLoaded: boolean;
+  enabled: boolean;
+  permission: 'granted' | 'denied' | 'undetermined';
+  /** The trip list is known (from the server or the saved copy). */
+  tripsKnown: boolean;
+  hasTrip: boolean;
+  /** The trip's own data is known (server or saved copy). */
+  tripKnown: boolean;
+  /** Google names/locations or the trip time zone are missing. */
+  degraded: boolean;
+}): ReminderSyncMode {
+  if (!state.settingsLoaded) return 'wait';
+  if (!state.enabled || state.permission !== 'granted') return 'cancelAll';
+  if (!state.tripsKnown) return 'wait';
+  if (!state.hasTrip) return 'cancelAll';
+  if (!state.tripKnown) return 'wait';
+  return state.degraded ? 'preserve' : 'full';
 }

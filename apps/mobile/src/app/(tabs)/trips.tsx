@@ -34,10 +34,12 @@ export default function TripsScreen() {
         }
       />
 
-      {trips.isPending ? (
-        <LoadingState />
-      ) : trips.isError ? (
-        <ErrorState message={errorMessage(trips.error)} onRetry={() => void trips.refetch()} />
+      {!trips.data ? (
+        trips.isPending ? (
+          <LoadingState />
+        ) : (
+          <ErrorState message={errorMessage(trips.error)} onRetry={() => void trips.refetch()} />
+        )
       ) : trips.data.items.length === 0 ? (
         <EmptyState
           icon="map-outline"
