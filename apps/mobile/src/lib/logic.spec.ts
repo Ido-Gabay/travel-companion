@@ -1,6 +1,6 @@
 import type { Trip } from '@travel-companion/shared';
 import { describe, expect, it } from 'vitest';
-import { upcomingTrips } from '../features/trips/upcoming';
+import { pastTrips, upcomingTrips } from '../features/trips/upcoming';
 import { ApiClientError, errorFromResponse, isRetryable } from './api-error';
 import { formatTripDates, fromIsoDate, toIsoDate } from './dates';
 import { mapsSearchQuery, mapsSearchUrl } from './maps';
@@ -60,6 +60,23 @@ describe('upcomingTrips', () => {
       today,
     );
     expect(result.map((t) => t.id)).toEqual(['ny', 'dec', 'undated']);
+  });
+});
+
+describe('pastTrips', () => {
+  const today = '2026-11-16';
+
+  it('keeps only ended trips, most recent first, never an upcoming or undated one', () => {
+    const result = pastTrips(
+      [
+        trip('old', '2025-03-01', '2025-03-05'),
+        trip('recent', '2026-10-01', '2026-10-05'),
+        trip('now', '2026-11-10', '2026-11-20'),
+        trip('undated', null, null),
+      ],
+      today,
+    );
+    expect(result.map((t) => t.id)).toEqual(['recent', 'old']);
   });
 });
 

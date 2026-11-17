@@ -20,6 +20,7 @@ yet verified by the owner · ⏳ in progress · ⬜ not started.
 | M9 | Live Today v1: visit lengths, travel estimates, leave-by, free time, suggestions, late/overbooked hints, accept/dismiss, preview mode | 🟡 | Owner reported "implemented" (committed `4ef298a`); Simulator walkthrough and migration push not confirmed in writing |
 | M10 | Local reminders | 🟡 committed (`52c49b6`); native rebuild done | Reminder behavior on the device not confirmed in writing |
 | M11 | Trip readiness: Today/Home in the trip's time zone, API rate limiting, Google attribution to policy (one component, photo links, notification subtitle), shorter Hebrew tab label | 🟡 written | See below |
+| U1 | UX/UI redesign: design system (DESIGN_SYSTEM.md), four tabs, Home, Today, trip overview, itinerary, wishlist, Discover, place preview, Saved, place detail, Profile | 🟡 written | See below |
 
 ### M10 – Local reminders: acceptance criteria
 
@@ -40,6 +41,15 @@ yet verified by the owner · ⏳ in progress · ⬜ not started.
 - [x] One "Google Maps" attribution component styled to Google's rules on every screen with Google place content; photos link to Google Maps; notifications naming Google places carry the attribution.
 - [x] Hebrew "Wishlist" tab label shortened.
 - [ ] Owner: tests on the Mac, deploy, Simulator check (Today with the pinned hotel; attribution visible; tapping a photo opens Google Maps).
+
+### U1 – UX/UI redesign: acceptance criteria
+
+- [x] Phase 1 audit and Phase 2 direction presented to the owner (chat, Nov 17).
+- [x] Design system: tokens (type, radii, floating elevation), tonal/compact buttons, flat cards, `ListGroup`/`ListRow`, app-wide action menu, quieter empty/error states.
+- [x] Four tabs; Home merges trips; Discover uses a search icon.
+- [x] Screens: Home, Today, trip overview, itinerary, wishlist, Discover (+ context sheet), place preview, Saved, place detail, Profile, reminders label.
+- [x] No feature removed; no API, database or navigation route changed; en/he parity; `tsc` clean; 70 app tests pass (incl. new `pastTrips`).
+- [ ] Owner: Simulator walkthrough in English and Hebrew on a small (iPhone SE/mini) and a large iPhone; every menu action works (checklist in DEVELOPMENT_STATUS.md).
 
 ## Next
 

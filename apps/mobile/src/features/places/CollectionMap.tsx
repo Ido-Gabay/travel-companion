@@ -36,7 +36,7 @@ export function CollectionMap<P extends Place>({ places, onOpen }: CollectionMap
     <View style={styles.map}>
       <PlacesMap points={points} selectedId={selectedId} onSelect={setSelectedId} height={420} />
       {selected ? (
-        <PlaceCard place={selected} onPress={() => onOpen(selected)} />
+        <PlaceCard standalone place={selected} onPress={() => onOpen(selected)} />
       ) : (
         <AppText variant="caption" color="secondary" align="center">
           {t('discover.tapMarker')}

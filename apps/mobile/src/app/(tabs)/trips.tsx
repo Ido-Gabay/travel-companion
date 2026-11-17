@@ -5,6 +5,7 @@ import {
   EmptyState,
   ErrorState,
   IconButton,
+  ListGroup,
   LoadingState,
   Screen,
   ScreenHeader,
@@ -45,7 +46,11 @@ export default function TripsScreen() {
           action={<Button label={t('home.createTrip')} icon="add" onPress={openNewTrip} />}
         />
       ) : (
-        trips.data.items.map((trip) => <TripCard key={trip.id} trip={trip} />)
+        <ListGroup>
+          {trips.data.items.map((trip) => (
+            <TripCard key={trip.id} trip={trip} />
+          ))}
+        </ListGroup>
       )}
     </Screen>
   );

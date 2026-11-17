@@ -55,7 +55,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.surface,
   },
   chipSelected: { backgroundColor: colors.accent, borderColor: colors.accent },
   label: { fontWeight: '600', color: colors.textSecondary },

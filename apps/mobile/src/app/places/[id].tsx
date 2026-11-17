@@ -6,14 +6,25 @@ import {
   type PlaceCategory,
 } from '@travel-companion/shared';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Alert, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Linking, Platform, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { GoogleAttribution } from '@/components/GoogleAttribution';
 import { googleMapsEnabled, PlacesMap } from '@/components/maps/PlacesMap';
-import { AppText, Button, ErrorState, Icon, InlineError, LoadingState, NavHeader, Section } from '@/components/ui';
+import {
+  AppText,
+  Button,
+  ErrorState,
+  IconButton,
+  InlineError,
+  ListGroup,
+  ListRow,
+  LoadingState,
+  NavHeader,
+  Section,
+  useActionMenu,
+} from '@/components/ui';
 import { CategoryChips } from '@/features/places/CategoryChips';
-import { CATEGORY_ICONS } from '@/features/places/categories';
 import { NotesTagsEditor } from '@/features/places/NotesTagsEditor';
 import { openInMaps } from '@/features/places/open-in-maps';
 import { PlaceForm } from '@/features/places/PlaceForm';
@@ -21,7 +32,7 @@ import { useDeletePlace, usePlace, useUpdatePlace } from '@/features/places/quer
 import { TripMembership } from '@/features/places/TripMembership';
 import { usePlaceDisplay } from '@/features/places/use-place-display';
 import { useErrorMessage } from '@/lib/use-error-message';
-import { colors, radii, spacing } from '@/theme/tokens';
+import { colors, spacing } from '@/theme/tokens';
 
 export default function PlaceScreen() {
   const { t } = useTranslation();
@@ -31,7 +42,7 @@ export default function PlaceScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      <NavHeader />
+      <NavHeader action={place.data ? <PlaceMenu place={place.data} /> : undefined} />
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           {place.isPending ? (
@@ -52,34 +63,19 @@ function PlaceDetail({ place }: { place: Place }) {
   const errorMessage = useErrorMessage();
   const display = usePlaceDisplay(place);
   const update = useUpdatePlace(place.id);
-  const remove = useDeletePlace();
   const visited = place.visitedAt !== null;
   const google = display.google;
   const placeId = place.googlePlaceId;
 
   const openUrl = (url: string) => void Linking.openURL(url).catch(() => undefined);
 
-  const confirmDelete = () => {
-    Alert.alert(t('placeForm.deletePlaceTitle'), t('placeForm.deletePlaceBody'), [
-      { text: t('common.cancel'), style: 'cancel' },
-      {
-        text: t('common.delete'),
-        style: 'destructive',
-        onPress: () => remove.mutate(place.id, { onSuccess: () => router.back() }),
-      },
-    ]);
-  };
-
   return (
     <>
       {/* Hero */}
       <View style={styles.hero}>
-        <View style={styles.categoryPill}>
-          <Icon name={CATEGORY_ICONS[place.category]} size={14} color={colors.accent} />
-          <AppText variant="caption" color="accent" style={styles.bold}>
-            {display.typeLabel ?? t(`categories.${place.category}`)}
-          </AppText>
-        </View>
+        <AppText variant="label" color="accent">
+          {display.typeLabel ?? t(`categories.${place.category}`)}
+        </AppText>
         <AppText variant="display" accessibilityRole="header">
           {display.name}
         </AppText>
@@ -101,53 +97,35 @@ function PlaceDetail({ place }: { place: Place }) {
           height={180}
         />
       ) : null}
-      <View style={styles.actionsRow}>
-        {placeId ? (
-          <>
-            <View style={styles.flex}>
-              <Button
-                label={t('places.directions')}
-                icon="navigate"
-                onPress={() => openUrl(googleMapsDirectionsUrl(placeId, google?.name ?? display.name))}
-              />
-            </View>
-            <View style={styles.flex}>
-              <Button
-                label={t('places.openInGoogleMaps')}
-                icon="map-outline"
-                variant="secondary"
-                onPress={() => openUrl(google?.googleMapsUri ?? googleMapsPlaceUrl(placeId, display.name))}
-              />
-            </View>
-          </>
-        ) : (
-          <View style={styles.flex}>
-            <Button
-              label={t('tripDetail.openInMaps')}
-              icon="map-outline"
-              variant="secondary"
-              onPress={() => openInMaps(place.name ?? '', place.address)}
-            />
-          </View>
-        )}
-      </View>
-
-      {/* Visited */}
-      <Pressable
-        accessibilityRole="switch"
-        accessibilityState={{ checked: visited, busy: update.isPending }}
-        onPress={() => update.mutate({ visited: !visited })}
-        style={[styles.visited, visited && styles.visitedOn]}
-      >
-        <Icon
-          name={visited ? 'checkmark-circle' : 'ellipse-outline'}
-          size={22}
-          color={visited ? colors.textOnAccent : colors.textTertiary}
+      {placeId ? (
+        <Button
+          label={t('places.directions')}
+          icon="navigate"
+          onPress={() => openUrl(googleMapsDirectionsUrl(placeId, google?.name ?? display.name))}
         />
-        <AppText variant="bodyStrong" style={visited ? styles.visitedText : undefined}>
-          {visited ? t('places.visited') : t('places.markVisited')}
-        </AppText>
-      </Pressable>
+      ) : (
+        <Button
+          label={t('tripDetail.openInMaps')}
+          icon="map-outline"
+          onPress={() => openInMaps(place.name ?? '', place.address)}
+        />
+      )}
+
+      <ListGroup>
+        <ListRow
+          title={t('places.visited')}
+          leading="checkmark-circle-outline"
+          trailing={
+            <Switch
+              value={visited}
+              disabled={update.isPending}
+              onValueChange={(value) => update.mutate({ visited: value })}
+              trackColor={{ true: colors.success, false: colors.surfaceMuted }}
+              accessibilityLabel={t('places.markVisited')}
+            />
+          }
+        />
+      </ListGroup>
 
       <Section title={t('places.category')}>
         <CategoryChips
@@ -187,17 +165,57 @@ function PlaceDetail({ place }: { place: Place }) {
         <TripMembership placeId={place.id} />
       </Section>
 
-      <View style={styles.danger}>
-        {remove.isError ? <InlineError message={errorMessage(remove.error)} /> : null}
-        <Button
-          label={t('placeForm.deletePlace')}
-          icon="trash-outline"
-          variant="danger"
-          loading={remove.isPending}
-          onPress={confirmDelete}
-        />
-      </View>
     </>
+  );
+}
+
+/** Header "…": the place's secondary actions (Google Maps, delete). */
+function PlaceMenu({ place }: { place: Place }) {
+  const { t } = useTranslation();
+  const errorMessage = useErrorMessage();
+  const openMenu = useActionMenu();
+  const display = usePlaceDisplay(place);
+  const remove = useDeletePlace();
+  const placeId = place.googlePlaceId;
+
+  const confirmDelete = () => {
+    Alert.alert(t('placeForm.deletePlaceTitle'), t('placeForm.deletePlaceBody'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('common.delete'),
+        style: 'destructive',
+        onPress: () =>
+          remove.mutate(place.id, {
+            onSuccess: () => router.back(),
+            onError: (error) => Alert.alert(errorMessage(error)),
+          }),
+      },
+    ]);
+  };
+
+  return (
+    <IconButton
+      icon="ellipsis-horizontal"
+      accessibilityLabel={t('itinerary.moreFor', { name: display.name })}
+      onPress={() =>
+        openMenu({
+          title: display.name,
+          items: [
+            {
+              label: t('places.openInGoogleMapsLong'),
+              icon: 'map-outline',
+              hidden: !placeId,
+              onPress: () =>
+                placeId &&
+                void Linking.openURL(display.google?.googleMapsUri ?? googleMapsPlaceUrl(placeId, display.name)).catch(
+                  () => undefined,
+                ),
+            },
+            { label: t('placeForm.deletePlace'), icon: 'trash-outline', destructive: true, onPress: confirmDelete },
+          ],
+        })
+      }
+    />
   );
 }
 
@@ -206,29 +224,4 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   content: { paddingHorizontal: spacing.xl, paddingBottom: spacing.huge, gap: spacing.xl },
   hero: { gap: spacing.sm },
-  categoryPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: radii.pill,
-    backgroundColor: colors.accentSoft,
-  },
-  bold: { fontWeight: '600' },
-  actionsRow: { flexDirection: 'row', gap: spacing.md },
-  visited: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    padding: spacing.lg,
-    borderRadius: radii.md,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  visitedOn: { backgroundColor: colors.success, borderColor: colors.success },
-  visitedText: { color: colors.textOnAccent },
-  danger: { marginTop: spacing.lg },
 });

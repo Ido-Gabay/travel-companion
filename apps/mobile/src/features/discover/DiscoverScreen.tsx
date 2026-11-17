@@ -22,8 +22,9 @@ import {
   Icon,
   IconButton,
   InlineError,
+  ListGroup,
+  ListRow,
   NavHeader,
-  SegmentedControl,
 } from '@/components/ui';
 import { distanceMeters, formatDistance, type Bounds } from '@/features/companion/geo';
 import { useCurrentLocation } from '@/features/companion/location';
@@ -35,7 +36,8 @@ import { upcomingTrips } from '@/features/trips/upcoming';
 import { useLocale } from '@/i18n/LocaleProvider';
 import { toIsoDate } from '@/lib/dates';
 import { useErrorMessage } from '@/lib/use-error-message';
-import { colors, radii, spacing, typography } from '@/theme/tokens';
+import { colors, radii, shadows, spacing, typography } from '@/theme/tokens';
+import { ContextSheet } from './ContextSheet';
 import { PlacePreviewSheet } from './PlacePreviewSheet';
 import { useDiscoverSearch, useInterpret } from './queries';
 import { ResultCard } from './ResultCard';
@@ -372,6 +374,18 @@ export function DiscoverScreen({ tripId: initialTripId, mode }: DiscoverScreenPr
     setTimeout(() => inputRef.current?.focus(), 50);
   };
 
+  const [contextOpen, setContextOpen] = useState(false);
+  const hasTrips = (trips.data?.items.length ?? 0) > 0;
+  const saveLabel = targetTrip
+    ? t('discover.tripWishlist', { trip: targetTrip.title })
+    : t('discover.collectionOnly');
+  const contextLine = [
+    searchMode === 'search' ? whereLabel(where) : null,
+    hasTrips ? t('discover.savingTo', { target: saveLabel }) : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
   const switchMode = (next: Mode) => {
     if (next === searchMode) return;
     setSearchMode(next);
@@ -408,21 +422,22 @@ export function DiscoverScreen({ tripId: initialTripId, mode }: DiscoverScreenPr
               <AppText variant="display" accessibilityRole="header">
                 {t('discover.title')}
               </AppText>
-              <AppText variant="body" color="secondary">
-                {searchMode === 'search' ? t('discover.subtitleSearch') : t('discover.subtitle')}
-              </AppText>
             </View>
           ) : null}
 
-          <SegmentedControl
-            accessibilityLabel={t('discover.modeLabel')}
-            options={[
-              { value: 'search', label: t('discover.modeSearch') },
-              { value: 'ai', label: t('discover.modeAi') },
-            ]}
-            value={searchMode}
-            onChange={switchMode}
-          />
+          {searchMode === 'ai' ? (
+            <Pressable
+              accessibilityRole="button"
+              hitSlop={8}
+              onPress={() => switchMode('search')}
+              style={styles.modeBack}
+            >
+              <Icon name="arrow-back" size={16} color={colors.accent} flipInRtl />
+              <AppText variant="caption" color="accent" style={styles.bold}>
+                {t('discover.backToSearch')}
+              </AppText>
+            </Pressable>
+          ) : null}
 
           {/* Search box */}
           {searchMode === 'search' ? (
@@ -448,6 +463,19 @@ export function DiscoverScreen({ tripId: initialTripId, mode }: DiscoverScreenPr
               {busy ? <ActivityIndicator color={colors.accent} /> : null}
               {!busy && (query || phase !== 'idle') ? (
                 <IconButton icon="close-circle" accessibilityLabel={t('common.clear')} onPress={reset} />
+              ) : null}
+              {!busy && !query ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={t('discover.modeAi')}
+                  onPress={() => switchMode('ai')}
+                  style={({ pressed }) => [styles.aiPill, pressed && styles.pressed]}
+                >
+                  <Icon name="sparkles-outline" size={14} color={colors.accent} />
+                  <AppText variant="caption" color="accent" style={styles.bold}>
+                    {t('discover.askAi')}
+                  </AppText>
+                </Pressable>
               ) : null}
             </View>
           ) : (
@@ -483,50 +511,25 @@ export function DiscoverScreen({ tripId: initialTripId, mode }: DiscoverScreenPr
             </View>
           )}
 
-          {/* Where (standard search) */}
-          {searchMode === 'search' ? (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-              <Icon name="location-outline" size={16} color={colors.textSecondary} />
-              {wheres.map((key) => (
-                <Chip
-                  key={key}
-                  label={whereLabel(key)}
-                  icon={key === 'me' ? 'navigate' : key === 'hotel' ? 'bed-outline' : undefined}
-                  active={where === key}
-                  onPress={() => chooseWhere(key)}
-                />
-              ))}
-            </ScrollView>
-          ) : null}
-
-          {/* Save target */}
-          {(trips.data?.items.length ?? 0) > 0 ? (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-              <AppText variant="caption" color="secondary">
-                {t('discover.addTo')}
-              </AppText>
-              <Chip
-                label={t('discover.collectionOnly')}
-                icon="bookmark-outline"
-                active={tripId === null}
-                onPress={() => {
-                  setTripChosen(true);
-                  setTripId(null);
-                }}
+          {/* Where to search + where saved places go: one line, one sheet */}
+          {contextLine ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={contextLine}
+              accessibilityHint={t('discover.contextHint')}
+              onPress={() => setContextOpen(true)}
+              style={({ pressed }) => [styles.context, pressed && styles.pressed]}
+            >
+              <Icon
+                name={searchMode === 'search' && where === 'hotel' ? 'bed-outline' : searchMode === 'search' && where === 'me' ? 'navigate-outline' : 'location-outline'}
+                size={16}
+                color={colors.textSecondary}
               />
-              {tripOptions.map((trip) => (
-                <Chip
-                  key={trip.id}
-                  label={t('discover.tripWishlist', { trip: trip.title })}
-                  icon="airplane-outline"
-                  active={trip.id === tripId}
-                  onPress={() => {
-                    setTripChosen(true);
-                    setTripId(trip.id);
-                  }}
-                />
-              ))}
-            </ScrollView>
+              <AppText variant="caption" color="secondary" numberOfLines={1} style={styles.flexShrink}>
+                {contextLine}
+              </AppText>
+              <Icon name="chevron-down" size={14} color={colors.textSecondary} />
+            </Pressable>
           ) : null}
 
           {error ? <InlineError message={error} /> : null}
@@ -557,77 +560,34 @@ export function DiscoverScreen({ tripId: initialTripId, mode }: DiscoverScreenPr
             </Pressable>
           ) : null}
 
-          {/* Categories (standard search) */}
+          {/* Categories (standard search): one row of chips */}
           {searchMode === 'search' ? (
-            phase === 'idle' ? (
-              <>
-                <View style={styles.grid}>
-                  {SEARCH_PRESETS.map((preset) => (
-                    <Pressable
-                      key={preset.key}
-                      accessibilityRole="button"
-                      onPress={() => pickPreset(preset)}
-                      style={({ pressed }) => [styles.tile, pressed && styles.pressed]}
-                    >
-                      <View style={styles.tileIcon}>
-                        <Icon name={preset.icon} size={22} color={colors.accent} />
-                      </View>
-                      <AppText variant="caption" style={styles.tileText} numberOfLines={1}>
-                        {t(`discover.preset.${preset.key}`)}
-                      </AppText>
-                    </Pressable>
-                  ))}
-                </View>
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => switchMode('ai')}
-                  style={({ pressed }) => [styles.aiPromo, pressed && styles.pressed]}
-                >
-                  <Icon name="sparkles" size={20} color={colors.accent} />
-                  <View style={styles.flex}>
-                    <AppText variant="bodyStrong">{t('discover.aiPromoTitle')}</AppText>
-                    <AppText variant="caption" color="secondary">
-                      {t('discover.aiPromoBody')}
-                    </AppText>
-                  </View>
-                  <Icon name="chevron-forward" size={18} color={colors.textTertiary} flipInRtl />
-                </Pressable>
-              </>
-            ) : (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-                {SEARCH_PRESETS.map((preset) => (
-                  <Chip
-                    key={preset.key}
-                    label={t(`discover.preset.${preset.key}`)}
-                    icon={preset.icon}
-                    active={false}
-                    onPress={() => pickPreset(preset)}
-                  />
-                ))}
-              </ScrollView>
-            )
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+              {SEARCH_PRESETS.map((preset) => (
+                <Chip
+                  key={preset.key}
+                  label={t(`discover.preset.${preset.key}`)}
+                  icon={preset.icon}
+                  active={false}
+                  onPress={() => pickPreset(preset)}
+                />
+              ))}
+            </ScrollView>
           ) : null}
 
           {/* AI: suggestions */}
           {searchMode === 'ai' && phase === 'idle' ? (
-            <View style={styles.suggestions}>
-              <AppText variant="overline" color="tertiary">
-                {t('discover.tryThese').toUpperCase()}
-              </AppText>
+            <ListGroup title={t('discover.tryThese')} footer={t('discover.aiPromoBody')}>
               {SUGGESTION_KEYS.map((key) => (
-                <Pressable
+                <ListRow
                   key={key}
-                  accessibilityRole="button"
+                  title={t(`discover.${key}`)}
+                  numberOfLines={2}
+                  chevron={false}
                   onPress={() => submitAi(t(`discover.${key}`))}
-                  style={({ pressed }) => [styles.suggestion, pressed && styles.suggestionPressed]}
-                >
-                  <Icon name="sparkles-outline" size={16} color={colors.textTertiary} />
-                  <AppText variant="body" style={styles.flex}>
-                    {t(`discover.${key}`)}
-                  </AppText>
-                </Pressable>
+                />
               ))}
-            </View>
+            </ListGroup>
           ) : null}
 
           {/* AI: working */}
@@ -709,17 +669,14 @@ export function DiscoverScreen({ tripId: initialTripId, mode }: DiscoverScreenPr
                     <AppText variant="caption" color="secondary" style={styles.flex}>
                       {t('discover.resultCount', { count: results.length })}
                     </AppText>
-                    <View style={styles.toggle}>
-                      <SegmentedControl
-                        accessibilityLabel={t('discover.view')}
-                        options={[
-                          { value: 'list', label: t('discover.list') },
-                          { value: 'map', label: t('discover.map') },
-                        ]}
-                        value={view}
-                        onChange={setView}
-                      />
-                    </View>
+                    <Button
+                      label={view === 'list' ? t('discover.map') : t('discover.list')}
+                      icon={view === 'list' ? 'map-outline' : 'list-outline'}
+                      variant="ghost"
+                      size="sm"
+                      block={false}
+                      onPress={() => setView(view === 'list' ? 'map' : 'list')}
+                    />
                   </View>
 
                   {view === 'list' ? (
@@ -831,6 +788,20 @@ export function DiscoverScreen({ tripId: initialTripId, mode }: DiscoverScreenPr
         ) : null}
       </KeyboardAvoidingView>
 
+      <ContextSheet
+        visible={contextOpen}
+        onClose={() => setContextOpen(false)}
+        wheres={searchMode === 'search' ? wheres : null}
+        where={where}
+        whereLabel={whereLabel}
+        onWhere={chooseWhere}
+        trips={hasTrips ? tripOptions : null}
+        tripId={tripId}
+        onTrip={(id) => {
+          setTripChosen(true);
+          setTripId(id);
+        }}
+      />
       <PlacePreviewSheet
         result={previewResult}
         trip={targetTrip}
@@ -920,17 +891,22 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.md,
     paddingStart: spacing.lg,
-    borderRadius: radii.xl,
+    borderRadius: radii.md,
     backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    shadowColor: '#14202E',
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
   },
-  aiBox: { alignItems: 'flex-start', paddingVertical: spacing.md, borderWidth: 1.5, borderColor: colors.accent },
+  aiBox: { alignItems: 'flex-start', paddingVertical: spacing.md, borderWidth: 1, borderColor: colors.accent },
+  aiPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xxs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 2,
+    borderRadius: radii.pill,
+    backgroundColor: colors.accentSoft,
+  },
+  modeBack: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, alignSelf: 'flex-start' },
+  context: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, alignSelf: 'flex-start', paddingHorizontal: spacing.xs },
+  flexShrink: { flexShrink: 1 },
   input: {
     ...typography.body,
     flex: 1,
@@ -959,7 +935,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs + 2,
     borderRadius: radii.pill,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.surface,
     backgroundColor: colors.surface,
   },
   chipActive: { backgroundColor: colors.accent, borderColor: colors.accent },
@@ -973,56 +949,11 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     backgroundColor: colors.accentSoft,
   },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  tile: {
-    width: '23%',
-    flexGrow: 1,
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingVertical: spacing.md,
-    borderRadius: radii.lg,
-    backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-  },
-  tileIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: radii.pill,
-    backgroundColor: colors.accentSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tileText: { fontWeight: '600' },
-  aiPromo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    padding: spacing.lg,
-    borderRadius: radii.lg,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.accentSoft,
-  },
-  suggestions: { gap: spacing.sm, marginTop: spacing.sm },
-  suggestion: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    padding: spacing.lg,
-    borderRadius: radii.md,
-    backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-  },
-  suggestionPressed: { backgroundColor: colors.surfaceMuted },
   steps: {
     gap: spacing.md,
     padding: spacing.xl,
-    borderRadius: radii.lg,
+    borderRadius: radii.card,
     backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
   },
   step: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   clarify: {
@@ -1056,11 +987,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    padding: spacing.lg,
-    borderRadius: radii.lg,
-    backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
+    paddingHorizontal: spacing.xs,
   },
   openNow: {
     flexDirection: 'row',
@@ -1076,7 +1003,6 @@ const styles = StyleSheet.create({
   openNowText: { fontWeight: '600', color: colors.textSecondary },
   openNowTextOn: { color: colors.textOnAccent },
   resultsHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  toggle: { width: 160 },
   empty: { alignItems: 'center', gap: spacing.sm, padding: spacing.xxl },
   mapWrap: { gap: spacing.md },
   searchArea: {
@@ -1101,10 +1027,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     padding: spacing.lg,
-    borderRadius: radii.md,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.success,
+    borderRadius: radii.card,
+    backgroundColor: '#E6F2E9',
   },
   saveBar: {
     flexDirection: 'row',
@@ -1115,5 +1039,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
+    ...shadows.floating,
   },
 });

@@ -12,15 +12,16 @@ import { useTranslation } from 'react-i18next';
 import {
   AppText,
   Button,
-  Card,
   ErrorState,
   InlineError,
+  ListGroup,
+  ListRow,
   LoadingState,
   Screen,
   ScreenHeader,
-  Section,
-  SegmentedControl,
+  Sheet,
   TextField,
+  useActionMenu,
 } from '@/components/ui';
 import { signOut } from '@/features/auth/auth-actions';
 import { useMe, useUpdatePreferences, useUpdateProfile } from '@/features/me/queries';
@@ -48,6 +49,8 @@ export default function ProfileScreen() {
   const [name, setName] = useState('');
   const [signingOut, setSigningOut] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const openMenu = useActionMenu();
 
   const savedName = me.data?.displayName ?? '';
   useEffect(() => setName(savedName), [savedName]);
@@ -79,7 +82,12 @@ export default function ProfileScreen() {
     setJustSaved(false);
     updateProfile.mutate(
       { displayName: trimmed === '' ? null : trimmed },
-      { onSuccess: () => setJustSaved(true) },
+      {
+        onSuccess: () => {
+          setJustSaved(true);
+          setEditingName(false);
+        },
+      },
     );
   };
 
@@ -92,29 +100,104 @@ export default function ProfileScreen() {
     updatePreferences.mutate({ distanceUnit: next });
   };
 
+  const distanceUnit = profile.preferences.distanceUnit;
+
   return (
     <Screen>
       <ScreenHeader title={t('profile.title')} />
 
-      <Card>
-        <View style={styles.identity}>
-          <View style={styles.avatar}>
-            <AppText variant="heading" color="onAccent" align="center">
-              {initials(profile.displayName, profile.email)}
-            </AppText>
-          </View>
-          <View style={styles.identityText}>
-            <AppText variant="heading" numberOfLines={1}>
-              {profile.displayName ?? t('profile.displayNamePlaceholder')}
-            </AppText>
-            <AppText variant="caption" color="secondary" numberOfLines={1}>
-              {profile.email ?? ''}
-            </AppText>
-          </View>
-        </View>
-      </Card>
+      <ListGroup>
+        <ListRow
+          title={profile.displayName ?? t('profile.displayNamePlaceholder')}
+          subtitle={profile.email ?? undefined}
+          leading={
+            <View style={styles.avatar}>
+              <AppText variant="bodyStrong" color="onAccent" align="center">
+                {initials(profile.displayName, profile.email)}
+              </AppText>
+            </View>
+          }
+          accessibilityHint={t('profile.editName')}
+          onPress={() => {
+            setName(savedName);
+            setEditingName(true);
+          }}
+        />
+      </ListGroup>
+      {justSaved ? (
+        <AppText variant="caption" color="secondary" accessibilityLiveRegion="polite">
+          {t('profile.saved')}
+        </AppText>
+      ) : null}
 
-      <Section title={t('profile.account')}>
+      <ListGroup title={t('profile.preferences')}>
+        <ListRow
+          title={t('profile.language')}
+          leading="language-outline"
+          value={t(`languages.${locale}`)}
+          onPress={() =>
+            openMenu({
+              title: t('profile.language'),
+              items: SUPPORTED_LOCALES.map((value) => ({
+                label: value === locale ? `${t(`languages.${value}`)} ✓` : t(`languages.${value}`),
+                onPress: () => value !== locale && changeLocale(value),
+              })),
+            })
+          }
+        />
+        <ListRow
+          title={t('profile.distanceUnit')}
+          leading="resize-outline"
+          value={t(`profile.${distanceUnit}`)}
+          onPress={() =>
+            openMenu({
+              title: t('profile.distanceUnit'),
+              items: DISTANCE_UNITS.map((value) => ({
+                label: value === distanceUnit ? `${t(`profile.${value}`)} ✓` : t(`profile.${value}`),
+                onPress: () => value !== distanceUnit && changeDistance(value),
+              })),
+            })
+          }
+        />
+        <ListRow
+          title={t('reminders.title')}
+          leading="notifications-outline"
+          onPress={() => router.push('/settings/reminders')}
+        />
+      </ListGroup>
+      {updatePreferences.isError ? <InlineError message={errorMessage(updatePreferences.error)} /> : null}
+
+      <ListGroup title={t('profile.costs')}>
+        <ListRow title={t('usage.title')} leading="speedometer-outline" onPress={() => router.push('/settings/usage')} />
+      </ListGroup>
+
+      <ListGroup>
+        <ListRow
+          title={signingOut ? t('common.loading') : t('profile.signOut')}
+          leading="log-out-outline"
+          destructive
+          chevron={false}
+          onPress={() => {
+            if (signingOut) return;
+            setSigningOut(true);
+            void signOut().finally(() => setSigningOut(false));
+          }}
+        />
+      </ListGroup>
+
+      <Sheet
+        visible={editingName}
+        title={t('profile.displayName')}
+        onClose={() => setEditingName(false)}
+        footer={
+          <Button
+            label={t('common.save')}
+            onPress={saveName}
+            loading={updateProfile.isPending}
+            disabled={!nameChanged || !nameValid}
+          />
+        }
+      >
         <TextField
           label={t('profile.displayName')}
           placeholder={t('profile.displayNamePlaceholder')}
@@ -126,89 +209,21 @@ export default function ProfileScreen() {
           maxLength={80}
           autoComplete="name"
           returnKeyType="done"
+          onSubmitEditing={() => nameChanged && nameValid && saveName()}
         />
         {updateProfile.isError ? <InlineError message={errorMessage(updateProfile.error)} /> : null}
-        <Button
-          label={justSaved && !nameChanged ? t('profile.saved') : t('common.save')}
-          variant="secondary"
-          icon={justSaved && !nameChanged ? 'checkmark' : undefined}
-          onPress={saveName}
-          loading={updateProfile.isPending}
-          disabled={!nameChanged || !nameValid}
-        />
-      </Section>
-
-      <Section title={t('profile.preferences')}>
-        <View style={styles.preference}>
-          <AppText variant="body" color="secondary">
-            {t('profile.language')}
-          </AppText>
-          <SegmentedControl
-            accessibilityLabel={t('profile.language')}
-            options={SUPPORTED_LOCALES.map((value) => ({ value, label: t(`languages.${value}`) }))}
-            value={locale}
-            onChange={changeLocale}
-          />
-        </View>
-        <View style={styles.preference}>
-          <AppText variant="body" color="secondary">
-            {t('profile.distanceUnit')}
-          </AppText>
-          <SegmentedControl
-            accessibilityLabel={t('profile.distanceUnit')}
-            options={DISTANCE_UNITS.map((value) => ({ value, label: t(`profile.${value}`) }))}
-            value={profile.preferences.distanceUnit}
-            onChange={changeDistance}
-            disabled={updatePreferences.isPending}
-          />
-        </View>
-        {updatePreferences.isError ? (
-          <InlineError message={errorMessage(updatePreferences.error)} />
-        ) : null}
-      </Section>
-
-      <Section title={t('reminders.title')}>
-        <Button
-          label={t('reminders.title')}
-          icon="notifications-outline"
-          variant="secondary"
-          onPress={() => router.push('/settings/reminders')}
-        />
-      </Section>
-
-      <Section title={t('profile.costs')}>
-        <Button
-          label={t('usage.title')}
-          icon="speedometer-outline"
-          variant="secondary"
-          onPress={() => router.push('/settings/usage')}
-        />
-      </Section>
-
-      <Button
-        label={t('profile.signOut')}
-        variant="danger"
-        icon="log-out-outline"
-        loading={signingOut}
-        onPress={() => {
-          setSigningOut(true);
-          void signOut().finally(() => setSigningOut(false));
-        }}
-      />
+      </Sheet>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  identity: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg },
   avatar: {
-    width: 52,
-    height: 52,
+    width: 44,
+    height: 44,
     borderRadius: radii.pill,
     backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  identityText: { flex: 1, gap: spacing.xxs },
-  preference: { gap: spacing.sm },
 });

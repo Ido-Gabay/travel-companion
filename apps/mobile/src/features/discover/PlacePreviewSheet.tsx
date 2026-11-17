@@ -5,7 +5,6 @@ import { useTranslation } from 'react-i18next';
 import { googleMapsEnabled, PlacesMap } from '@/components/maps/PlacesMap';
 import { GoogleAttribution } from '@/components/GoogleAttribution';
 import { AppText, Button, Icon, InlineError, Sheet } from '@/components/ui';
-import { CATEGORY_ICONS } from '@/features/places/categories';
 import { GooglePhotoView } from '@/features/places/GooglePhotoView';
 import { useGooglePlacePreview } from '@/features/places/queries';
 import { useLocale } from '@/i18n/LocaleProvider';
@@ -89,7 +88,7 @@ export function PlacePreviewSheet({
         <Button
           label={t('preview.saveToCollection')}
           icon="bookmark-outline"
-          variant={trip ? 'secondary' : 'primary'}
+          variant={trip && !inTrip ? 'ghost' : 'primary'}
           loading={saving && !trip}
           onPress={() => onSaveToCollection(result)}
         />
@@ -97,7 +96,7 @@ export function PlacePreviewSheet({
         <Button
           label={t('preview.openSaved')}
           icon="open-outline"
-          variant="secondary"
+          variant="ghost"
           onPress={() => result.savedPlaceId && onOpenSaved(result.savedPlaceId)}
         />
       ) : null}
@@ -132,42 +131,29 @@ export function PlacePreviewSheet({
       ) : null}
 
       <View style={styles.facts}>
-        <View style={styles.chips}>
-          <View style={styles.chip}>
-            <Icon name={CATEGORY_ICONS[result.category]} size={14} color={colors.accent} />
-            <AppText variant="caption" color="accent" style={styles.bold}>
-              {t(`categories.${result.category}`)}
-            </AppText>
-          </View>
+        {/* One quiet meta line instead of a row of chips. */}
+        <AppText variant="body" color="secondary">
+          {t(`categories.${result.category}`)}
           {data?.rating != null ? (
-            <View style={styles.chip}>
-              <Icon name="star" size={14} color="#E8A317" />
-              <AppText variant="caption" style={styles.bold}>
+            <>
+              {' · '}
+              <AppText variant="body" style={styles.bold}>
+                {'★ '}
                 {new Intl.NumberFormat(locale, { maximumFractionDigits: 1, minimumFractionDigits: 1 }).format(data.rating)}
               </AppText>
-              {data.userRatingCount != null ? (
-                <AppText variant="caption" color="secondary">
-                  ({new Intl.NumberFormat(locale).format(data.userRatingCount)})
-                </AppText>
-              ) : null}
-            </View>
+              {data.userRatingCount != null ? ` (${new Intl.NumberFormat(locale).format(data.userRatingCount)})` : ''}
+            </>
           ) : null}
           {data?.openNow != null ? (
-            <View style={[styles.chip, data.openNow ? styles.openChip : styles.closedChip]}>
-              <AppText variant="caption" style={[styles.bold, data.openNow ? styles.openText : styles.closedText]}>
+            <>
+              {' · '}
+              <AppText variant="body" style={[styles.bold, data.openNow ? styles.openText : styles.closedText]}>
                 {data.openNow ? t('preview.openNow') : t('preview.closedNow')}
               </AppText>
-            </View>
+            </>
           ) : null}
-          {distance ? (
-            <View style={styles.chip}>
-              <Icon name="walk-outline" size={14} color={colors.textSecondary} />
-              <AppText variant="caption" color="secondary">
-                {distance}
-              </AppText>
-            </View>
-          ) : null}
-        </View>
+          {distance ? ` · ${distance}` : ''}
+        </AppText>
 
         {result.businessStatus === 'CLOSED_TEMPORARILY' ? (
           <AppText variant="bodyStrong" color="danger">
@@ -213,12 +199,22 @@ export function PlacePreviewSheet({
       </View>
 
       <View style={styles.actions}>
-        <View style={styles.flex}>
-          <Button label={t('places.directions')} icon="navigate-outline" variant="secondary" onPress={() => open(directionsUrl)} />
-        </View>
-        <View style={styles.flex}>
-          <Button label={t('places.openInGoogleMaps')} icon="map-outline" variant="secondary" onPress={() => open(mapsUrl)} />
-        </View>
+        <Button
+          label={t('places.directions')}
+          icon="navigate-outline"
+          variant="secondary"
+          size="sm"
+          block={false}
+          onPress={() => open(directionsUrl)}
+        />
+        <Button
+          label={t('places.openInGoogleMaps')}
+          icon="map-outline"
+          variant="secondary"
+          size="sm"
+          block={false}
+          onPress={() => open(mapsUrl)}
+        />
       </View>
 
       {googleMapsEnabled && result.location ? (
@@ -237,29 +233,15 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   center: { alignItems: 'center', justifyContent: 'center' },
   bold: { fontWeight: '600' },
-  heroPlaceholder: { height: 220, borderRadius: radii.lg, backgroundColor: colors.surfaceMuted },
+  heroPlaceholder: { height: 220, borderRadius: radii.card, backgroundColor: colors.surfaceMuted },
   photoRow: { gap: spacing.sm },
   thumb: { width: 160 },
   linkRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, alignSelf: 'flex-start' },
   facts: { gap: spacing.md },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xxs,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: radii.pill,
-    backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-  },
-  openChip: { backgroundColor: '#E6F2E9', borderColor: '#E6F2E9' },
-  closedChip: { backgroundColor: colors.dangerSoft, borderColor: colors.dangerSoft },
   openText: { color: colors.success },
   closedText: { color: colors.danger },
   line: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   hours: { gap: spacing.xxs, paddingStart: spacing.xxl + spacing.xs, paddingTop: spacing.xs },
-  actions: { flexDirection: 'row', gap: spacing.md },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   savedRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
 });

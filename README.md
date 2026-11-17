@@ -62,6 +62,7 @@ and [AGENTS.md](AGENTS.md).**
 | [docs/API.md](docs/API.md) | Endpoint reference |
 | [docs/GOOGLE_AND_AI.md](docs/GOOGLE_AND_AI.md) | Google/Claude setup, prices, caps, rules |
 | [docs/LIVE_COMPANION.md](docs/LIVE_COMPANION.md) | Today + reminders design |
+| [docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md) | UI principles, tokens, components, patterns |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Render/Supabase free tiers and deploys |
 
 ## Requirements

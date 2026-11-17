@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { AppText, Icon } from '@/components/ui';
 import { CATEGORY_ICONS } from '@/features/places/categories';
-import { colors, hitSlop, radii, shadows, spacing } from '@/theme/tokens';
+import { colors, hitSlop, radii, spacing } from '@/theme/tokens';
 
 interface ResultCardProps {
   result: DiscoverResult;
@@ -33,7 +33,7 @@ export function ResultCard({ result, selected, alreadySaved, savedLabel, distanc
         <Icon name={CATEGORY_ICONS[result.category]} size={20} color={colors.accent} />
       </View>
       <View style={styles.text}>
-        <AppText variant="heading" numberOfLines={2}>
+        <AppText variant="bodyStrong" numberOfLines={2}>
           {result.name}
         </AppText>
         <AppText variant="caption" color="secondary" numberOfLines={1}>
@@ -85,11 +85,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.md,
     padding: spacing.lg,
-    borderRadius: radii.lg,
+    borderRadius: radii.card,
     backgroundColor: colors.surface,
     borderWidth: 1.5,
-    borderColor: colors.border,
-    ...shadows.card,
+    borderColor: colors.surface,
   },
   selected: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
   pressed: { opacity: 0.85 },

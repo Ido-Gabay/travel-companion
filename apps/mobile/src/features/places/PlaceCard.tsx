@@ -1,6 +1,6 @@
 import type { Place } from '@travel-companion/shared';
 import type { ReactNode } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { AppText, Card, Icon } from '@/components/ui';
 import { GoogleAttribution } from '@/components/GoogleAttribution';
@@ -16,15 +16,20 @@ interface PlaceCardProps {
   showNotes?: boolean;
   /** Small highlighted label, e.g. the day a trip place is planned for. */
   badge?: string | null;
+  /**
+   * Default: a row for use inside a ListGroup (no surface of its own).
+   * standalone: wrapped in a Card, e.g. floating over a map.
+   */
+  standalone?: boolean;
 }
 
-export function PlaceCard({ place, onPress, actions, showNotes = true, badge }: PlaceCardProps) {
+/** A saved place: category (or a check when visited), name, type and address, plan badge, tags. */
+export function PlaceCard({ place, onPress, actions, showNotes = true, badge, standalone = false }: PlaceCardProps) {
   const { t } = useTranslation();
   const display = usePlaceDisplay(place);
   const visited = place.visitedAt !== null;
 
-  return (
-    <Card onPress={onPress} accessibilityLabel={display.name}>
+  const content = (
       <View style={styles.row}>
         <View style={[styles.badge, visited && styles.badgeVisited]}>
           <Icon
@@ -35,7 +40,7 @@ export function PlaceCard({ place, onPress, actions, showNotes = true, badge }: 
         </View>
         <View style={styles.text}>
           <View style={styles.titleRow}>
-            <AppText variant="heading" numberOfLines={1} style={styles.flex}>
+            <AppText variant="bodyStrong" numberOfLines={1} color={visited ? 'tertiary' : 'primary'} style={styles.flex}>
               {display.name}
             </AppText>
             {display.loading ? <ActivityIndicator size="small" color={colors.textTertiary} /> : null}
@@ -46,7 +51,7 @@ export function PlaceCard({ place, onPress, actions, showNotes = true, badge }: 
               .join(' · ')}
           </AppText>
           {showNotes && place.notes ? (
-            <AppText variant="body" color="secondary" numberOfLines={2}>
+            <AppText variant="caption" color="secondary" numberOfLines={1}>
               {place.notes}
             </AppText>
           ) : null}
@@ -75,15 +80,34 @@ export function PlaceCard({ place, onPress, actions, showNotes = true, badge }: 
         </View>
         {actions ?? <Icon name="chevron-forward" size={18} color={colors.textTertiary} flipInRtl />}
       </View>
-    </Card>
+  );
+
+  if (standalone) {
+    return (
+      <Card onPress={onPress} accessibilityLabel={display.name}>
+        {content}
+      </Card>
+    );
+  }
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={display.name}
+      onPress={onPress}
+      style={({ pressed }) => [styles.listRow, pressed && styles.pressed]}
+    >
+      {content}
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', gap: spacing.lg, alignItems: 'center' },
+  row: { flexDirection: 'row', gap: spacing.md, alignItems: 'center' },
+  listRow: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
+  pressed: { backgroundColor: colors.surfaceMuted },
   badge: {
-    width: 44,
-    height: 44,
+    width: 40,
+    height: 40,
     borderRadius: radii.md,
     backgroundColor: colors.accentSoft,
     alignItems: 'center',

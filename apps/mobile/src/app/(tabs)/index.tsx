@@ -1,14 +1,11 @@
 import { router } from 'expo-router';
 import { useMemo } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import {
-  AppText,
   Button,
-  Card,
   EmptyState,
-  Icon,
   ErrorState,
+  ListGroup,
   LoadingState,
   Screen,
   ScreenHeader,
@@ -19,11 +16,14 @@ import { useTrips } from '@/features/trips/queries';
 import { tripMode } from '@/features/trips/itinerary';
 import { TripCard } from '@/features/trips/TripCard';
 import { TripModeCard } from '@/features/trips/TripModeCard';
-import { upcomingTrips } from '@/features/trips/upcoming';
+import { pastTrips, upcomingTrips } from '@/features/trips/upcoming';
 import { toIsoDate } from '@/lib/dates';
 import { useErrorMessage } from '@/lib/use-error-message';
-import { colors, radii, spacing } from '@/theme/tokens';
 
+/**
+ * Home = the active trip (if any) + all your trips. One primary action lives in the
+ * trip card; creating a trip is a quiet action on the list.
+ */
 export default function HomeScreen() {
   const { t } = useTranslation();
   const errorMessage = useErrorMessage();
@@ -31,9 +31,20 @@ export default function HomeScreen() {
   const trips = useTrips();
 
   const today = toIsoDate(new Date());
-  const upcoming = useMemo(() => upcomingTrips(trips.data?.items ?? [], today), [trips.data, today]);
-  const mode = useMemo(() => tripMode(trips.data?.items ?? [], today), [trips.data, today]);
+  const items = useMemo(() => trips.data?.items ?? [], [trips.data]);
+  const mode = useMemo(() => tripMode(items, today), [items, today]);
+  // The focused trip is already on the card above; don't list it twice.
+  const upcoming = useMemo(
+    () => upcomingTrips(items, today).filter((trip) => trip.id !== mode?.trip.id),
+    [items, today, mode],
+  );
+  const past = useMemo(() => pastTrips(items, today), [items, today]);
   const name = me.data?.displayName;
+  const openNewTrip = () => router.push('/trips/new');
+
+  const newTripAction = (
+    <Button label={t('trips.newTrip')} icon="add" variant="ghost" size="sm" block={false} onPress={openNewTrip} />
+  );
 
   return (
     <Screen
@@ -43,67 +54,44 @@ export default function HomeScreen() {
         void me.refetch();
       }}
     >
-      <ScreenHeader
-        title={name ? t('home.greeting', { name }) : t('home.greetingNoName')}
-        subtitle={t('home.subtitle')}
-      />
+      <ScreenHeader title={name ? t('home.greeting', { name }) : t('home.greetingNoName')} />
 
-      {mode ? <TripModeCard mode={mode} today={today} /> : null}
+      {trips.isPending ? (
+        <LoadingState />
+      ) : trips.isError ? (
+        <ErrorState message={errorMessage(trips.error)} onRetry={() => void trips.refetch()} />
+      ) : items.length === 0 ? (
+        <EmptyState
+          icon="airplane-outline"
+          title={t('home.emptyTitle')}
+          body={t('home.emptyBody')}
+          action={<Button label={t('home.createTrip')} icon="add" onPress={openNewTrip} />}
+        />
+      ) : (
+        <>
+          {mode ? <TripModeCard mode={mode} today={today} /> : null}
 
-      <Pressable
-        accessibilityRole="search"
-        accessibilityLabel={t('home.discoverPrompt')}
-        onPress={() => router.navigate('/discover')}
-        style={({ pressed }) => [styles.discover, pressed && styles.discoverPressed]}
-      >
-        <Icon name="sparkles" size={22} color={colors.textOnAccent} />
-        <View style={styles.discoverText}>
-          <AppText variant="heading" color="onAccent">
-            {t('home.discoverPrompt')}
-          </AppText>
-          <AppText variant="caption" style={styles.discoverHint}>
-            {t('home.discoverHint')}
-          </AppText>
-        </View>
-        <Icon name="arrow-forward" size={20} color={colors.textOnAccent} flipInRtl />
-      </Pressable>
+          <Section title={mode ? t('home.otherTrips') : t('home.yourTrips')} action={newTripAction}>
+            {upcoming.length > 0 ? (
+              <ListGroup>
+                {upcoming.map((trip) => (
+                  <TripCard key={trip.id} trip={trip} />
+                ))}
+              </ListGroup>
+            ) : (
+              <EmptyState icon="map-outline" title={t('home.noOtherTitle')} body={t('home.noOtherBody')} />
+            )}
+          </Section>
 
-      <Card>
-        <View style={styles.plan}>
-          <AppText variant="heading">{t('home.planTitle')}</AppText>
-          <AppText variant="body" color="secondary">
-            {t('home.planBody')}
-          </AppText>
-          <Button label={t('home.createTrip')} icon="add" onPress={() => router.push('/trips/new')} />
-        </View>
-      </Card>
-
-      <Section title={t('home.upcoming')}>
-        {trips.isPending ? (
-          <LoadingState />
-        ) : trips.isError ? (
-          <ErrorState message={errorMessage(trips.error)} onRetry={() => void trips.refetch()} />
-        ) : upcoming.length === 0 ? (
-          <EmptyState icon="airplane-outline" title={t('home.emptyTitle')} body={t('home.emptyBody')} />
-        ) : (
-          upcoming.map((trip) => <TripCard key={trip.id} trip={trip} />)
-        )}
-      </Section>
+          {past.length > 0 ? (
+            <ListGroup title={t('home.past')}>
+              {past.map((trip) => (
+                <TripCard key={trip.id} trip={trip} />
+              ))}
+            </ListGroup>
+          ) : null}
+        </>
+      )}
     </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  plan: { gap: spacing.md },
-  discover: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    padding: spacing.xl,
-    borderRadius: radii.xl,
-    backgroundColor: colors.accent,
-  },
-  discoverPressed: { backgroundColor: colors.accentPressed },
-  discoverText: { flex: 1, gap: spacing.xxs },
-  discoverHint: { color: colors.accentSoft },
-});

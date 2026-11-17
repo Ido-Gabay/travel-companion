@@ -3,7 +3,14 @@ import { colors, radii, spacing, typography } from '@/theme/tokens';
 import { AppText } from './AppText';
 import { Icon, type IconName } from './Icon';
 
+/**
+ * primary: the one main action on a screen (filled accent).
+ * secondary: tonal (soft accent fill), for supporting actions.
+ * ghost: plain accent text.
+ * danger: plain red text, for destructive actions (usually inside menus or at the end of a page).
+ */
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
+type Size = 'md' | 'sm';
 
 interface ButtonProps {
   label: string;
@@ -14,14 +21,16 @@ interface ButtonProps {
   disabled?: boolean;
   /** Stretch to the container width (default true). */
   block?: boolean;
+  /** md = 48pt (default), sm = 36pt compact. */
+  size?: Size;
   accessibilityHint?: string;
 }
 
 const palette: Record<Variant, { bg: string; pressed: string; text: string; border?: string }> = {
   primary: { bg: colors.accent, pressed: colors.accentPressed, text: colors.textOnAccent },
-  secondary: { bg: colors.surface, pressed: colors.surfaceMuted, text: colors.text, border: colors.border },
+  secondary: { bg: colors.accentSoft, pressed: '#D3E4E6', text: colors.accent },
   ghost: { bg: 'transparent', pressed: colors.surfaceMuted, text: colors.accent },
-  danger: { bg: colors.surface, pressed: colors.dangerSoft, text: colors.danger, border: colors.border },
+  danger: { bg: 'transparent', pressed: colors.dangerSoft, text: colors.danger },
 };
 
 export function Button({
@@ -32,6 +41,7 @@ export function Button({
   loading = false,
   disabled = false,
   block = true,
+  size = 'md',
   accessibilityHint,
 }: ButtonProps) {
   const p = palette[variant];
@@ -47,6 +57,7 @@ export function Button({
       onPress={onPress}
       style={({ pressed }) => [
         styles.base,
+        size === 'sm' && styles.small,
         block && styles.block,
         {
           backgroundColor: pressed ? p.pressed : p.bg,
@@ -60,8 +71,12 @@ export function Button({
           <ActivityIndicator color={p.text} />
         ) : (
           <>
-            {icon ? <Icon name={icon} size={18} color={p.text} /> : null}
-            <AppText variant="bodyStrong" style={[styles.label, { color: p.text }]} align="center">
+            {icon ? <Icon name={icon} size={size === 'sm' ? 16 : 18} color={p.text} /> : null}
+            <AppText
+              variant="bodyStrong"
+              style={[styles.label, size === 'sm' && styles.smallLabel, { color: p.text }]}
+              align="center"
+            >
               {label}
             </AppText>
           </>
@@ -73,12 +88,14 @@ export function Button({
 
 const styles = StyleSheet.create({
   base: {
-    minHeight: 50,
+    minHeight: 48,
     paddingHorizontal: spacing.xl,
     borderRadius: radii.md,
     borderWidth: StyleSheet.hairlineWidth,
     justifyContent: 'center',
   },
+  small: { minHeight: 36, paddingHorizontal: spacing.md, borderRadius: radii.pill },
+  smallLabel: { fontSize: 15, lineHeight: 20 },
   block: { alignSelf: 'stretch' },
   content: {
     flexDirection: 'row',

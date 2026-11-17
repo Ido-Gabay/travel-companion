@@ -19,7 +19,7 @@ export function EmptyState({ icon, title, body, action, note }: EmptyStateProps)
   return (
     <View style={styles.empty}>
       <View style={styles.iconWrap}>
-        <Icon name={icon} size={28} color={colors.accent} />
+        <Icon name={icon} size={24} color={colors.accent} />
       </View>
       <AppText variant="heading" align="center">
         {title}
@@ -87,14 +87,10 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingVertical: spacing.xxxl,
     paddingHorizontal: spacing.xl,
-    borderRadius: radii.lg,
-    backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
   },
   iconWrap: {
-    width: 56,
-    height: 56,
+    width: 48,
+    height: 48,
     borderRadius: radii.pill,
     backgroundColor: colors.accentSoft,
     alignItems: 'center',
@@ -102,7 +98,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   action: { marginTop: spacing.md, alignSelf: 'stretch' },
-  error: { borderColor: colors.dangerSoft },
+  error: {},
   center: { paddingVertical: spacing.huge, alignItems: 'center', gap: spacing.md },
   inlineError: {
     flexDirection: 'row',

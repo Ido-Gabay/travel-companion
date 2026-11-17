@@ -43,6 +43,8 @@ Code, GitHub Copilot, others). Start with [docs/AI_HANDOFF.md](docs/AI_HANDOFF.m
   `DatabaseService.asUser()` for user data, errors as `{error:{code,message,details}}`.
 - Mobile: Expo Router screens in `src/app`, features in `src/features/<area>`,
   TanStack Query for server state, shared UI in `src/components/ui`, tokens in `src/theme`.
+- UI follows docs/DESIGN_SYSTEM.md: one primary action per screen, `ListGroup`/`ListRow`
+  for lists, item actions in `useActionMenu`, sentence-case labels, no border+shadow cards.
 - Pure logic (no React, no network) goes in plain `.ts` files with a `.spec.ts`
   next to it (Vitest). Live Companion logic lives in `src/features/companion/`.
 - Keep comments short and about *why*.

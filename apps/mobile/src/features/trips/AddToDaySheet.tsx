@@ -1,7 +1,7 @@
 import type { TripPlace } from '@travel-companion/shared';
 import { StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { Button, EmptyState, Icon, InlineError, Sheet } from '@/components/ui';
+import { Button, EmptyState, Icon, InlineError, ListGroup, Sheet } from '@/components/ui';
 import { PlaceCard } from '@/features/places/PlaceCard';
 import { colors } from '@/theme/tokens';
 
@@ -44,19 +44,21 @@ export function AddToDaySheet({
           icon="checkmark-done-outline"
           title={t('itinerary.wishlistEmptyTitle')}
           body={t('itinerary.wishlistEmptyBody')}
-          action={<Button label={t('tripDetail.discover')} icon="sparkles" variant="secondary" onPress={onDiscover} />}
+          action={<Button label={t('tripDetail.discover')} icon="search" variant="secondary" onPress={onDiscover} />}
         />
       ) : (
-        wishlist.map((place) => (
-          <View key={place.id} style={addingId === place.id ? styles.adding : undefined}>
-            <PlaceCard
-              place={place}
-              showNotes={false}
-              onPress={() => onAdd(place)}
-              actions={<Icon name="add-circle" size={28} color={colors.accent} />}
-            />
-          </View>
-        ))
+        <ListGroup>
+          {wishlist.map((place) => (
+            <View key={place.id} style={addingId === place.id ? styles.adding : undefined}>
+              <PlaceCard
+                place={place}
+                showNotes={false}
+                onPress={() => onAdd(place)}
+                actions={<Icon name="add-circle" size={28} color={colors.accent} />}
+              />
+            </View>
+          ))}
+        </ListGroup>
       )}
     </Sheet>
   );

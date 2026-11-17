@@ -12,13 +12,14 @@ import { usePlaceDisplay } from '@/features/places/use-place-display';
 import { useLocale } from '@/i18n/LocaleProvider';
 import { formatTripDates } from '@/lib/dates';
 import { useErrorMessage } from '@/lib/use-error-message';
-import { colors, radii, shadows, spacing } from '@/theme/tokens';
+import { colors, radii, spacing } from '@/theme/tokens';
 import { countByDay, formatStartTime, nextStop, placesForDay, wishlistPlaces, type TripMode } from './itinerary';
 import { useTrip } from './queries';
 
 /**
- * Home's focus card. Before the trip: a countdown and how much is planned.
- * During the trip: today's plan with the next stop, directions and "Done".
+ * Home's focus card. Before the trip: a countdown, a one-line summary of the plan and
+ * one primary action (keep planning). During the trip: the next stop with Directions
+ * and Done, and one primary action (Open Today). The full day lives on Today.
  */
 export function TripModeCard({ mode, today }: { mode: TripMode; today: string }) {
   const { t } = useTranslation();
@@ -34,7 +35,7 @@ export function TripModeCard({ mode, today }: { mode: TripMode; today: string })
       params: mode.phase === 'during' ? { tripId: mode.trip.id } : { tripId: mode.trip.id, preview: '1' },
     });
 
-  const overline =
+  const eyebrow =
     mode.phase === 'during'
       ? t('tripMode.dayOf', { day: mode.dayNumber, total: mode.totalDays })
       : mode.daysUntil === 1
@@ -43,37 +44,42 @@ export function TripModeCard({ mode, today }: { mode: TripMode; today: string })
 
   return (
     <View style={styles.card}>
-      <Pressable accessibilityRole="button" onPress={openTrip} style={styles.header}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${mode.trip.title}, ${eyebrow}`}
+        onPress={openTrip}
+        style={({ pressed }) => [styles.header, pressed && styles.pressed]}
+      >
         <View style={styles.flex}>
-          <AppText variant="overline" color="accent">
-            {overline.toUpperCase()}
+          <AppText variant="label" color="accent">
+            {eyebrow}
           </AppText>
-          <AppText variant="title">{mode.trip.title}</AppText>
+          <AppText variant="title" numberOfLines={2}>
+            {mode.trip.title}
+          </AppText>
           <AppText variant="caption" color="secondary">
             {formatTripDates(mode.trip.startDate, mode.trip.endDate, locale)}
           </AppText>
         </View>
-        <View style={styles.headerIcon}>
-          <Icon name={mode.phase === 'during' ? 'navigate' : 'airplane'} size={22} color={colors.textOnAccent} />
-        </View>
+        <Icon name="chevron-forward" size={18} color={colors.textTertiary} flipInRtl />
       </Pressable>
 
       {detail.isPending ? (
         <ActivityIndicator color={colors.accent} />
       ) : detail.isError ? (
-        <Button label={t('tripMode.openTrip')} variant="secondary" onPress={openTrip} />
+        <Button label={t('tripMode.openTrip')} onPress={openTrip} />
       ) : mode.phase === 'before' ? (
-        <BeforeTrip places={detail.data.places} totalDays={tripDays(detail.data.startDate, detail.data.endDate).length} hasBase={detail.data.baseLocation !== null} tripId={mode.trip.id} onOpen={openTrip} />
+        <BeforeTrip
+          places={detail.data.places}
+          totalDays={tripDays(detail.data.startDate, detail.data.endDate).length}
+          hasBase={detail.data.baseLocation !== null}
+          tripId={mode.trip.id}
+          onOpen={openTrip}
+          onPreview={openToday}
+        />
       ) : (
-        <Today stops={placesForDay(detail.data.places, tripToday ?? today)} tripId={mode.trip.id} onOpen={openTrip} />
+        <Today stops={placesForDay(detail.data.places, tripToday ?? today)} onOpen={openTrip} onToday={openToday} />
       )}
-
-      <Button
-        label={mode.phase === 'during' ? t('tripMode.openToday') : t('tripMode.previewToday')}
-        icon={mode.phase === 'during' ? 'compass' : 'eye-outline'}
-        variant={mode.phase === 'during' ? 'primary' : 'secondary'}
-        onPress={openToday}
-      />
     </View>
   );
 }
@@ -84,23 +90,28 @@ function BeforeTrip({
   hasBase,
   tripId,
   onOpen,
+  onPreview,
 }: {
   places: readonly TripPlace[];
   totalDays: number;
   hasBase: boolean;
   tripId: string;
   onOpen: () => void;
+  onPreview: () => void;
 }) {
   const { t } = useTranslation();
   const plannedDays = countByDay(places).size;
   const planned = places.length - wishlistPlaces(places).length;
   return (
     <>
-      <View style={styles.stats}>
-        <Stat value={String(planned)} label={t('tripMode.planned')} />
-        <Stat value={String(places.length - planned)} label={t('tripMode.onWishlist')} />
-        <Stat value={`${plannedDays}/${totalDays}`} label={t('tripMode.daysPlanned')} />
-      </View>
+      <AppText variant="body" color="secondary">
+        {t('tripMode.summary', {
+          planned,
+          wishlist: places.length - planned,
+          days: plannedDays,
+          total: totalDays,
+        })}
+      </AppText>
       {!hasBase ? (
         <Pressable
           accessibilityRole="button"
@@ -114,23 +125,26 @@ function BeforeTrip({
           <Icon name="chevron-forward" size={16} color={colors.accent} flipInRtl />
         </Pressable>
       ) : null}
-      <Button label={plannedDays < totalDays ? t('tripMode.keepPlanning') : t('tripMode.openPlan')} icon="calendar-outline" onPress={onOpen} />
+      <View style={styles.actions}>
+        <Button
+          label={plannedDays < totalDays ? t('tripMode.keepPlanning') : t('tripMode.openPlan')}
+          onPress={onOpen}
+        />
+        <Button label={t('tripMode.previewToday')} variant="ghost" size="sm" onPress={onPreview} />
+      </View>
     </>
   );
 }
 
-function Stat({ value, label }: { value: string; label: string }) {
-  return (
-    <View style={styles.stat}>
-      <AppText variant="title">{value}</AppText>
-      <AppText variant="caption" color="secondary" align="center">
-        {label}
-      </AppText>
-    </View>
-  );
-}
-
-function Today({ stops, tripId, onOpen }: { stops: readonly TripPlace[]; tripId: string; onOpen: () => void }) {
+function Today({
+  stops,
+  onOpen,
+  onToday,
+}: {
+  stops: readonly TripPlace[];
+  onOpen: () => void;
+  onToday: () => void;
+}) {
   const { t } = useTranslation();
   const errorMessage = useErrorMessage();
   const setVisited = useSetVisited();
@@ -143,18 +157,7 @@ function Today({ stops, tripId, onOpen }: { stops: readonly TripPlace[]; tripId:
         <AppText variant="body" color="secondary">
           {t('tripMode.nothingToday')}
         </AppText>
-        <View style={styles.buttons}>
-          <View style={styles.flex}>
-            <Button label={t('tripMode.planToday')} icon="calendar-outline" onPress={onOpen} />
-          </View>
-          <Button
-            label={t('tripDetail.discover')}
-            icon="sparkles"
-            variant="secondary"
-            block={false}
-            onPress={() => router.push({ pathname: '/trips/[id]/discover', params: { id: tripId } })}
-          />
-        </View>
+        <Button label={t('tripMode.planToday')} onPress={onOpen} />
       </>
     );
   }
@@ -170,35 +173,19 @@ function Today({ stops, tripId, onOpen }: { stops: readonly TripPlace[]; tripId:
         />
       ) : (
         <View style={styles.allDone}>
-          <Icon name="checkmark-done-circle" size={28} color={colors.success} />
+          <Icon name="checkmark-done-circle" size={24} color={colors.success} />
           <AppText variant="bodyStrong" style={styles.flex}>
             {t('tripMode.allDone')}
           </AppText>
         </View>
       )}
       {setVisited.isError ? <InlineError message={errorMessage(setVisited.error)} /> : null}
-
-      <View style={styles.list}>
-        {stops.map((stop, index) => (
-          <StopLine
-            key={stop.id}
-            stop={stop}
-            number={index + 1}
-            current={stop.id === next?.id}
-            onToggle={() => setVisited.mutate({ id: stop.id, visited: stop.visitedAt === null })}
-          />
-        ))}
-      </View>
-
-      <Pressable accessibilityRole="button" onPress={onOpen} style={({ pressed }) => [styles.footer, pressed && styles.pressed]}>
-        <AppText variant="caption" color="secondary" style={styles.flex}>
+      <View style={styles.actions}>
+        <Button label={t('tripMode.openToday')} onPress={onToday} />
+        <AppText variant="caption" color="tertiary" align="center">
           {t('tripMode.doneOf', { done, total: stops.length })}
         </AppText>
-        <AppText variant="caption" color="accent" style={styles.bold}>
-          {t('tripMode.seeToday')}
-        </AppText>
-        <Icon name="chevron-forward" size={14} color={colors.accent} flipInRtl />
-      </Pressable>
+      </View>
     </>
   );
 }
@@ -229,11 +216,10 @@ function NextStop({
 
   return (
     <View style={styles.next}>
-      <AppText variant="overline" color="tertiary">
-        {(stop.startTime
+      <AppText variant="label" color="secondary">
+        {stop.startTime
           ? t('tripMode.nextAt', { number, time: formatStartTime(stop.startTime, locale) })
-          : t('tripMode.next', { number })
-        ).toUpperCase()}
+          : t('tripMode.next', { number })}
       </AppText>
       <Pressable
         accessibilityRole="button"
@@ -247,72 +233,21 @@ function NextStop({
             {[display.typeLabel, display.address].filter(Boolean).join(' · ')}
           </AppText>
         ) : null}
-        {stop.source === 'google' && display.google ? (
-          <GoogleAttribution inline align="start" />
-        ) : null}
+        {stop.source === 'google' && display.google ? <GoogleAttribution inline align="start" /> : null}
       </Pressable>
-      <View style={styles.buttons}>
-        <View style={styles.flex}>
-          <Button label={t('places.directions')} icon="navigate" onPress={directions} />
-        </View>
-        <Button label={t('tripMode.done')} icon="checkmark" variant="secondary" block={false} loading={marking} onPress={onDone} />
+      <View style={styles.row}>
+        <Button label={t('places.directions')} icon="navigate" variant="secondary" size="sm" block={false} onPress={directions} />
+        <Button
+          label={t('tripMode.done')}
+          icon="checkmark"
+          variant="secondary"
+          size="sm"
+          block={false}
+          loading={marking}
+          onPress={onDone}
+          accessibilityHint={t('tripMode.markDone', { name: display.name })}
+        />
       </View>
-    </View>
-  );
-}
-
-function StopLine({
-  stop,
-  number,
-  current,
-  onToggle,
-}: {
-  stop: TripPlace;
-  number: number;
-  current: boolean;
-  onToggle: () => void;
-}) {
-  const { t } = useTranslation();
-  const { locale } = useLocale();
-  const display = usePlaceDisplay(stop);
-  const visited = stop.visitedAt !== null;
-  return (
-    <View style={styles.line}>
-      <Pressable
-        accessibilityRole="checkbox"
-        accessibilityState={{ checked: visited }}
-        accessibilityLabel={t('tripMode.markDone', { name: display.name })}
-        hitSlop={8}
-        onPress={onToggle}
-        style={[styles.lineCheck, visited && styles.lineCheckDone, current && styles.lineCheckCurrent]}
-      >
-        {visited ? (
-          <Icon name="checkmark" size={14} color={colors.textOnAccent} />
-        ) : (
-          <AppText variant="caption" style={[styles.bold, current ? styles.onAccent : styles.accentText]}>
-            {number}
-          </AppText>
-        )}
-      </Pressable>
-      <Pressable
-        accessibilityRole="button"
-        style={styles.flex}
-        onPress={() => router.push({ pathname: '/places/[id]', params: { id: stop.id } })}
-      >
-        <AppText
-          variant="body"
-          numberOfLines={1}
-          color={visited ? 'tertiary' : 'primary'}
-          style={visited ? styles.struck : undefined}
-        >
-          {display.name}
-        </AppText>
-      </Pressable>
-      {stop.startTime ? (
-        <AppText variant="caption" color="secondary">
-          {formatStartTime(stop.startTime, locale)}
-        </AppText>
-      ) : null}
     </View>
   );
 }
@@ -321,44 +256,22 @@ const styles = StyleSheet.create({
   card: {
     gap: spacing.lg,
     padding: spacing.xl,
-    borderRadius: radii.xl,
+    borderRadius: radii.card,
     backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.accentSoft,
-    ...shadows.card,
   },
-  header: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
-  headerIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: radii.pill,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  header: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   flex: { flex: 1 },
   pressed: { opacity: 0.7 },
-  bold: { fontWeight: '700' },
-  onAccent: { color: colors.textOnAccent },
-  accentText: { color: colors.accent },
-  stats: { flexDirection: 'row', gap: spacing.sm },
-  stat: {
-    flex: 1,
-    alignItems: 'center',
-    gap: spacing.xxs,
-    paddingVertical: spacing.md,
-    borderRadius: radii.lg,
-    backgroundColor: colors.background,
-  },
   hint: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
     padding: spacing.md,
-    borderRadius: radii.lg,
+    borderRadius: radii.md,
     backgroundColor: colors.accentSoft,
   },
-  buttons: { flexDirection: 'row', gap: spacing.md },
+  actions: { gap: spacing.sm },
+  row: { flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap' },
   next: {
     gap: spacing.sm,
     padding: spacing.lg,
@@ -366,26 +279,4 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   allDone: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  list: { gap: spacing.sm },
-  line: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  lineCheck: {
-    width: 26,
-    height: 26,
-    borderRadius: radii.pill,
-    borderWidth: 1.5,
-    borderColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  lineCheckCurrent: { backgroundColor: colors.accent },
-  lineCheckDone: { backgroundColor: colors.success, borderColor: colors.success },
-  struck: { textDecorationLine: 'line-through' },
-  footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingTop: spacing.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
 });

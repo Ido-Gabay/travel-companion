@@ -8,12 +8,11 @@ import {
   type TripPlace,
 } from '@travel-companion/shared';
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { googleMapsEnabled, PlacesMap } from '@/components/maps/PlacesMap';
 import { GoogleAttribution } from '@/components/GoogleAttribution';
-import { AppText, Button, Card, EmptyState, Icon, IconButton, InlineError } from '@/components/ui';
-import { CATEGORY_ICONS } from '@/features/places/categories';
+import { AppText, Button, EmptyState, Icon, InlineError, useActionMenu } from '@/components/ui';
 import { openInMaps } from '@/features/places/open-in-maps';
 import { useGooglePlace, useGooglePlaces, useSetVisited } from '@/features/places/queries';
 import { zonedNow } from '@/features/companion/zoned-time';
@@ -60,6 +59,7 @@ export function ItineraryView({ trip, onOpenPlace, onDiscover, onEditTrip }: Iti
   const setVisited = useSetVisited();
   const muted = useMutedStops();
   const toggleMuted = useToggleMuted();
+  const showMenu = useActionMenu();
 
   const days = useMemo(() => tripDays(trip.startDate, trip.endDate), [trip.startDate, trip.endDate]);
   // Open on the trip's today (pinned hotel's time zone), else the phone's.
@@ -104,26 +104,56 @@ export function ItineraryView({ trip, onOpenPlace, onDiscover, onEditTrip }: Iti
     setMoving(null);
     if (day !== place.day) schedule.mutate({ placeId: place.id, day });
   };
-  const openMenu = (place: TripPlace, name: string) => {
-    Alert.alert(name, undefined, [
-      { text: t('itinerary.openPlace'), onPress: () => onOpenPlace(place) },
-      { text: t('itinerary.changeDay'), onPress: () => setMoving({ place, name }) },
-      ...(place.startTime
-        ? [
-            { text: t('itinerary.clearTime'), onPress: () => schedule.mutate({ placeId: place.id, startTime: null }) },
-            {
-              text: muted.data?.includes(muteKey(trip.id, place.id)) ? t('reminders.unmuteStop') : t('reminders.muteStop'),
-              onPress: () => toggleMuted.mutate(muteKey(trip.id, place.id)),
-            },
-          ]
-        : []),
-      {
-        text: t('itinerary.backToWishlist'),
-        style: 'destructive' as const,
-        onPress: () => schedule.mutate({ placeId: place.id, day: null }),
-      },
-      { text: t('common.cancel'), style: 'cancel' as const },
-    ]);
+  const directionsTo = (place: TripPlace, name: string) => {
+    if (place.googlePlaceId) {
+      void Linking.openURL(googleMapsDirectionsUrl(place.googlePlaceId, name)).catch(() => undefined);
+    } else {
+      openInMaps(place.name ?? '', place.address);
+    }
+  };
+  /** Every action for a stop lives here, so the row itself stays clean. */
+  const openMenu = (place: TripPlace, name: string, index: number) => {
+    const isMuted = muted.data?.includes(muteKey(trip.id, place.id)) ?? false;
+    const visited = place.visitedAt !== null;
+    showMenu({
+      title: name,
+      subtitle: place.startTime ? formatStartTime(place.startTime, locale) : undefined,
+      items: [
+        { label: t('itinerary.openPlace'), icon: 'information-circle-outline', onPress: () => onOpenPlace(place) },
+        {
+          label: place.startTime ? t('itinerary.changeTime') : t('itinerary.addTime'),
+          icon: 'time-outline',
+          onPress: () => setTimeFor({ place, name }),
+        },
+        { label: t('places.directions'), icon: 'navigate-outline', onPress: () => directionsTo(place, name) },
+        {
+          label: visited ? t('itinerary.markNotDone') : t('tripMode.done'),
+          icon: visited ? 'arrow-undo-outline' : 'checkmark-circle-outline',
+          onPress: () => setVisited.mutate({ id: place.id, visited: !visited }),
+        },
+        { label: t('itinerary.moveUp'), icon: 'arrow-up', onPress: () => move(place, -1), hidden: index === 0 },
+        { label: t('itinerary.moveDown'), icon: 'arrow-down', onPress: () => move(place, 1), hidden: index === stops.length - 1 },
+        { label: t('itinerary.changeDay'), icon: 'calendar-outline', onPress: () => setMoving({ place, name }) },
+        {
+          label: isMuted ? t('reminders.unmuteStop') : t('reminders.muteStop'),
+          icon: isMuted ? 'notifications-outline' : 'notifications-off-outline',
+          onPress: () => toggleMuted.mutate(muteKey(trip.id, place.id)),
+          hidden: !place.startTime,
+        },
+        {
+          label: t('itinerary.clearTime'),
+          icon: 'close-circle-outline',
+          onPress: () => schedule.mutate({ placeId: place.id, startTime: null }),
+          hidden: !place.startTime,
+        },
+        {
+          label: t('itinerary.backToWishlist'),
+          icon: 'remove-circle-outline',
+          destructive: true,
+          onPress: () => schedule.mutate({ placeId: place.id, day: null }),
+        },
+      ],
+    });
   };
 
   return (
@@ -167,12 +197,12 @@ export function ItineraryView({ trip, onOpenPlace, onDiscover, onEditTrip }: Iti
         <>
           <View style={styles.dayHeader}>
             <View style={styles.flex}>
-              <AppText variant="overline" color="accent">
-                {t('itinerary.dayNumber', { number: dayIndex + 1 }).toUpperCase()}
+              <AppText variant="label" color="accent">
+                {t('itinerary.dayNumber', { number: dayIndex + 1 })}
               </AppText>
               <AppText variant="title">{dayTitle(selectedDay, locale)}</AppText>
             </View>
-            <Button label={t('itinerary.add')} icon="add" variant="secondary" block={false} onPress={() => setAdding(true)} />
+            <Button label={t('itinerary.add')} icon="add" variant="secondary" size="sm" block={false} onPress={() => setAdding(true)} />
           </View>
 
           {schedule.isError ? <InlineError message={errorMessage(schedule.error)} /> : null}
@@ -186,14 +216,14 @@ export function ItineraryView({ trip, onOpenPlace, onDiscover, onEditTrip }: Iti
                 wishlist.length > 0 ? (
                   <Button label={t('itinerary.addFromWishlist')} icon="add" onPress={() => setAdding(true)} />
                 ) : (
-                  <Button label={t('tripDetail.discover')} icon="sparkles" onPress={onDiscover} />
+                  <Button label={t('tripDetail.discover')} icon="search" onPress={onDiscover} />
                 )
               }
             />
           ) : (
             <>
               <DayMap stops={stops} />
-              <View>
+              <View style={styles.stops}>
                 {stops.map((stop, index) => (
                   <StopRow
                     key={stop.id}
@@ -201,12 +231,9 @@ export function ItineraryView({ trip, onOpenPlace, onDiscover, onEditTrip }: Iti
                     number={index + 1}
                     first={index === 0}
                     last={index === stops.length - 1}
-                    onOpen={() => onOpenPlace(stop)}
                     onTime={(name) => setTimeFor({ place: stop, name })}
                     onToggleVisited={() => setVisited.mutate({ id: stop.id, visited: stop.visitedAt === null })}
-                    onUp={() => move(stop, -1)}
-                    onDown={() => move(stop, 1)}
-                    onMenu={(name) => openMenu(stop, name)}
+                    onMenu={(name) => openMenu(stop, name, index)}
                   />
                 ))}
               </View>
@@ -304,7 +331,8 @@ function DayMap({ stops }: { stops: readonly TripPlace[] }) {
         <Button
           label={t('itinerary.openRoute')}
           icon="walk-outline"
-          variant="secondary"
+          variant="ghost"
+          size="sm"
           onPress={() => void Linking.openURL(routeUrl).catch(() => undefined)}
         />
       ) : null}
@@ -317,36 +345,33 @@ interface StopRowProps {
   number: number;
   first: boolean;
   last: boolean;
-  onOpen: () => void;
   onTime: (name: string) => void;
   onToggleVisited: () => void;
-  onUp: () => void;
-  onDown: () => void;
   onMenu: (name: string) => void;
 }
 
-/** One stop of the day: number on a timeline, time, name, and quick actions. */
-function StopRow({ place, number, first, last, onOpen, onTime, onToggleVisited, onUp, onDown, onMenu }: StopRowProps) {
+/**
+ * One stop of the day. Three touch targets only: the number (done / not done),
+ * the time chip (time and visit length) and the row (all other actions in a menu).
+ */
+function StopRow({ place, number, first, last, onTime, onToggleVisited, onMenu }: StopRowProps) {
   const { t } = useTranslation();
   const { locale } = useLocale();
   const display = usePlaceDisplay(place);
   const visited = place.visitedAt !== null;
 
-  const directions = () => {
-    if (place.googlePlaceId) {
-      void Linking.openURL(googleMapsDirectionsUrl(place.googlePlaceId, display.google?.name ?? display.name)).catch(
-        () => undefined,
-      );
-    } else {
-      openInMaps(place.name ?? '', place.address);
-    }
-  };
-
   return (
     <View style={styles.stopRow}>
       <View style={styles.rail}>
         <View style={[styles.railLine, first && styles.railHidden]} />
-        <View style={[styles.number, visited && styles.numberVisited]}>
+        <Pressable
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: visited }}
+          accessibilityLabel={t('tripMode.markDone', { name: display.name })}
+          hitSlop={8}
+          onPress={onToggleVisited}
+          style={[styles.number, visited && styles.numberVisited]}
+        >
           {visited ? (
             <Icon name="checkmark" size={16} color={colors.textOnAccent} />
           ) : (
@@ -354,31 +379,41 @@ function StopRow({ place, number, first, last, onOpen, onTime, onToggleVisited, 
               {number}
             </AppText>
           )}
-        </View>
+        </Pressable>
         <View style={[styles.railLine, styles.railGrow, last && styles.railHidden]} />
       </View>
 
-      <Card onPress={onOpen} accessibilityLabel={display.name} style={styles.stopCard}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={display.name}
+        accessibilityHint={t('itinerary.rowHint')}
+        onPress={() => onMenu(display.name)}
+        style={({ pressed }) => [styles.stopBody, !last && styles.stopDivider, pressed && styles.pressed]}
+      >
         <View style={styles.stopTop}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={place.startTime ? t('itinerary.changeTime') : t('itinerary.addTime')}
+            hitSlop={6}
             onPress={() => onTime(display.name)}
             style={({ pressed }) => [styles.time, place.startTime ? styles.timeSet : null, pressed && styles.pressed]}
           >
-            <Icon name="time-outline" size={14} color={place.startTime ? colors.textOnAccent : colors.accent} />
             <AppText variant="caption" style={[styles.timeText, place.startTime ? styles.onAccent : styles.accentText]}>
               {place.startTime ? formatStartTime(place.startTime, locale) : t('itinerary.addTime')}
             </AppText>
           </Pressable>
-          <AppText variant="caption" color="secondary">
+          <AppText variant="caption" color="secondary" style={styles.flex} numberOfLines={1}>
             {formatDurationShort(visitMinutes(place), t)}
             {place.durationMinutes === null ? ' ' + t('itinerary.approx') : ''}
           </AppText>
-          <View style={styles.flex} />
-          <Icon name={CATEGORY_ICONS[place.category]} size={16} color={colors.textTertiary} />
+          <Icon name="ellipsis-horizontal" size={18} color={colors.textTertiary} />
         </View>
-        <AppText variant="heading" numberOfLines={2}>
+        <AppText
+          variant="bodyStrong"
+          numberOfLines={2}
+          color={visited ? 'tertiary' : 'primary'}
+          style={visited ? styles.struck : undefined}
+        >
           {display.name}
         </AppText>
         {display.typeLabel || display.address ? (
@@ -387,37 +422,12 @@ function StopRow({ place, number, first, last, onOpen, onTime, onToggleVisited, 
           </AppText>
         ) : null}
         {place.notes ? (
-          <AppText variant="body" color="secondary" numberOfLines={2}>
+          <AppText variant="caption" color="tertiary" numberOfLines={1}>
             {place.notes}
           </AppText>
         ) : null}
-        {place.source === 'google' && display.google ? (
-          <GoogleAttribution inline align="start" />
-        ) : null}
-        <View style={styles.stopActions}>
-          <IconButton icon="navigate-outline" accessibilityLabel={t('places.directions')} onPress={directions} />
-          <Pressable
-            accessibilityRole="checkbox"
-            accessibilityState={{ checked: visited }}
-            accessibilityLabel={t('tripMode.markDone', { name: display.name })}
-            onPress={onToggleVisited}
-            style={({ pressed }) => [styles.doneChip, visited && styles.doneChipOn, pressed && styles.pressed]}
-          >
-            <Icon name="checkmark" size={14} color={visited ? colors.textOnAccent : colors.success} />
-            <AppText variant="caption" style={[styles.timeText, visited ? styles.onAccent : styles.successText]}>
-              {visited ? t('itinerary.visited') : t('tripMode.done')}
-            </AppText>
-          </Pressable>
-          <View style={styles.flex} />
-          {!first ? <IconButton icon="arrow-up" accessibilityLabel={t('itinerary.moveUp')} onPress={onUp} /> : null}
-          {!last ? <IconButton icon="arrow-down" accessibilityLabel={t('itinerary.moveDown')} onPress={onDown} /> : null}
-          <IconButton
-            icon="ellipsis-horizontal"
-            accessibilityLabel={t('itinerary.more')}
-            onPress={() => onMenu(display.name)}
-          />
-        </View>
-      </Card>
+        {place.source === 'google' && display.google ? <GoogleAttribution inline align="start" /> : null}
+      </Pressable>
     </View>
   );
 }
@@ -435,7 +445,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.surface,
     alignItems: 'center',
     gap: spacing.xxs,
   },
@@ -446,6 +456,7 @@ const styles = StyleSheet.create({
   dotSelected: { backgroundColor: colors.textOnAccent },
   dayHeader: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.md },
   map: { gap: spacing.md },
+  stops: { backgroundColor: colors.surface, borderRadius: radii.card, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
   stopRow: { flexDirection: 'row', gap: spacing.md },
   rail: { width: 28, alignItems: 'center' },
   railLine: { width: 2, height: spacing.lg, backgroundColor: colors.borderStrong },
@@ -461,7 +472,9 @@ const styles = StyleSheet.create({
   },
   numberVisited: { backgroundColor: colors.success },
   numberText: { fontWeight: '700' },
-  stopCard: { flex: 1, gap: spacing.xs, marginBottom: spacing.md },
+  stopBody: { flex: 1, gap: spacing.xxs, paddingVertical: spacing.md },
+  stopDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+  struck: { textDecorationLine: 'line-through' },
   stopTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   time: {
     flexDirection: 'row',
@@ -473,20 +486,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accentSoft,
   },
   timeSet: { backgroundColor: colors.accent },
-  doneChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xxs,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    borderColor: colors.success,
-  },
-  doneChipOn: { backgroundColor: colors.success },
-  successText: { color: colors.success },
   timeText: { fontWeight: '600' },
-  stopActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: spacing.xs },
   wishlistHint: {
     flexDirection: 'row',
     alignItems: 'center',

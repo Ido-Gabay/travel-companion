@@ -18,3 +18,11 @@ export function upcomingTrips(trips: readonly Trip[], today: string): Trip[] {
       return a.startDate.localeCompare(b.startDate);
     });
 }
+
+/** Trips that have ended, most recent first. */
+export function pastTrips(trips: readonly Trip[], today: string): Trip[] {
+  const upcoming = new Set(upcomingTrips(trips, today).map((trip) => trip.id));
+  return trips
+    .filter((trip) => !upcoming.has(trip.id))
+    .sort((a, b) => (b.startDate ?? '').localeCompare(a.startDate ?? ''));
+}

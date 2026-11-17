@@ -22,6 +22,7 @@ export default function TabsLayout() {
   const { t } = useTranslation();
 
   // SDK 58: every tab must be declared here to appear in the tab bar.
+  // Four tabs: Home (trips + today), Discover, Saved (collection), Profile.
   return (
     <Tabs
       screenOptions={{
@@ -41,11 +42,12 @@ export default function TabsLayout() {
       />
       <Tabs.Screen
         name="discover"
-        options={{ title: t('tabs.discover'), tabBarIcon: tabIcon('sparkles-outline', 'sparkles') }}
+        options={{ title: t('tabs.discover'), tabBarIcon: tabIcon('search-outline', 'search') }}
       />
       <Tabs.Screen
         name="trips"
-        options={{ title: t('tabs.trips'), tabBarIcon: tabIcon('airplane-outline', 'airplane') }}
+        // Trips are listed on Home now. The route stays (deep links, "See all"), hidden from the bar.
+        options={{ title: t('tabs.trips'), href: null }}
       />
       <Tabs.Screen
         name="places"

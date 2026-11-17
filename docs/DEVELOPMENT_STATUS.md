@@ -1,18 +1,17 @@
 # Development status
 
-**Last updated: 2026-11-17 (M11 trip readiness written).**
+**Last updated: 2026-11-17 (U1 UX/UI redesign written on top of M11).**
 Update this file at the end of every milestone or meaningful change.
 
 ## Snapshot
 
 - **Last commit on `main`:** `52c49b6` "M10: local reminders, trip time zone; AI handoff docs".
-- **Uncommitted when this was written:** M11 trip readiness (trip time zone for
-  Today/Home/itinerary, API rate limiting, Google attribution component, photo
-  links, notification attribution, Hebrew tab label) and these doc updates.
+- **Last commit seen on the Mac:** `42f0ae6` "M11: trip readiness" (committed by the owner).
+- **Uncommitted when this was written:** U1 UX/UI redesign (app only) and these doc updates.
 - **Native build:** the iOS project was regenerated after M10 (contains
   `expo-notifications`, entitlements empty = no push). M11 needs no native rebuild.
-- **Current milestone:** M11 written. Next: owner verification, then the iPhone
-  Release install for the trip (R1, Nov 21–22).
+- **Current milestone:** U1 written. Next: owner verification (M11 + U1), then the
+  iPhone Release install for the trip (R1, Nov 21–22). U1 needs no native rebuild.
 - **Trip:** New York, Nov 23–29, 2026. Install the Release build on Nov 21–22.
 
 ## What works (verified by the owner)
@@ -33,8 +32,19 @@ Update this file at the end of every milestone or meaningful change.
 | M10 reminders | Native rebuild done. Not confirmed: permission prompt, test reminder, real leave reminder timing, tap → Today, re-sync after edits, sign-out cancel. |
 | Trip time zone (`googlePlace.timeZone`) | Deployed with the M10 push if Render deployed it; not checked against the live API. Older servers omit it and the app falls back to the phone's zone. |
 | M11 | Everything: vitest on the Mac, deploy, Simulator check of Today with a pinned hotel, attribution labels, photo links, rate limits against the live API. |
+| U1 redesign | Everything visual: no screen was rendered. Typecheck and logic tests only. See the U1 checklist in "Exact next steps". |
 
 ## Tests
+
+### Executed in the U1 session (2026-11-17)
+
+Same method (Node TypeScript mode + vitest stand-in on the Mac's Linux shell):
+app specs **70 passed, 0 failed** (`logic` now 13 with the new `pastTrips` test;
+others unchanged: `auth-errors` 4, `geo` 3, `reminders` 11, `today-engine` 18,
+`zoned-time` 6, `search-presets` 4, `itinerary` 8, `resources` 3);
+translation parity clean (no missing/extra/empty keys, placeholders match);
+`tsc --noEmit` clean for `apps/mobile`. API and shared code were not changed and
+were not re-run. Not run: real vitest, any UI rendering, the Simulator.
 
 ### Executed in the M11 session (2026-11-17)
 
@@ -138,6 +148,20 @@ M10 adds no migration.
    Also the M10 checks: Profile → Reminders → on → allow → "Send a test
    reminder" (~5 s); a stop timed ~20 min ahead on a trip day that includes
    today → "Leave in 10 min".
+   **U1 checklist** (English, then Profile → Language → עברית; on an iPhone SE or
+   mini Simulator and a Pro Max):
+   - Tabs: Home · Discover (magnifier) · Saved · Profile.
+   - Home: trip card with one primary button; "Your trips"/"Other trips" list; "New trip"; past trips.
+   - Trip: "…" menu (edit, pin hotel, search, from saved, delete with confirm); "Add places" menu;
+     itinerary row tap → menu (each item works, incl. earlier/later, move day, mute, remove time);
+     number toggles done; time chip opens time sheet; wishlist "…" menu; hide/show visited.
+   - Today: next stop, Done, hints only when late, ≤ 2 suggestions, Discover nearby, preview pills.
+   - Discover: "Ask AI" pill ↔ "Back to search"; context line opens the sheet (where + save to;
+     "Near my hotel" without a pin opens the hotel sheet); category chips; list/map toggle; save bar.
+   - Preview: one primary button; Directions / Google Maps; rating · open · distance line.
+   - Saved: "+" menu; category chips; list/map icon. Place: "…" (Google Maps, delete); Visited switch.
+   - Profile: name row → sheet; language and distance menus; Reminders; Usage; Sign out.
+   - Hebrew: rows, chevrons and menus mirror; nothing truncated badly.
 2. Confirm the `visit_duration` migration is applied (`npx supabase migration list --linked`).
 3. **R1 (Nov 21–22):** set Team in Xcode, `pnpm ios:release`, walk the checklist:
    cellular data only; sign in; pin hotel; Discover near hotel; save; plan days
@@ -189,3 +213,5 @@ a normal terminal on the Mac should simply run `pnpm test` and `pnpm typecheck`.
   `ReminderSync` at the root; Reminders settings screen; per-stop mute; tap →
   Today. Documentation restructured for AI handoff (this file replaces
   `docs/PROGRESS.md`).
+- 2026-11-17: U1 UX/UI redesign (audit + direction + implementation): design
+  system doc, flat list-based UI kit, action menu, four tabs, all main screens.

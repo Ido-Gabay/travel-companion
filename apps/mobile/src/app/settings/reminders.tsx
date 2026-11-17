@@ -147,8 +147,8 @@ export default function RemindersScreen() {
         ) : null}
 
         <View style={styles.section}>
-          <AppText variant="overline" color="tertiary">
-            {t('reminders.scheduled', { count: upcoming.length }).toUpperCase()}
+          <AppText variant="label" color="secondary">
+            {t('reminders.scheduled', { count: upcoming.length })}
           </AppText>
           {status?.error ? <InlineError message={status.error} /> : null}
           {upcoming.length === 0 ? (

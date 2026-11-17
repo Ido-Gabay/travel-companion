@@ -10,7 +10,7 @@ import { ActivityIndicator, Linking, Pressable, RefreshControl, ScrollView, Styl
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { GoogleAttribution } from '@/components/GoogleAttribution';
-import { AppText, Button, Card, EmptyState, ErrorState, Icon, InlineError, LoadingState, NavHeader } from '@/components/ui';
+import { AppText, Button, EmptyState, ErrorState, Icon, InlineError, LoadingState, NavHeader } from '@/components/ui';
 import { useMe } from '@/features/me/queries';
 import { CATEGORY_ICONS } from '@/features/places/categories';
 import { openInMaps } from '@/features/places/open-in-maps';
@@ -20,7 +20,7 @@ import { useTrip } from '@/features/trips/queries';
 import { formatDurationShort, TimeSheet } from '@/features/trips/TimeSheet';
 import { useLocale } from '@/i18n/LocaleProvider';
 import { useErrorMessage } from '@/lib/use-error-message';
-import { colors, radii, shadows, spacing } from '@/theme/tokens';
+import { colors, radii, spacing } from '@/theme/tokens';
 import { useDismissals } from './dismissals';
 import { formatDistance } from './geo';
 import { useCurrentLocation } from './location';
@@ -43,6 +43,8 @@ import type { TravelEstimate } from './travel';
 /** Google places looked up for suggestions (Place Details Pro, free tier, cached for the session). */
 const MAX_CANDIDATES = 40;
 const DEFAULT_PREVIEW_TIME = '10:00';
+/** Free-time suggestions shown at once; dismissing one reveals the next. */
+const MAX_SHOWN_SUGGESTIONS = 2;
 
 /** The clock, refreshed every 30 seconds so leave-by countdowns stay current. */
 function useNow(): Date {
@@ -243,8 +245,8 @@ function TodayContent({
     >
       {/* Day + preview controls */}
       <View style={styles.dayHead}>
-        <AppText variant="overline" color="accent">
-          {(live ? t('today.liveLabel', { day: dayIndex + 1, total: days.length }) : t('today.previewLabel')).toUpperCase()}
+        <AppText variant="label" color="accent">
+          {live ? t('today.liveLabel', { day: dayIndex + 1, total: days.length }) : t('today.previewLabel')}
         </AppText>
         <AppText variant="display">{dayTitle(day, locale)}</AppText>
         <AppText variant="caption" color="secondary">
@@ -261,10 +263,7 @@ function TodayContent({
       </View>
 
       {!live ? (
-        <Card>
-          <AppText variant="caption" color="secondary">
-            {t('today.previewBody')}
-          </AppText>
+        <View style={styles.preview}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dayStrip}>
             {days.map((option) => {
               const parts = dayChipParts(option, locale);
@@ -292,6 +291,7 @@ function TodayContent({
               label={t('today.previewTime', { time: clock(nowMinutes) })}
               icon="time-outline"
               variant="secondary"
+              size="sm"
               block={false}
               onPress={() => setPickingTime(true)}
             />
@@ -299,11 +299,15 @@ function TodayContent({
               label={here ? t('today.locationOn') : t('today.useLocation')}
               icon="navigate-outline"
               variant="secondary"
+              size="sm"
               block={false}
               onPress={() => void location.locate()}
             />
           </View>
-        </Card>
+          <AppText variant="caption" color="tertiary">
+            {t('today.previewBody')}
+          </AppText>
+        </View>
       ) : null}
 
       {act.isError ? <InlineError message={errorMessage(act.error)} /> : null}
@@ -323,6 +327,7 @@ function TodayContent({
             label={t('tripMode.done')}
             icon="checkmark"
             variant="secondary"
+            size="sm"
             block={false}
             onPress={() => result.current && setVisited.mutate({ id: result.current.stop.id, visited: true })}
           />
@@ -331,12 +336,12 @@ function TodayContent({
 
       {result.next ? (
         <View style={styles.nextCard}>
-          <AppText variant="overline" color="tertiary">
-            {t('today.next').toUpperCase()}
+          <AppText variant="label" color="secondary">
+            {t('today.next')}
           </AppText>
           <View style={styles.nextHead}>
             <View style={styles.nextIcon}>
-              <Icon name={CATEGORY_ICONS[result.next.stop.category]} size={22} color={colors.textOnAccent} />
+              <Icon name={CATEGORY_ICONS[result.next.stop.category]} size={20} color={colors.accent} />
             </View>
             <View style={styles.flex}>
               <AppText variant="title" numberOfLines={2}>
@@ -388,9 +393,6 @@ function TodayContent({
               onPress={() => result.next && setVisited.mutate({ id: result.next.stop.id, visited: true })}
             />
           </View>
-          <AppText variant="caption" color="tertiary">
-            {t('today.estimateNote')}
-          </AppText>
           {stops.some((stop) => stop.id === result.next?.stop.id && stop.googlePlaceId) ? (
             <GoogleAttribution inline />
           ) : null}
@@ -418,9 +420,10 @@ function TodayContent({
       ))}
 
       {/* 3. What can I do now with the time available? */}
+      {result.free || result.suggestions.length > 0 ? (
       <View style={styles.section}>
-        <AppText variant="overline" color="tertiary">
-          {t('today.timeAvailable').toUpperCase()}
+        <AppText variant="label" color="secondary">
+          {t('today.timeAvailable')}
         </AppText>
         {result.free ? (
           <AppText variant="heading">
@@ -432,12 +435,9 @@ function TodayContent({
                 })
               : t('today.freeRestOfDay', { duration: formatDurationShort(result.free.minutes, t) })}
           </AppText>
-        ) : result.next?.leaveBy != null ? (
-          <AppText variant="body" color="secondary">
-            {t('today.noFreeTime')}
-          </AppText>
         ) : null}
-        {result.suggestions.map((suggestion) => (
+        {/* Two at most: dismissing one brings the next. */}
+        {result.suggestions.slice(0, MAX_SHOWN_SUGGESTIONS).map((suggestion) => (
           <SuggestionCard
             key={suggestion.id}
             suggestion={suggestion}
@@ -454,19 +454,14 @@ function TodayContent({
           </AppText>
         ) : null}
         {result.suggestions.length > 0 ? <GoogleAttribution inline /> : null}
-        <Button
-          label={t('today.discoverNearby')}
-          icon="search"
-          variant="secondary"
-          onPress={() => router.push({ pathname: '/trips/[id]/discover', params: { id: trip.id } })}
-        />
       </View>
+      ) : null}
 
       {/* 1. Where am I in my day? */}
       <View style={styles.section}>
         <View style={styles.rowBetween}>
-          <AppText variant="overline" color="tertiary">
-            {t('today.yourDay').toUpperCase()}
+          <AppText variant="label" color="secondary">
+            {t('today.yourDay')}
           </AppText>
           <AppText variant="caption" color="secondary">
             {t('tripMode.doneOf', { done: result.done, total: result.total })}
@@ -485,16 +480,18 @@ function TodayContent({
             action={<Button label={t('today.openItinerary')} variant="secondary" onPress={() => router.push({ pathname: '/trips/[id]', params: { id: trip.id } })} />}
           />
         ) : (
-          result.timeline.map((item, index) => (
-            <TimelineRow
-              key={item.stop.id}
-              item={item}
-              last={index === result.timeline.length - 1}
-              clock={clock}
-              travelText={travelText}
-              onOpen={() => router.push({ pathname: '/places/[id]', params: { id: item.stop.id } })}
-            />
-          ))
+          <View style={styles.timeline}>
+            {result.timeline.map((item, index) => (
+              <TimelineRow
+                key={item.stop.id}
+                item={item}
+                last={index === result.timeline.length - 1}
+                clock={clock}
+                travelText={travelText}
+                onOpen={() => router.push({ pathname: '/places/[id]', params: { id: item.stop.id } })}
+              />
+            ))}
+          </View>
         )}
         {result.dayEndsAt !== null ? (
           <AppText variant="caption" color="secondary">
@@ -503,6 +500,13 @@ function TodayContent({
         ) : null}
         {stops.some((stop) => stop.googlePlaceId) ? <GoogleAttribution inline /> : null}
       </View>
+
+      <Button
+        label={t('today.discoverNearby')}
+        icon="search"
+        variant="ghost"
+        onPress={() => router.push({ pathname: '/trips/[id]/discover', params: { id: trip.id } })}
+      />
 
       <AppText variant="caption" color="tertiary" style={styles.footnote}>
         {t('today.footnote')}
@@ -594,15 +598,13 @@ function HintCard({
             : t('today.hintOverbooked', { time: clock(hint.endsAt), name: hint.stopName })}
         </AppText>
       </View>
-      <AppText variant="caption" color="secondary">
-        {t('today.suggestOnly')}
-      </AppText>
       <View style={styles.hintActions}>
         {hint.actions.map((action) => (
           <Button
             key={action.type}
             label={actionLabel(action)}
             variant="secondary"
+            size="sm"
             block={false}
             disabled={busy}
             onPress={() => onAction(action)}
@@ -655,7 +657,15 @@ function SuggestionCard({
         </View>
       </View>
       <View style={styles.hintActions}>
-        <Button label={actionLabel(suggestion.action)} icon="add" variant="secondary" block={false} disabled={busy} onPress={onAccept} />
+        <Button
+          label={actionLabel(suggestion.action)}
+          icon="add"
+          variant="secondary"
+          size="sm"
+          block={false}
+          disabled={busy}
+          onPress={onAccept}
+        />
         <Pressable accessibilityRole="button" onPress={onDismiss} hitSlop={8} style={styles.dismiss}>
           <AppText variant="caption" color="secondary" style={styles.bold}>
             {t('today.dismiss')}
@@ -747,10 +757,11 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     borderRadius: radii.md,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.surface,
     backgroundColor: colors.surface,
   },
   dayChipOn: { backgroundColor: colors.accent, borderColor: colors.accent },
+  preview: { gap: spacing.sm },
   previewRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   currentRow: {
     flexDirection: 'row',
@@ -763,18 +774,15 @@ const styles = StyleSheet.create({
   nextCard: {
     gap: spacing.md,
     padding: spacing.xl,
-    borderRadius: radii.xl,
+    borderRadius: radii.card,
     backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.accentSoft,
-    ...shadows.card,
   },
   nextHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   nextIcon: {
     width: 44,
     height: 44,
-    borderRadius: radii.pill,
-    backgroundColor: colors.accent,
+    borderRadius: radii.md,
+    backgroundColor: colors.accentSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -793,10 +801,8 @@ const styles = StyleSheet.create({
   hint: {
     gap: spacing.sm,
     padding: spacing.lg,
-    borderRadius: radii.lg,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.dangerSoft,
+    borderRadius: radii.card,
+    backgroundColor: colors.dangerSoft,
   },
   hintHead: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
   hintActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },
@@ -805,10 +811,8 @@ const styles = StyleSheet.create({
   suggestion: {
     gap: spacing.sm,
     padding: spacing.lg,
-    borderRadius: radii.lg,
+    borderRadius: radii.card,
     backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
   },
   suggestionHead: { flexDirection: 'row', gap: spacing.md },
   badge: {
@@ -822,6 +826,7 @@ const styles = StyleSheet.create({
   rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   track: { height: 6, borderRadius: radii.pill, backgroundColor: colors.surfaceMuted, overflow: 'hidden' },
   fill: { height: 6, borderRadius: radii.pill, backgroundColor: colors.success },
+  timeline: { padding: spacing.lg, borderRadius: radii.card, backgroundColor: colors.surface },
   travelLine: { paddingStart: 32, paddingVertical: spacing.xxs },
   timelineRow: { flexDirection: 'row', gap: spacing.md, minHeight: 48 },
   rail: { width: 20, alignItems: 'center' },

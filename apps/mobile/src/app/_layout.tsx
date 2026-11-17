@@ -6,6 +6,7 @@ import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ConfigErrorScreen } from '@/components/ConfigErrorScreen';
+import { ActionMenuProvider } from '@/components/ui/ActionMenu';
 import { AuthProvider, useAuth } from '@/features/auth/AuthProvider';
 import { ReminderSync } from '@/features/companion/ReminderSync';
 import { LocaleSync } from '@/features/me/LocaleSync';
@@ -58,6 +59,7 @@ function RootNavigator() {
         <StatusBar style="dark" />
         {signedIn ? <LocaleSync /> : null}
         <ReminderSync signedIn={signedIn} />
+        <ActionMenuProvider>
         <Stack
           screenOptions={{
             headerShown: false,
@@ -82,6 +84,7 @@ function RootNavigator() {
             <Stack.Screen name="(auth)" />
           </Stack.Protected>
         </Stack>
+        </ActionMenuProvider>
       </View>
     </LocaleProvider>
   );

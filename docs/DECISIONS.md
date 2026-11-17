@@ -24,6 +24,8 @@ Status: **Accepted** (in force) · **Open** (needs the owner) · **Pending POC**
 | P10 | Place preview shows rating, review count, opening hours and photos, but **no review text**. | Owner's cost choice (see C3). | Accepted (Nov 17) |
 | P11 | English and Hebrew with real RTL from day one. | Owner's languages. | Accepted (D7) |
 | P12 | Reminders are **local notifications** only, follow the plan (not location), and their settings live on the device. | No push infrastructure, no cost, privacy. | Accepted (Nov 17, M10) |
+| P13 | **Minimal UI (U1 redesign):** one primary action per screen; grouped lists instead of stacked cards; flat surfaces (shadows only for floating elements); secondary and destructive actions in "…" action menus; hints and suggestions only when relevant. Rules in docs/DESIGN_SYSTEM.md. No feature was removed to simplify a screen. | Owner: "Less UI. Less confusion. More clarity." | Accepted (Nov 17, U1) |
+| P14 | **Four tabs:** Home (active trip + all trips), Discover (search icon), Saved (collection), Profile. The Trips tab is hidden, its route kept. | Home and Trips duplicated each other; the sparkles icon suggested AI-first, contradicting P2. | Accepted (Nov 17, U1) |
 
 ## Cost and services
 
@@ -53,6 +55,7 @@ Status: **Accepted** (in force) · **Open** (needs the owner) · **Pending POC**
 | T11 | Dismissed Today suggestions and reminder settings/mutes are stored on the device (AsyncStorage), not on the server. | Personal, per device; no schema needed. Revisit for multi-device. | Accepted (Nov 17) |
 | T12 | Zod 4 schemas validate every request (server) and every response (app). New response fields are added with defaults (e.g. `.nullable().default(null)`) so a newer app still works against an older server. | Contract mismatches fail loudly; deploy order doesn't matter. | Accepted |
 | T13 | API rate limiting is per user, in memory, fixed one-minute windows: 240/min overall, 60/min on paid routes (`/v1/discover/*`, `/v1/google/*`), after authentication. | One Render instance; no new dependency. Move counters to Postgres/Redis if the API ever runs on several instances. | Accepted (Nov 17, M11) |
+| T15 | One app-wide action sheet (`ActionMenuProvider` + `useActionMenu`, our own Modal) instead of `Alert`/`ActionSheetIOS` for item menus. The chosen action runs after the menu closes (iOS `onDismiss`). | Android `Alert` allows only 3 buttons; one look on both platforms; RTL; no new dependency. | Accepted (Nov 17, U1) |
 | T14 | Google attribution uses the "Google Maps" text (one shared component, Google's styling rules) rather than the logo; photos link to their `googleMapsUri`; notifications naming a Google place carry "Google Maps" as subtitle. | Text is allowed where space is limited; the logo needs Google's asset files. | Accepted (Nov 17, M11) |
 
 ## Phase 1 research decisions (D1–D19)

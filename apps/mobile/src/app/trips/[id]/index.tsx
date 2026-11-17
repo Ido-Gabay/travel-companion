@@ -12,9 +12,11 @@ import {
   Icon,
   IconButton,
   InlineError,
+  ListGroup,
   LoadingState,
   NavHeader,
   SegmentedControl,
+  useActionMenu,
 } from '@/components/ui';
 import { groupByCategory } from '@/features/places/categories';
 import { CollectionMap } from '@/features/places/CollectionMap';
@@ -34,13 +36,14 @@ import {
 import { useLocale } from '@/i18n/LocaleProvider';
 import { formatTripDates } from '@/lib/dates';
 import { useErrorMessage } from '@/lib/use-error-message';
-import { colors, radii, spacing } from '@/theme/tokens';
+import { colors, spacing } from '@/theme/tokens';
 
 export default function TripScreen() {
   const { t } = useTranslation();
   const { locale } = useLocale();
   const errorMessage = useErrorMessage();
   const { id = '' } = useLocalSearchParams<{ id: string }>();
+  const openMenu = useActionMenu();
   const trip = useTrip(id);
   const removePlace = useRemoveTripPlace(id);
   const deleteTrip = useDeleteTrip();
@@ -70,6 +73,15 @@ export default function TripScreen() {
           .join(' · ')
       : null;
 
+  const openAddMenu = () =>
+    openMenu({
+      title: t('tripDetail.addPlaces'),
+      items: [
+        { label: t('tripDetail.searchPlaces'), icon: 'search', onPress: openDiscover },
+        { label: t('tripDetail.fromSaved'), icon: 'bookmark-outline', onPress: openAddPlaces },
+      ],
+    });
+
   const confirmDelete = () => {
     Alert.alert(t('tripDetail.deleteTripTitle'), t('tripDetail.deleteTripBody'), [
       { text: t('common.cancel'), style: 'cancel' },
@@ -87,9 +99,25 @@ export default function TripScreen() {
         action={
           trip.data ? (
             <IconButton
-              icon="create-outline"
-              accessibilityLabel={t('editTrip.title')}
-              onPress={openEdit}
+              icon="ellipsis-horizontal"
+              accessibilityLabel={t('tripDetail.options')}
+              onPress={() =>
+                openMenu({
+                  title: trip.data.title,
+                  items: [
+                    { label: t('editTrip.title'), icon: 'create-outline', onPress: openEdit },
+                    {
+                      label: t('hotelPin.title'),
+                      icon: 'bed-outline',
+                      onPress: () => setPinOpen(true),
+                      hidden: !(trip.data.baseLocation || trip.data.basePlaceId),
+                    },
+                    { label: t('tripDetail.searchPlaces'), icon: 'search', onPress: openDiscover },
+                    { label: t('tripDetail.fromSaved'), icon: 'bookmark-outline', onPress: openAddPlaces },
+                    { label: t('tripDetail.deleteTrip'), icon: 'trash-outline', destructive: true, onPress: confirmDelete },
+                  ],
+                })
+              }
             />
           ) : undefined
         }
@@ -105,18 +133,18 @@ export default function TripScreen() {
               <AppText variant="display" accessibilityRole="header">
                 {trip.data.title}
               </AppText>
-              {trip.data.destination ? (
-                <View style={styles.meta}>
-                  <Icon name="location-outline" size={16} color={colors.textSecondary} />
-                  <AppText variant="body" color="secondary">
-                    {trip.data.destination}
-                  </AppText>
-                </View>
-              ) : null}
+              <AppText variant="body" color="secondary">
+                {[
+                  trip.data.destination,
+                  formatTripDates(trip.data.startDate, trip.data.endDate, locale) ?? t('trips.noDates'),
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </AppText>
               {trip.data.baseLocation || trip.data.basePlaceId ? (
                 <Pressable accessibilityRole="button" onPress={() => setPinOpen(true)} style={styles.meta}>
                   <Icon name="bed-outline" size={16} color={colors.textSecondary} />
-                  <AppText variant="body" color="secondary" style={styles.flexShrink}>
+                  <AppText variant="caption" color="secondary" style={styles.flexShrink}>
                     {t('tripDetail.stayingAt', { place: trip.data.baseLocation ?? t('hotelPin.pinnedShort') })}
                   </AppText>
                   {trip.data.basePlaceId ? (
@@ -128,20 +156,9 @@ export default function TripScreen() {
                   )}
                 </Pressable>
               ) : null}
-              <View style={styles.meta}>
-                <Icon name="calendar-outline" size={16} color={colors.textSecondary} />
-                <AppText variant="body" color="secondary">
-                  {formatTripDates(trip.data.startDate, trip.data.endDate, locale) ?? t('trips.noDates')}
-                </AppText>
-              </View>
             </View>
 
-            <View style={styles.discoverRow}>
-              <View style={styles.flex}>
-                <Button label={t('tripDetail.discover')} icon="sparkles" onPress={openDiscover} />
-              </View>
-              <Button label={t('tripDetail.fromCollection')} variant="secondary" icon="bookmark-outline" onPress={openAddPlaces} block={false} />
-            </View>
+            <Button label={t('tripDetail.addPlaces')} icon="add" variant="secondary" onPress={openAddMenu} />
 
             <SegmentedControl
               accessibilityLabel={t('discover.view')}
@@ -170,33 +187,18 @@ export default function TripScreen() {
             ) : (
               <View style={styles.placesBody}>
                 <View style={styles.progressRow}>
-                  <View style={styles.progressText}>
-                    <AppText variant="caption" color="secondary">
-                      {t('tripDetail.visitedProgress', { visited: visitedCount, total: allPlaces.length })}
-                    </AppText>
-                    <View style={styles.progressTrack}>
-                      <View
-                        style={[
-                          styles.progressFill,
-                          { width: `${Math.round((visitedCount / Math.max(allPlaces.length, 1)) * 100)}%` },
-                        ]}
-                      />
-                    </View>
-                  </View>
+                  <AppText variant="caption" color="secondary" style={styles.flex}>
+                    {t('tripDetail.visitedProgress', { visited: visitedCount, total: allPlaces.length })}
+                  </AppText>
                   {visitedCount > 0 ? (
                     <Pressable
                       accessibilityRole="switch"
                       accessibilityState={{ checked: hideVisited }}
+                      hitSlop={8}
                       onPress={() => setHideVisited((value) => !value)}
-                      style={[styles.hideToggle, hideVisited && styles.hideToggleOn]}
                     >
-                      <Icon
-                        name={hideVisited ? 'eye-off-outline' : 'eye-outline'}
-                        size={14}
-                        color={hideVisited ? colors.textOnAccent : colors.textSecondary}
-                      />
-                      <AppText variant="caption" style={[styles.hideText, hideVisited && styles.hideTextOn]}>
-                        {t('tripDetail.hideVisited')}
+                      <AppText variant="caption" color="accent" style={styles.toggleText}>
+                        {hideVisited ? t('tripDetail.showVisited') : t('tripDetail.hideVisited')}
                       </AppText>
                     </Pressable>
                   ) : null}
@@ -205,10 +207,7 @@ export default function TripScreen() {
                   <CollectionMap places={shownPlaces} onOpen={openPlace} />
                 ) : (
                   groupByCategory(shownPlaces).map((group) => (
-                    <View key={group.category} style={styles.group}>
-                      <AppText variant="overline" color="tertiary">
-                        {t(`categories.${group.category}`).toUpperCase()}
-                      </AppText>
+                    <ListGroup key={group.category} title={t(`categories.${group.category}`)}>
                       {group.items.map((place) => (
                         <TripPlaceCard
                           key={place.id}
@@ -220,7 +219,7 @@ export default function TripScreen() {
                           onRemove={() => removePlace.mutate(place.id)}
                         />
                       ))}
-                    </View>
+                    </ListGroup>
                   ))
                 )}
                 {removePlace.isError ? <InlineError message={errorMessage(removePlace.error)} /> : null}
@@ -242,16 +241,7 @@ export default function TripScreen() {
               onClose={() => setPlanning(null)}
             />
 
-            <View style={styles.danger}>
-              {deleteTrip.isError ? <InlineError message={errorMessage(deleteTrip.error)} /> : null}
-              <Button
-                label={t('tripDetail.deleteTrip')}
-                icon="trash-outline"
-                variant="danger"
-                loading={deleteTrip.isPending}
-                onPress={confirmDelete}
-              />
-            </View>
+            {deleteTrip.isError ? <InlineError message={errorMessage(deleteTrip.error)} /> : null}
           </>
         )}
       </ScrollView>
@@ -275,6 +265,7 @@ function TripPlaceCard({
   onRemove: () => void;
 }) {
   const { t } = useTranslation();
+  const openMenu = useActionMenu();
   const display = usePlaceDisplay(place);
   const navigate = () => {
     if (place.googlePlaceId) {
@@ -290,21 +281,25 @@ function TripPlaceCard({
         badge={badge}
         onPress={() => router.push({ pathname: '/places/[id]', params: { id: place.id } })}
         actions={
-          <View style={styles.actions}>
-            {canPlan ? (
-              <IconButton
-                icon={place.day ? 'calendar' : 'calendar-outline'}
-                accessibilityLabel={t('itinerary.pickDay')}
-                onPress={() => onPlan(display.name)}
-              />
-            ) : null}
-            <IconButton icon="navigate-outline" accessibilityLabel={t('places.directions')} onPress={navigate} />
-            <IconButton
-              icon="remove-circle-outline"
-              accessibilityLabel={t('tripDetail.removeFromTrip', { name: display.name })}
-              onPress={onRemove}
-            />
-          </View>
+          <IconButton
+            icon="ellipsis-horizontal"
+            accessibilityLabel={t('itinerary.moreFor', { name: display.name })}
+            onPress={() =>
+              openMenu({
+                title: display.name,
+                items: [
+                  {
+                    label: t('itinerary.openPlace'),
+                    icon: 'information-circle-outline',
+                    onPress: () => router.push({ pathname: '/places/[id]', params: { id: place.id } }),
+                  },
+                  { label: t('itinerary.pickDay'), icon: 'calendar-outline', onPress: () => onPlan(display.name), hidden: !canPlan },
+                  { label: t('places.directions'), icon: 'navigate-outline', onPress: navigate },
+                  { label: t('tripDetail.removeShort'), icon: 'remove-circle-outline', destructive: true, onPress: onRemove },
+                ],
+              })
+            }
+          />
         }
       />
     </View>
@@ -313,8 +308,8 @@ function TripPlaceCard({
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
-  content: { paddingHorizontal: spacing.xl, paddingBottom: spacing.huge, gap: spacing.xxl },
-  hero: { gap: spacing.sm },
+  content: { paddingHorizontal: spacing.xl, paddingBottom: spacing.huge, gap: spacing.xl },
+  hero: { gap: spacing.xs },
   meta: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   placeRow: { flexDirection: 'row', gap: spacing.md, alignItems: 'flex-start' },
   placeText: { flex: 1, gap: spacing.xxs },
@@ -328,21 +323,6 @@ const styles = StyleSheet.create({
   flexShrink: { flexShrink: 1 },
   pinLink: { fontWeight: '600' },
   placesBody: { gap: spacing.lg },
-  progressRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  progressText: { flex: 1, gap: spacing.xs },
-  progressTrack: { height: 6, borderRadius: radii.pill, backgroundColor: colors.surfaceMuted, overflow: 'hidden' },
-  progressFill: { height: 6, borderRadius: radii.pill, backgroundColor: colors.success },
-  hideToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xxs,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  hideToggleOn: { backgroundColor: colors.accent, borderColor: colors.accent },
-  hideText: { fontWeight: '600', color: colors.textSecondary },
-  hideTextOn: { color: colors.textOnAccent },
+  progressRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.xs },
+  toggleText: { fontWeight: '600' },
 });
