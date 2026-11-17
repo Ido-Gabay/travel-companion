@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import type { CreateTripData, Trip, TripDetail, TripList } from '@travel-companion/shared';
+import type { PendingQuery, Row } from 'postgres';
+import type { CreateTripData, Trip, TripDetail, TripList, UpdateTripData } from '@travel-companion/shared';
 import type { AuthUser } from '../auth/auth.types.js';
 import { notFound } from '../common/api-exception.js';
 import { DatabaseService, type Tx } from '../database/database.service.js';
@@ -16,6 +17,7 @@ function tripColumns(tx: Tx) {
     t.id, t.title, t.destination,
     t.start_date::text as start_date,
     t.end_date::text as end_date,
+    t.base_location,
     (
       select count(*)::int
       from app.trip_places tp
@@ -52,11 +54,12 @@ export class TripsService {
       // The profile row is created at sign-up; make sure it exists before the FK insert.
       await tx`insert into app.profiles (id) values (${user.id}) on conflict (id) do nothing`;
       const [inserted] = await tx<{ id: string }[]>`
-        insert into app.trips (owner_id, title, destination, start_date, end_date)
+        insert into app.trips (owner_id, title, destination, base_location, start_date, end_date)
         values (
           ${user.id},
           ${input.title},
           ${input.destination},
+          ${input.baseLocation},
           ${input.startDate}::date,
           ${input.endDate}::date
         )
@@ -64,6 +67,27 @@ export class TripsService {
       `;
       if (!inserted) throw new Error('Trip insert returned no row.');
       return toTrip(await findTrip(tx, user, inserted.id));
+    });
+  }
+
+  /** Changes only the fields sent; null clears. Date order is also enforced by the database. */
+  update(user: AuthUser, tripId: string, input: UpdateTripData): Promise<Trip> {
+    return this.db.asUser(user, async (tx) => {
+      const sets: PendingQuery<Row[]>[] = [];
+      if (input.title !== undefined) sets.push(tx`title = ${input.title}`);
+      if (input.destination !== undefined) sets.push(tx`destination = ${input.destination}`);
+      if (input.baseLocation !== undefined) sets.push(tx`base_location = ${input.baseLocation}`);
+      if (input.startDate !== undefined) sets.push(tx`start_date = ${input.startDate}::date`);
+      if (input.endDate !== undefined) sets.push(tx`end_date = ${input.endDate}::date`);
+      const assignments = sets.reduce((all, next) => tx`${all}, ${next}`);
+
+      const rows = await tx`
+        update app.trips set ${assignments}
+        where id = ${tripId} and owner_id = ${user.id} and deleted_at is null
+        returning id
+      `;
+      if (rows.length === 0) throw notFound('Trip not found.');
+      return toTrip(await findTrip(tx, user, tripId));
     });
   }
 

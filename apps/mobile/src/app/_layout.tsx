@@ -69,6 +69,7 @@ function RootNavigator() {
             <Stack.Screen name="trips/[id]/index" />
             <Stack.Screen name="trips/[id]/add-places" options={{ presentation: 'modal' }} />
             <Stack.Screen name="trips/[id]/discover" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="trips/[id]/edit" options={{ presentation: 'modal' }} />
             <Stack.Screen name="places/new" options={{ presentation: 'modal' }} />
             <Stack.Screen name="places/[id]" />
           </Stack.Protected>

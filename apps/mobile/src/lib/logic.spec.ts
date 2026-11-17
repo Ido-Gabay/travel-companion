@@ -12,6 +12,7 @@ function trip(id: string, startDate: string | null, endDate: string | null, crea
     destination: null,
     startDate,
     endDate,
+    baseLocation: null,
     placeCount: 0,
     createdAt,
     updatedAt: createdAt,

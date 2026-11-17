@@ -20,12 +20,13 @@ Legend: ✅ done and verified on the Mac · 🟡 written, waiting for verificati
 
 | Item | Status |
 | --- | --- |
-| Google Places (Text Search, Place Details) behind daily caps | 🟡 written |
-| Claude request interpretation + clarification | 🟡 written |
-| Discover tab: results list/map, multi-select, save to collection/trip | 🟡 written |
-| Collection by category + map; place detail (directions, visited, notes, tags, trips) | 🟡 written |
-| Trip wishlist by category + map | 🟡 written |
-| Keys configured (Google Cloud, Anthropic, iOS Maps) | ⬜ owner |
+| Google Places (Text Search, Place Details) behind daily caps | ✅ live, smoke verified |
+| Claude request interpretation + clarification | ✅ live |
+| Discover tab: results list/map, multi-select, save to collection/trip | ✅ works in the Simulator |
+| Collection by category + map; place detail (directions, visited, notes, tags, trips) | ✅ works in the Simulator |
+| Trip wishlist by category + map | ✅ works in the Simulator |
+| Edit trip, "staying at" for AI, visited progress, hide visited | 🟡 written |
+| Keys configured (Google Cloud, Anthropic, iOS Maps) | ✅ |
 | Full flow on a real iPhone | ⬜ |
 
 ## Trips/places slice (after Phase 1)
@@ -70,3 +71,7 @@ Legend: ✅ done and verified on the Mac · 🟡 written, waiting for verificati
   Discover tab (search, AI steps, clarification, results list/map, multi-select save to collection + trip),
   collection by category with map, place detail (directions, visited, category, notes, tags, trips),
   trip wishlist by category with map. Needs: keys (docs/GOOGLE_AND_AI.md), `react-native-maps`, native rebuild.
+- 2026-11-17: Discovery verified end to end (AI interpreted "coffee shops in SoHo", Google returned 15 real places,
+  save/dedupe/wishlist). Fixed: place ID check regex {10,300} exceeded Postgres' 255 limit (migration
+  20261117130000); Simulator crash on the map fixed by `expo prebuild --clean`. Added: edit trip, trip
+  "staying at" (sent to the AI for "near my hotel"), visited progress + hide visited.

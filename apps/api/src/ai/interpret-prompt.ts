@@ -7,7 +7,13 @@ import {
 export interface InterpretContext {
   locale: SupportedLocale;
   /** The user's own trip data (not Google content). */
-  trip: { title: string; destination: string | null; startDate: string | null; endDate: string | null } | null;
+  trip: {
+    title: string;
+    destination: string | null;
+    baseLocation: string | null;
+    startDate: string | null;
+    endDate: string | null;
+  } | null;
   clarifications: { question: string; answer: string }[];
 }
 
@@ -38,6 +44,7 @@ export function buildSystemPrompt(): string {
     '',
     'Rules:',
     '- textQuery: a concise Google Maps query in English that always contains a concrete area (neighborhood, landmark or city). Keep quality words the user used ("best", "recommended", "cheap").',
+    '- "Near my hotel", "near where we stay" and similar mean the trip\'s "staying at" location when one is given; search near it.',
     '- If the request has no area, use the trip destination. If there is no destination either, or the area depends on something unknown (e.g. "near my hotel" without knowing the hotel), choose action "clarify".',
     '- Ask at most one short question. Offer up to 4 short options when natural (e.g. neighborhoods). If clarification answers are provided, you MUST choose "search".',
     '- includedType: the single best matching type from the list, or "none" if unsure or the request spans several kinds of places.',
@@ -54,6 +61,7 @@ export function buildUserMessage(query: string, context: InterpretContext): stri
     context.trip
       ? `Current trip: "${context.trip.title}"${context.trip.destination ? `, destination: ${context.trip.destination}` : ', no destination set'}${context.trip.startDate ? `, dates: ${context.trip.startDate} to ${context.trip.endDate ?? context.trip.startDate}` : ''}`
       : 'Current trip: none',
+    ...(context.trip?.baseLocation ? [`Staying at: ${context.trip.baseLocation}`] : []),
     '',
     `Request: ${query}`,
   ];

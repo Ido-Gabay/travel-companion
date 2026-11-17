@@ -94,9 +94,15 @@ async function userLocale(tx: Tx, user: AuthUser): Promise<SupportedLocale> {
 
 async function tripContext(tx: Tx, user: AuthUser, tripId: string): Promise<InterpretContext['trip']> {
   const [row] = await tx<
-    { title: string; destination: string | null; start_date: string | null; end_date: string | null }[]
+    {
+      title: string;
+      destination: string | null;
+      base_location: string | null;
+      start_date: string | null;
+      end_date: string | null;
+    }[]
   >`
-    select title, destination, start_date::text as start_date, end_date::text as end_date
+    select title, destination, base_location, start_date::text as start_date, end_date::text as end_date
     from app.trips
     where id = ${tripId} and owner_id = ${user.id} and deleted_at is null
   `;
@@ -104,6 +110,7 @@ async function tripContext(tx: Tx, user: AuthUser, tripId: string): Promise<Inte
   return {
     title: row.title,
     destination: row.destination,
+    baseLocation: row.base_location,
     startDate: row.start_date,
     endDate: row.end_date,
   };

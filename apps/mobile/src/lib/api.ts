@@ -23,6 +23,7 @@ import {
   type Place,
   type PlaceList,
   type TripDetail,
+  type UpdateTripInput,
   type UpdatePlaceInput,
   type Me,
   type Preferences,
@@ -127,6 +128,8 @@ export const api = {
   listTrips: (): Promise<TripList> => request('GET', '/v1/trips', tripListSchema),
   createTrip: (body: CreateTripInput): Promise<Trip> => request('POST', '/v1/trips', tripSchema, body),
   getTrip: (id: string): Promise<TripDetail> => request('GET', `/v1/trips/${id}`, tripDetailSchema),
+  updateTrip: (id: string, body: UpdateTripInput): Promise<Trip> =>
+    request('PATCH', `/v1/trips/${id}`, tripSchema, body),
   deleteTrip: (id: string): Promise<void> => requestNoContent('DELETE', `/v1/trips/${id}`),
   addTripPlace: (tripId: string, placeId: string): Promise<TripDetail> =>
     request('POST', `/v1/trips/${tripId}/places`, tripDetailSchema, { placeId }),

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  updateTripSchema,
   addTripPlaceSchema,
   googleMapsDirectionsUrl,
   interpretResponseSchema,
@@ -60,6 +61,7 @@ describe('tripSchema', () => {
       destination: 'New York, USA',
       startDate: '2026-11-23',
       endDate: null,
+      baseLocation: null,
       placeCount: 0,
       createdAt: '2026-11-16T10:00:00.000Z',
       updatedAt: '2026-11-16T10:00:00.000Z',
@@ -81,6 +83,7 @@ describe('createTripSchema', () => {
     expect(createTripSchema.parse({ title: ' New York ' })).toEqual({
       title: 'New York',
       destination: null,
+      baseLocation: null,
       startDate: null,
       endDate: null,
     });
@@ -206,5 +209,17 @@ describe('discover contract', () => {
     expect(googleMapsDirectionsUrl('ChIJN1t_tDeuEmsRUsoyG83frY4', "Katz's Deli")).toBe(
       "https://www.google.com/maps/dir/?api=1&destination=Katz's%20Deli&destination_place_id=ChIJN1t_tDeuEmsRUsoyG83frY4",
     );
+  });
+});
+
+describe('updateTripSchema', () => {
+  it('keeps unchanged fields undefined and clears with blank', () => {
+    expect(updateTripSchema.parse({ baseLocation: ' Pod Times Square ' })).toEqual({ baseLocation: 'Pod Times Square' });
+    expect(updateTripSchema.parse({ destination: '' })).toEqual({ destination: null });
+  });
+
+  it('rejects an empty body and a reversed date range', () => {
+    expect(updateTripSchema.safeParse({}).success).toBe(false);
+    expect(updateTripSchema.safeParse({ startDate: '2026-11-29', endDate: '2026-11-23' }).success).toBe(false);
   });
 });

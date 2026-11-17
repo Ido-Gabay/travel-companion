@@ -99,6 +99,8 @@ const trip = await step('create a trip', 'POST', '/v1/trips', { title: 'Smoke te
 const place = await step('save a place with notes', 'POST', '/v1/places', { name: 'Smoke test place', notes: 'Line one\nLine two' }, (s, j) => s === 201 && j.notes === 'Line one\nLine two');
 if (trip?.id && place?.id) {
   await step('edit the place', 'PATCH', `/v1/places/${place.id}`, { address: 'Somewhere 1' }, (s, j) => s === 200 && j.address === 'Somewhere 1' && j.notes !== null);
+  await step('edit the trip (staying at + dates)', 'PATCH', `/v1/trips/${trip.id}`, { baseLocation: 'Midtown Manhattan', endDate: '2026-11-30' }, (s, j) => s === 200 && j.baseLocation === 'Midtown Manhattan' && j.endDate === '2026-11-30' && j.startDate === '2026-11-23');
+  await step('reversed dates are rejected', 'PATCH', `/v1/trips/${trip.id}`, { endDate: '2026-11-01' }, (s, j) => s === 400 && j.error.code === 'VALIDATION_FAILED');
   await step('add the place to the trip', 'POST', `/v1/trips/${trip.id}/places`, { placeId: place.id }, (s, j) => s === 200 && j.places.length === 1 && j.placeCount === 1);
   await step('adding it again changes nothing', 'POST', `/v1/trips/${trip.id}/places`, { placeId: place.id }, (s, j) => s === 200 && j.places.length === 1);
   await step('trip detail lists the place', 'GET', `/v1/trips/${trip.id}`, null, (s, j) => s === 200 && j.places[0]?.id === place.id);

@@ -72,12 +72,13 @@ describe('prompt', () => {
   it('includes trip context and clarification answers', () => {
     const text = buildUserMessage('near my hotel', {
       locale: 'he',
-      trip: { title: 'NY', destination: 'New York', startDate: '2026-11-23', endDate: '2026-11-29' },
+      trip: { title: 'NY', destination: 'New York', baseLocation: 'Pod Times Square', startDate: '2026-11-23', endDate: '2026-11-29' },
       clarifications: [{ question: 'Where is your hotel?', answer: 'Midtown' }],
     });
     expect(text).toContain('Hebrew');
     expect(text).toContain('destination: New York');
     expect(text).toContain('User answered: Midtown');
+    expect(text).toContain('Staying at: Pod Times Square');
   });
 
   it('schema lists every field as required and allows no extra keys', () => {

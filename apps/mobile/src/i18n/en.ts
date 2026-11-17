@@ -93,6 +93,9 @@ export const en = {
     deleteTripBody: 'The trip will be deleted. The places in it stay in your collection.',
     discover: 'Discover places',
     fromCollection: 'From collection',
+    stayingAt: 'Staying at {{place}}',
+    visitedProgress: '{{visited}} of {{total}} visited',
+    hideVisited: 'Hide visited',
   },
   addPlaces: {
     title: 'Add places',
@@ -214,6 +217,9 @@ export const en = {
     namePlaceholder: 'e.g. New York in November',
     destination: 'Destination',
     destinationPlaceholder: 'e.g. New York, USA',
+    baseLocation: 'Staying at',
+    baseLocationPlaceholder: 'e.g. Pod Times Square, or Midtown',
+    baseLocationHint: 'Used for searches like "near my hotel".',
     dates: 'Dates',
     startDate: 'Start',
     endDate: 'End',
@@ -221,6 +227,9 @@ export const en = {
     submit: 'Create trip',
     nameRequired: 'Give your trip a name.',
     endBeforeStart: 'The end date must be on or after the start date.',
+  },
+  editTrip: {
+    title: 'Edit trip',
   },
   languages: {
     en: 'English',

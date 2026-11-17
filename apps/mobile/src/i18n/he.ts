@@ -95,6 +95,9 @@ export const he: Translations = {
     deleteTripBody: 'הטיול יימחק. המקומות שבו יישארו באוסף שלך.',
     discover: 'גילוי מקומות',
     fromCollection: 'מהאוסף',
+    stayingAt: 'לינה: {{place}}',
+    visitedProgress: 'ביקרת ב־{{visited}} מתוך {{total}}',
+    hideVisited: 'הסתרת מקומות שביקרתי',
   },
   addPlaces: {
     title: 'הוספת מקומות',
@@ -216,6 +219,9 @@ export const he: Translations = {
     namePlaceholder: 'למשל: ניו יורק בנובמבר',
     destination: 'יעד',
     destinationPlaceholder: 'למשל: ניו יורק, ארה״ב',
+    baseLocation: 'לינה',
+    baseLocationPlaceholder: 'למשל: Pod Times Square, או מידטאון',
+    baseLocationHint: 'משמש לחיפושים כמו "ליד המלון שלי".',
     dates: 'תאריכים',
     startDate: 'התחלה',
     endDate: 'סיום',
@@ -223,6 +229,9 @@ export const he: Translations = {
     submit: 'יצירת טיול',
     nameRequired: 'יש לתת שם לטיול.',
     endBeforeStart: 'תאריך הסיום חייב להיות באותו יום או אחרי תאריך ההתחלה.',
+  },
+  editTrip: {
+    title: 'עריכת טיול',
   },
   languages: {
     en: 'English',

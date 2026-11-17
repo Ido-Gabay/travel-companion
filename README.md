@@ -141,7 +141,14 @@ pnpm ios                 # terminal 2: builds the native app (first build takes 
 ```
 
 After the first build, day-to-day you only need `pnpm dev:mobile` (Metro) and the
-installed app. Rebuild with `pnpm ios` only when native dependencies or app.json change.
+installed app. When native dependencies, `app.json`/`app.config.ts`, or
+`GOOGLE_MAPS_IOS_API_KEY` change, regenerate the native project first, or the
+app can crash (e.g. the Google map):
+
+```sh
+cd apps/mobile && npx expo prebuild --platform ios --clean && cd ../..
+pnpm ios
+```
 
 ### 9. Deploy the API (free; see docs/DEPLOYMENT.md for limits)
 

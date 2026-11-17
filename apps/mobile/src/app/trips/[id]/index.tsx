@@ -1,7 +1,7 @@
 import { googleMapsDirectionsUrl, type TripPlace } from '@travel-companion/shared';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Linking, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import {
@@ -26,7 +26,7 @@ import { useDeleteTrip, useRemoveTripPlace, useTrip } from '@/features/trips/que
 import { useLocale } from '@/i18n/LocaleProvider';
 import { formatTripDates } from '@/lib/dates';
 import { useErrorMessage } from '@/lib/use-error-message';
-import { colors, spacing } from '@/theme/tokens';
+import { colors, radii, spacing } from '@/theme/tokens';
 
 export default function TripScreen() {
   const { t } = useTranslation();
@@ -38,6 +38,10 @@ export default function TripScreen() {
   const deleteTrip = useDeleteTrip();
 
   const [view, setView] = useState<'list' | 'map'>('list');
+  const [hideVisited, setHideVisited] = useState(false);
+  const allPlaces = trip.data?.places ?? [];
+  const visitedCount = allPlaces.filter((place) => place.visitedAt !== null).length;
+  const shownPlaces = hideVisited ? allPlaces.filter((place) => place.visitedAt === null) : allPlaces;
   const openAddPlaces = () =>
     router.push({ pathname: '/trips/[id]/add-places', params: { id } });
   const openDiscover = () => router.push({ pathname: '/trips/[id]/discover', params: { id } });
@@ -55,7 +59,17 @@ export default function TripScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <NavHeader />
+      <NavHeader
+        action={
+          trip.data ? (
+            <IconButton
+              icon="create-outline"
+              accessibilityLabel={t('editTrip.title')}
+              onPress={() => router.push({ pathname: '/trips/[id]/edit', params: { id } })}
+            />
+          ) : undefined
+        }
+      />
       <ScrollView contentContainerStyle={styles.content}>
         {trip.isPending ? (
           <LoadingState />
@@ -72,6 +86,14 @@ export default function TripScreen() {
                   <Icon name="location-outline" size={16} color={colors.textSecondary} />
                   <AppText variant="body" color="secondary">
                     {trip.data.destination}
+                  </AppText>
+                </View>
+              ) : null}
+              {trip.data.baseLocation ? (
+                <View style={styles.meta}>
+                  <Icon name="bed-outline" size={16} color={colors.textSecondary} />
+                  <AppText variant="body" color="secondary">
+                    {t('tripDetail.stayingAt', { place: trip.data.baseLocation })}
                   </AppText>
                 </View>
               ) : null}
@@ -99,6 +121,38 @@ export default function TripScreen() {
                 />
               ) : (
                 <>
+                  <View style={styles.progressRow}>
+                    <View style={styles.progressText}>
+                      <AppText variant="caption" color="secondary">
+                        {t('tripDetail.visitedProgress', { visited: visitedCount, total: allPlaces.length })}
+                      </AppText>
+                      <View style={styles.progressTrack}>
+                        <View
+                          style={[
+                            styles.progressFill,
+                            { width: `${Math.round((visitedCount / Math.max(allPlaces.length, 1)) * 100)}%` },
+                          ]}
+                        />
+                      </View>
+                    </View>
+                    {visitedCount > 0 ? (
+                      <Pressable
+                        accessibilityRole="switch"
+                        accessibilityState={{ checked: hideVisited }}
+                        onPress={() => setHideVisited((value) => !value)}
+                        style={[styles.hideToggle, hideVisited && styles.hideToggleOn]}
+                      >
+                        <Icon
+                          name={hideVisited ? 'eye-off-outline' : 'eye-outline'}
+                          size={14}
+                          color={hideVisited ? colors.textOnAccent : colors.textSecondary}
+                        />
+                        <AppText variant="caption" style={[styles.hideText, hideVisited && styles.hideTextOn]}>
+                          {t('tripDetail.hideVisited')}
+                        </AppText>
+                      </Pressable>
+                    ) : null}
+                  </View>
                   <SegmentedControl
                     accessibilityLabel={t('discover.view')}
                     options={[
@@ -110,11 +164,11 @@ export default function TripScreen() {
                   />
                   {view === 'map' ? (
                     <CollectionMap
-                      places={trip.data.places}
+                      places={shownPlaces}
                       onOpen={(place) => router.push({ pathname: '/places/[id]', params: { id: place.id } })}
                     />
                   ) : (
-                    groupByCategory(trip.data.places).map((group) => (
+                    groupByCategory(shownPlaces).map((group) => (
                       <View key={group.category} style={styles.group}>
                         <AppText variant="overline" color="tertiary">
                           {t(`categories.${group.category}`).toUpperCase()}
@@ -204,4 +258,21 @@ const styles = StyleSheet.create({
   discoverRow: { flexDirection: 'row', gap: spacing.md },
   flex: { flex: 1 },
   group: { gap: spacing.md },
+  progressRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  progressText: { flex: 1, gap: spacing.xs },
+  progressTrack: { height: 6, borderRadius: radii.pill, backgroundColor: colors.surfaceMuted, overflow: 'hidden' },
+  progressFill: { height: 6, borderRadius: radii.pill, backgroundColor: colors.success },
+  hideToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xxs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  hideToggleOn: { backgroundColor: colors.accent, borderColor: colors.accent },
+  hideText: { fontWeight: '600', color: colors.textSecondary },
+  hideTextOn: { color: colors.textOnAccent },
 });

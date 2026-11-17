@@ -1,4 +1,4 @@
-import type { CreateTripInput, TripDetail, TripList } from '@travel-companion/shared';
+import type { CreateTripInput, TripDetail, TripList, UpdateTripInput } from '@travel-companion/shared';
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { placesKey } from '@/features/places/queries';
@@ -31,6 +31,18 @@ export function useCreateTrip() {
         list ? { items: [...list.items, trip] } : list,
       );
       void queryClient.invalidateQueries({ queryKey: tripListKey });
+    },
+  });
+}
+
+export function useUpdateTrip(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UpdateTripInput) => api.updateTrip(id, body),
+    onSuccess: (trip) => {
+      queryClient.setQueryData<TripDetail>(tripKey(id), (detail) => (detail ? { ...detail, ...trip } : detail));
+      void queryClient.invalidateQueries({ queryKey: tripListKey });
+      void queryClient.invalidateQueries({ queryKey: tripKey(id) });
     },
   });
 }

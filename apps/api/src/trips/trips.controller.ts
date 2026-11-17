@@ -6,16 +6,19 @@ import {
   HttpCode,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
 } from '@nestjs/common';
 import {
   addTripPlaceSchema,
   createTripSchema,
+  updateTripSchema,
   type AddTripPlaceInput,
   type CreateTripData,
   type Trip,
   type TripDetail,
   type TripList,
+  type UpdateTripData,
 } from '@travel-companion/shared';
 import type { AuthUser } from '../auth/auth.types.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
@@ -44,6 +47,15 @@ export class TripsController {
   @Get(':id')
   get(@CurrentUser() user: AuthUser, @Param('id', uuid) id: string): Promise<TripDetail> {
     return this.trips.get(user, id);
+  }
+
+  @Patch(':id')
+  update(
+    @CurrentUser() user: AuthUser,
+    @Param('id', uuid) id: string,
+    @Body(new ZodValidationPipe(updateTripSchema)) body: UpdateTripData,
+  ): Promise<Trip> {
+    return this.trips.update(user, id, body);
   }
 
   @Delete(':id')

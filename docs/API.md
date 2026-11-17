@@ -113,6 +113,7 @@ then newest first. At most 200 (pagination comes when needed).
       "destination": "New York, USA",
       "startDate": "2026-11-23",
       "endDate": "2026-11-29",
+      "baseLocation": "Midtown Manhattan",
       "placeCount": 3,
       "createdAt": "2026-11-16T10:00:00.000Z",
       "updatedAt": "2026-11-16T10:00:00.000Z",
@@ -179,6 +180,13 @@ trip doesn't exist, is deleted, or belongs to someone else. A malformed id is
   ]
 }
 ```
+
+### `PATCH /v1/trips/:id`
+
+Any of `title`, `destination`, `baseLocation` (where the user stays, e.g. a
+hotel or area; used by discovery for "near my hotel"), `startDate`, `endDate`.
+Blank or `null` clears a text field or date. End before start is
+`400 VALIDATION_FAILED` (checked against the stored dates too). Returns the trip.
 
 ### `DELETE /v1/trips/:id`
 

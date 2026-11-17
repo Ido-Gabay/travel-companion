@@ -8,6 +8,7 @@ export interface TripRow {
   /** Selected as ::text so calendar dates never shift with server time zones. */
   start_date: string | null;
   end_date: string | null;
+  base_location: string | null;
   /** Selected as ::int (Postgres count() is bigint, which the driver returns as a string). */
   place_count: number;
   created_at: Date;
@@ -22,6 +23,7 @@ export function toTrip(row: TripRow): Trip {
     destination: row.destination,
     startDate: row.start_date,
     endDate: row.end_date,
+    baseLocation: row.base_location,
     placeCount: row.place_count,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
