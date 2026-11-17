@@ -215,6 +215,19 @@ place belong to the caller. Migration list and status: DEVELOPMENT_STATUS.md.
   (`enableRemoteNotifications: false`, so no push entitlement; decision T10).
 - No control is shown unless it works.
 
+## Smart day planning (M13)
+
+`apps/mobile/src/features/planning/`: `day-planner.ts` (pure: `projectDay`,
+`checkDay`, `optimizeOrder` (cheapest insertion + relocation, timed/done/unlocated
+stops fixed, gap-aware), `suggestTimes`), `opening-hours.ts` (pure: weekly periods →
+day windows, `firstFit`, `hoursIssue`), `DayPlanning.tsx` (summary line, warnings,
+"Plan this day" sheet). Inputs: stop locations from Google details or cached
+coordinates (M12a), visit lengths, the hotel as the start; travel from
+`companion/travel.ts`. Opening hours come from the preview endpoint only after
+"Check opening hours" (`useGooglePlacePreviews`, in memory). Apply goes through the
+M12a change queue (reorder + per-stop start times), so it works offline and is
+conflict-checked.
+
 ## Offline-tolerant trip mode (M12a)
 
 A travel MVP, not full offline-first. All code is in `apps/mobile/src/features/offline/`

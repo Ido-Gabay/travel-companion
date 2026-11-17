@@ -16,7 +16,7 @@ price list on 2026-11-17 (free usage is per SKU, per month, per billing account)
 | --- | --- | --- | --- | --- |
 | Search (standard and AI) | Places API **Text Search Pro** | 5,000 | $32 | 160 / 4,500 |
 | Saved place name, address, location | Places API **Place Details Pro** | 5,000 | $17 | 160 / 4,500 |
-| Place preview: rating, count, opening hours | Places API **Place Details Enterprise** | 1,000 | $20 | 30 / 900 |
+| Place preview: rating, count, opening hours (also "Check opening hours" in day planning: one per place, on request) | Places API **Place Details Enterprise** | 1,000 | $20 | 30 / 900 |
 | Photo list in the preview | Place Details **Essentials (IDs Only)** (`photos` field) | Unlimited | — | (part of the preview call) |
 | Each photo image shown | Places API **Place Details Photos** | 1,000 | $7 | 60 / 900 |
 | Maps on iPhone | **Maps SDK** (mobile native) | Unlimited | — | — |
@@ -43,8 +43,9 @@ Google Cloud billing is the final word: keep the budget alert below.
 - Search and basic details: `id, displayName, formattedAddress, shortFormattedAddress,
   location, primaryType, primaryTypeDisplayName, googleMapsUri, businessStatus,
   timeZone` (all Pro; `timeZone` added in M10 to schedule reminders in the trip's zone).
-- Preview: the same plus `rating, userRatingCount, currentOpeningHours, photos`
-  (Enterprise). Unit tests fail if `reviews`, `reviewSummary`, `editorialSummary`,
+- Preview: the same plus `rating, userRatingCount, currentOpeningHours,
+  regularOpeningHours, photos` (Enterprise; `regularOpeningHours` added in M13 for
+  day planning, same SKU and price, approved as C7). Unit tests fail if `reviews`, `reviewSummary`, `editorialSummary`,
   `generativeSummary` or other Atmosphere fields slip in, or if any Enterprise
   field slips into the search or basic masks.
 

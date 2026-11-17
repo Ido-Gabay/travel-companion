@@ -1,17 +1,19 @@
 # Development status
 
-**Last updated: 2026-11-17 (M12a offline-tolerant trip mode written on top of U1).**
+**Last updated: 2026-11-17 (M13 smart day planning written on main, on top of M12a).**
 Update this file at the end of every milestone or meaningful change.
 
 ## Snapshot
 
-- **Last commit seen on the Mac:** `a82061b` "U1: UX/UI redesign" (committed by the owner).
-- **Uncommitted when this was written:** M12a (app, shared, API, one migration) and these doc updates.
+- **Last commit seen on the Mac:** `37dbf49` "M12a: offline-tolerant trip mode" (committed by the owner).
+  Suggested safety tag before M13: `git tag trip-safe 37dbf49`.
+- **Uncommitted when this was written:** M13 smart day planning (app, shared, API field mask; no migration) and these doc updates. Owner chose to build it on `main`.
 - **Native build:** the iOS project was regenerated after M10 (contains
   `expo-notifications`, entitlements empty = no push). M11 needs no native rebuild.
-- **Current milestone:** M12a written (stages 1–4). Next: owner verification (tests,
-  migration push, deploy, Simulator airplane-mode checklist), then the iPhone Release
-  install for the trip (R1, Nov 21–22). M12a adds **no native dependency**: no rebuild.
+- **Current milestone:** M13 written. Still open: owner verification of M12a (migration
+  push, deploy, airplane-mode checklist) and M13, then the iPhone Release install
+  (R1, Nov 21–22). Neither adds a native dependency: no rebuild. If M13 isn't
+  verified in time, install the `trip-safe` commit instead.
 - **Trip:** New York, Nov 23–29, 2026. Install the Release build on Nov 21–22.
 
 ## What works (verified by the owner)
@@ -34,6 +36,23 @@ Update this file at the end of every milestone or meaningful change.
 | M11 | Everything: vitest on the Mac, deploy, Simulator check of Today with a pinned hotel, attribution labels, photo links, rate limits against the live API. |
 | U1 redesign | Everything visual: no screen was rendered. Typecheck and logic tests only. See the U1 checklist in "Exact next steps". |
 
+## M13 – Smart day planning (written; device checks pending)
+
+| Part | Code | Tests run in session | Unverified |
+| --- | --- | --- | --- |
+| Planner (summary, warnings, shorter order, fill in times) | ✅ `features/planning/day-planner.ts` | `day-planner` 11/11 | On screen |
+| Opening hours (weekly periods → day windows; hours-aware times and warnings) | ✅ `opening-hours.ts`; API mask `regularOpeningHours` + mapper `openingPeriods` | `opening-hours` 6/6; API `google-places` 11/11 (+1) | Real Google response; deploy |
+| UI: summary line, warnings, "Plan this day" sheet (Apply via the change queue), "Check opening hours" | ✅ `DayPlanning.tsx` in the itinerary day | `tsc` clean; i18n parity clean | Everything visual |
+
+**M13 checks (Simulator, after deploying the API):** open the NY trip → a day with
+3+ stops: the summary line shows stops, visits, travel and end time; give two stops
+times too close together → "Things to check" lists it; "Plan this day" → toggles for
+a shorter order (if any) and "Fill in times"; preview shows suggested times in teal;
+Apply → order and times change (also works offline; then syncs); timed stops kept
+their times. "Check opening hours" → "Opening hours found for N of M"; a museum on its
+closed day shows "closed that day"; Profile → Usage shows the preview count went up by
+the number of places.
+
 ## M12a – Offline-tolerant trip mode (written; device checks pending)
 
 Stages (owner's priority order) and their state. Design: docs/ARCHITECTURE.md → "Offline-tolerant trip mode".
@@ -46,6 +65,15 @@ Stages (owner's priority order) and their state. Design: docs/ARCHITECTURE.md �
 | 4 | `myLabel`: user-typed label on places (migration `20261118090000_place_my_label`, shared schema with default null, API select/update, place screen "Your label" sheet, never prefilled from Google); shown offline instead of the category | ✅ written | shared `schemas.spec` 45/45 (+1), API `mappers` 6/6 (+1) and other API specs 32/32; shared build + `tsc` clean for shared, API, app | Migration push; deploy; label round trip on a device |
 
 ## Tests
+
+### Executed in the M13 session (2026-11-17)
+
+App **129 passed** (M12a's 112 + `day-planner` 11 + `opening-hours` 6); shared
+`schemas.spec` 45; API **39** (`google-places` 11 incl. the opening-periods mapper);
+`tsc` clean for shared (+ build), API and app; en/he parity clean. Same stand-in
+method as below (not real vitest). Not run: anything on a screen or against Google.
+Note: during this session a scripted edit briefly corrupted `places/queries.ts`; it
+was restored from git `HEAD` and re-edited, then type-checked and tested.
 
 ### Executed in the M12a session (2026-11-17)
 

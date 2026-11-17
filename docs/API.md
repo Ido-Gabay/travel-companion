@@ -371,7 +371,9 @@ Counts against the `GOOGLE_TEXT_SEARCH_*` caps (daily and monthly).
 ### `GET /v1/google/places/:placeId/preview?lang=en|he`
 
 The place preview: everything from the basic details plus `rating`,
-`userRatingCount`, `openNow`, `weekdayHours` (text lines in the requested
+`userRatingCount`, `openNow`, `openingPeriods` (M13: Google's regular weekly periods,
+`{ open: { day, hour, minute }, close: … | null }`, day 0 = Sunday, place-local
+time; `[]` when unknown or in a basic preview), `weekdayHours` (text lines in the requested
 language) and `photos` (up to 10: `name`, size, author `attributions`, and
 `googleMapsUri`, the photo on Google Maps, which the app links each shown photo to). One
 Place Details Enterprise call (owner-approved, capped: `GOOGLE_PLACE_PREVIEW_*`).

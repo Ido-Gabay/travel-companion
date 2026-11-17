@@ -4,6 +4,7 @@ import {
   type GooglePhoto,
   type GooglePlace,
   type GooglePlacePreview,
+  type OpeningPeriod,
   type SearchArea,
   type SearchPlan,
   type SupportedLocale,
@@ -24,6 +25,12 @@ export interface GoogleApiPlace {
   rating?: number;
   userRatingCount?: number;
   currentOpeningHours?: { openNow?: boolean; weekdayDescriptions?: string[] };
+  regularOpeningHours?: {
+    periods?: {
+      open?: { day?: number; hour?: number; minute?: number };
+      close?: { day?: number; hour?: number; minute?: number };
+    }[];
+  };
   photos?: {
     name?: string;
     widthPx?: number;
@@ -61,7 +68,15 @@ export const PLACE_DETAILS_FIELD_MASK = PLACE_FIELDS.join(',');
  * reviews, editorialSummary or other "Atmosphere" fields here: they move the
  * request to a pricier SKU that was not approved.
  */
-export const PREVIEW_FIELDS = [...PLACE_FIELDS, 'rating', 'userRatingCount', 'currentOpeningHours', 'photos'] as const;
+export const PREVIEW_FIELDS = [
+  ...PLACE_FIELDS,
+  'rating',
+  'userRatingCount',
+  'currentOpeningHours',
+  // Enterprise too (same SKU, no extra charge per request); approved 2026-11-17 for day planning.
+  'regularOpeningHours',
+  'photos',
+] as const;
 export const PLACE_PREVIEW_FIELD_MASK = PREVIEW_FIELDS.join(',');
 
 /** Most photos listed in a preview (each one costs only when its image is loaded). */
@@ -141,6 +156,7 @@ export function toGooglePlacePreview(raw: GoogleApiPlace): GooglePlacePreview | 
     userRatingCount: count,
     openNow: typeof raw.currentOpeningHours?.openNow === 'boolean' ? raw.currentOpeningHours.openNow : null,
     weekdayHours: (raw.currentOpeningHours?.weekdayDescriptions ?? []).filter((line) => typeof line === 'string').slice(0, 7),
+    openingPeriods: toOpeningPeriods(raw.regularOpeningHours?.periods),
     photos: (raw.photos ?? [])
       .map(toPhoto)
       .filter((photo): photo is GooglePhoto => photo !== null)
@@ -151,5 +167,34 @@ export function toGooglePlacePreview(raw: GoogleApiPlace): GooglePlacePreview | 
 
 /** A preview with only the free fields, used when the preview cap is reached. */
 export function basicPreview(place: GooglePlace): GooglePlacePreview {
-  return { ...place, rating: null, userRatingCount: null, openNow: null, weekdayHours: [], photos: [], detail: 'basic' };
+  return {
+    ...place,
+    rating: null,
+    userRatingCount: null,
+    openNow: null,
+    weekdayHours: [],
+    openingPeriods: [],
+    photos: [],
+    detail: 'basic',
+  };
+}
+
+type RawPoint = { day?: number; hour?: number; minute?: number } | undefined;
+
+function toPoint(raw: RawPoint): OpeningPeriod['open'] | null {
+  if (!raw) return null;
+  const { day, hour = 0, minute = 0 } = raw;
+  if (typeof day !== 'number' || day < 0 || day > 6 || hour < 0 || hour > 24 || minute < 0 || minute > 59) return null;
+  return { day: Math.round(day), hour: Math.round(hour), minute: Math.round(minute) };
+}
+
+/** Google's regular weekly periods, validated; malformed ones dropped. */
+export function toOpeningPeriods(raw: { open?: RawPoint; close?: RawPoint }[] | undefined): OpeningPeriod[] {
+  return (raw ?? [])
+    .flatMap((period) => {
+      const open = toPoint(period.open);
+      if (!open) return [];
+      return [{ open, close: period.close ? toPoint(period.close) : null }];
+    })
+    .slice(0, 28);
 }

@@ -3,7 +3,7 @@
 Give this file to any AI coding assistant (Claude Code, GitHub Copilot with
 Claude, …) that picks up this repository. Keep it current.
 
-**Last updated: 2026-11-17, after M12a (offline-tolerant trip mode) was written.**
+**Last updated: 2026-11-17, after M13 (smart day planning) was written on main.**
 
 ## 1. What this project is
 
@@ -30,10 +30,11 @@ Google rules), `docs/LIVE_COMPANION.md` (Today + reminders design),
 
 ## 3. Current state
 
-- The Mac's repo has M11 and U1 committed (`a82061b`). **M12a is written but
-  uncommitted**: app, shared schema, API and one migration
-  (`20261118090000_place_my_label`, not yet pushed).
-- M12a session: app 112, shared 45, API 38 tests passed (Node TypeScript mode +
+- `main` on the Mac: M12a committed (`37dbf49`, suggested tag `trip-safe`). **M13
+  smart day planning is written on main but uncommitted** (app, shared preview
+  schema, API preview field mask; no migration). The `my_label` migration from
+  M12a may still need `npx supabase db push --remote`.
+- M13 session: app 129, shared 45, API 39 tests passed (Node TypeScript mode +
   vitest stand-in, not real vitest); `tsc` clean for shared, API, app; en/he parity clean.
 - **Nothing from U1 or M12a has been looked at on a screen yet.** Device behavior
   of M9–M11 (Today, reminders) is also unconfirmed in writing.
@@ -64,8 +65,9 @@ M0–M4 foundation, auth, en/he; trips and places; zero-cost deploy; Discovery v
 M6 itinerary; M7 Home trip mode; M8 Google-first Discover + preview + hotel pin
 + cost caps/usage (owner verified); M9 Today v1 (committed); M10 reminders (committed, rebuilt);
 M11 trip readiness and U1 UX/UI redesign (committed by the owner, not verified on
-screen); M12a offline-tolerant trip mode (written: stages 1 reminders, 2 offline
-viewing, 3 offline edits + sync, 4 `myLabel`).
+screen); M12a offline-tolerant trip mode (committed: reminders, offline viewing,
+offline edits + sync, `myLabel`); M13 smart day planning (written: summary,
+warnings, "Plan this day", opening hours on request, approved as C7).
 
 ## 6. Remaining
 
@@ -78,7 +80,9 @@ viewing, 3 offline edits + sync, 4 `myLabel`).
 
 ## 7. Exact next task
 
-Help the owner verify M12a (plus U1, M11 and the M10 reminder checks), in this order:
+Help the owner verify M13 (checks in DEVELOPMENT_STATUS.md → "M13 checks") and
+M12a (plus U1, M11 and the M10 reminder checks). If time before Nov 21–22 runs out,
+the trip build is the `trip-safe` commit. In this order:
 `pnpm test && pnpm typecheck` (fix any failure; the session ran tests outside vitest),
 `npx supabase db push --remote` (my_label) **before** pushing the API, commit, push,
 `pnpm smoke:api` after the Render deploy, `pnpm ios` (no native rebuild), then the

@@ -5,6 +5,7 @@ import type {
   Place,
   PlaceList,
   SaveGooglePlacesInput,
+  SupportedLocale,
   TripDetail,
   UpdatePlaceInput,
 } from '@travel-companion/shared';
@@ -194,13 +195,48 @@ export function useGooglePlacePreview(placeId: string | null) {
   const { session } = useAuth();
   const { locale } = useLocale();
   return useQuery<GooglePlacePreview>({
-    queryKey: ['google-place-preview', placeId ?? '', locale],
-    queryFn: () => api.getGooglePlacePreview(placeId ?? '', locale),
+    ...previewQuery(placeId ?? '', locale),
     enabled: session !== null && placeId !== null,
+  });
+}
+
+function previewQuery(placeId: string, locale: SupportedLocale) {
+  return {
+    queryKey: ['google-place-preview', placeId, locale],
+    queryFn: () => api.getGooglePlacePreview(placeId, locale),
     staleTime: GOOGLE_DETAILS_STALE_MS,
     gcTime: GOOGLE_DETAILS_STALE_MS,
     retry: 1,
+  };
+}
+
+/**
+ * Previews (incl. opening hours) for several places, only while `enabled` (M13 day
+ * planning: the user tapped "Check opening hours"). Same cache as the preview sheet,
+ * in memory only. Each place is one Enterprise request, counted against the preview cap.
+ */
+export function useGooglePlacePreviews(
+  placeIds: readonly string[],
+  enabled: boolean,
+): { byId: Map<string, GooglePlacePreview>; pending: boolean; failed: number } {
+  const { session } = useAuth();
+  const { locale } = useLocale();
+  const results = useQueries({
+    queries: placeIds.map((placeId) => ({
+      ...previewQuery(placeId, locale),
+      enabled: enabled && session !== null,
+    })),
   });
+  const byId = new Map<string, GooglePlacePreview>();
+  results.forEach((result, index) => {
+    const id = placeIds[index];
+    if (result.data && id) byId.set(id, result.data);
+  });
+  return {
+    byId,
+    pending: enabled && results.some((result) => result.isPending),
+    failed: enabled ? results.filter((result) => result.isError).length : 0,
+  };
 }
 
 /** Google photo URLs expire; keep one for a short while within the session. */

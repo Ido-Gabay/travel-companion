@@ -21,6 +21,7 @@ yet verified by the owner · ⏳ in progress · ⬜ not started.
 | M10 | Local reminders | 🟡 committed (`52c49b6`); native rebuild done | Reminder behavior on the device not confirmed in writing |
 | M11 | Trip readiness: Today/Home in the trip's time zone, API rate limiting, Google attribution to policy (one component, photo links, notification subtitle), shorter Hebrew tab label | 🟡 written | See below |
 | U1 | UX/UI redesign: design system (DESIGN_SYSTEM.md), four tabs, Home, Today, trip overview, itinerary, wishlist, Discover, place preview, Saved, place detail, Profile | 🟡 written | See below |
+| M13 | Smart day planning: day summary + warnings (tight, out of order, long leg, late end, overloaded), "Plan this day" (shorter order, fill in times), opening hours on request | 🟡 written | See below |
 | M12a | Offline-tolerant trip mode (travel MVP): reminder reliability, per-user saved copy, offline itinerary/Today, offline Done/reorder/time/length/day with safe sync and conflicts, `myLabel`, 30-day coordinate cache | 🟡 written | See below |
 
 ### M10 – Local reminders: acceptance criteria
@@ -62,6 +63,13 @@ yet verified by the owner · ⏳ in progress · ⬜ not started.
 - [x] No new native dependency; no paid service; no background location.
 - [ ] Owner: `pnpm test && pnpm typecheck`, migration push, deploy, smoke test.
 - [ ] Owner: airplane-mode checklist in DEVELOPMENT_STATUS.md (Simulator, then on the iPhone during R1).
+
+### M13 – Smart day planning: acceptance criteria
+
+- [x] Pure planner (`features/planning/day-planner.ts`, `opening-hours.ts`) with tests: summary, warnings, order proposal (timed/done/unlocated stops stay; gap-aware between timed stops; ≥ 5 min saving), time suggestions (only flexible, not done), opening hours windows (closed days, overnight, 24/7) and hours-aware times/warnings.
+- [x] Itinerary day: one summary line, warnings on tap, "Plan this day" sheet (toggles, preview, Apply through the change queue: works offline). Nothing applied automatically.
+- [x] Opening hours: `regularOpeningHours` added to the preview field mask (same Enterprise SKU, approved C7); fetched only on "Check opening hours"; in memory only; Google attribution shown.
+- [ ] Owner: Simulator check (see DEVELOPMENT_STATUS.md → M13 checks), deploy (API mask + mapper change).
 
 ## Next
 

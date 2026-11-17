@@ -22,6 +22,9 @@ and [AGENTS.md](AGENTS.md).**
 - **Global collection** and **trip wishlist** (deduplicated by Google place ID),
   notes, tags, visited.
 - **Itinerary**: day by day, times, visit lengths, order, day map and route.
+- **Smart day planning**: each day's load and warnings (too tight, long legs,
+  late end, closed); "Plan this day" suggests a shorter order and start times,
+  with opening hours on request. Nothing changes until you apply it.
 - **Today**: timeline, next stop with leave-by and travel estimate, free time
   with suggestions that fit, running-late hints (accept or dismiss), preview mode.
 - **Local reminders**: leave soon, time to leave, heads-up, morning summary.

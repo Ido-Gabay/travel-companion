@@ -34,6 +34,7 @@ import {
 } from './itinerary';
 import { muteKey, useMutedStops, useToggleMuted } from '@/features/companion/reminder-settings';
 import { usePendingState } from '@/features/offline/ops-store';
+import { DayPlanning } from '@/features/planning/DayPlanning';
 import { pendingPlaceIds } from '@/features/offline/pending-ops';
 import { useReorderTripDay, useScheduleTripPlace } from './queries';
 import { formatDurationShort, TimeSheet } from './TimeSheet';
@@ -206,6 +207,8 @@ export function ItineraryView({ trip, onOpenPlace, onDiscover, onEditTrip }: Iti
             </View>
             <Button label={t('itinerary.add')} icon="add" variant="secondary" size="sm" block={false} onPress={() => setAdding(true)} />
           </View>
+
+          {selectedDay ? <DayPlanning key={selectedDay} trip={trip} day={selectedDay} stops={stops} /> : null}
 
           {schedule.isError ? <InlineError message={errorMessage(schedule.error)} /> : null}
 

@@ -87,7 +87,9 @@ describe('buildTextSearchBody', () => {
 describe('place preview (approved: rating + hours + photos, no reviews)', () => {
   it('asks for Enterprise fields but never Atmosphere fields', () => {
     const fields = PLACE_PREVIEW_FIELD_MASK.split(',');
-    expect(fields).toEqual(expect.arrayContaining(['rating', 'userRatingCount', 'currentOpeningHours', 'photos']));
+    expect(fields).toEqual(
+      expect.arrayContaining(['rating', 'userRatingCount', 'currentOpeningHours', 'regularOpeningHours', 'photos']),
+    );
     for (const atmosphere of ['reviews', 'reviewSummary', 'editorialSummary', 'generativeSummary', 'servesBreakfast', 'outdoorSeating']) {
       expect(fields).not.toContain(atmosphere);
     }
@@ -118,6 +120,27 @@ describe('place preview (approved: rating + hours + photos, no reviews)', () => 
     expect(preview?.photos[0]?.attributions[0]?.displayName).toBe('Ana');
     expect(preview?.photos[0]?.googleMapsUri).toBe('https://www.google.com/maps/place//data=photo');
     expect(preview?.detail).toBe('full');
+    expect(preview?.openingPeriods).toEqual([]);
+  });
+
+  it('maps regular weekly opening hours and drops malformed periods', () => {
+    const preview = toGooglePlacePreview({
+      id: 'ChIJN1t_tDeuEmsRUsoyG83frY4',
+      displayName: { text: 'The Met' },
+      regularOpeningHours: {
+        periods: [
+          { open: { day: 1, hour: 10, minute: 0 }, close: { day: 1, hour: 17, minute: 0 } },
+          { open: { day: 5, hour: 10 }, close: { day: 5, hour: 21, minute: 0 } },
+          { open: { day: 9, hour: 10, minute: 0 } },
+          { close: { day: 2, hour: 1, minute: 0 } },
+        ],
+      },
+    });
+    expect(preview && googlePlacePreviewSchema.parse(preview)).toEqual(preview);
+    expect(preview?.openingPeriods).toEqual([
+      { open: { day: 1, hour: 10, minute: 0 }, close: { day: 1, hour: 17, minute: 0 } },
+      { open: { day: 5, hour: 10, minute: 0 }, close: { day: 5, hour: 21, minute: 0 } },
+    ]);
   });
 
   it('falls back to a basic preview', () => {

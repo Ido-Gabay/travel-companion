@@ -130,6 +130,16 @@ export type GooglePhoto = z.infer<typeof googlePhotoSchema>;
  * owner with caps inside the free allowance). No review text.
  * detail "basic" means the preview cap was reached and only the free fields came back.
  */
+/** A point in Google's weekly opening hours (day 0 = Sunday, in the place's local time). */
+export const openingPointSchema = z.object({
+  day: z.number().int().min(0).max(6),
+  hour: z.number().int().min(0).max(24),
+  minute: z.number().int().min(0).max(59),
+});
+/** One opening period; `close` is null for a place that never closes (24/7). */
+export const openingPeriodSchema = z.object({ open: openingPointSchema, close: openingPointSchema.nullable() });
+export type OpeningPeriod = z.infer<typeof openingPeriodSchema>;
+
 export const googlePlacePreviewSchema = googlePlaceSchema.extend({
   rating: z.number().min(0).max(5).nullable(),
   userRatingCount: z.number().int().nonnegative().nullable(),
@@ -137,6 +147,11 @@ export const googlePlacePreviewSchema = googlePlaceSchema.extend({
   openNow: z.boolean().nullable(),
   /** e.g. "Monday: 8:00 AM – 6:00 PM", in the requested language. */
   weekdayHours: z.array(z.string()),
+  /**
+   * Regular weekly opening hours (M13 day planning; same Enterprise request as the
+   * rest of the preview). Empty when unknown. Never stored: kept in memory only.
+   */
+  openingPeriods: z.array(openingPeriodSchema).max(28).default([]),
   photos: z.array(googlePhotoSchema).max(10),
   detail: z.enum(['full', 'basic']),
 });

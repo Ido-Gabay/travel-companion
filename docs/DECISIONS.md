@@ -26,6 +26,7 @@ Status: **Accepted** (in force) · **Open** (needs the owner) · **Pending POC**
 | P12 | Reminders are **local notifications** only, follow the plan (not location), and their settings live on the device. | No push infrastructure, no cost, privacy. | Accepted (Nov 17, M10) |
 | P13 | **Minimal UI (U1 redesign):** one primary action per screen; grouped lists instead of stacked cards; flat surfaces (shadows only for floating elements); secondary and destructive actions in "…" action menus; hints and suggestions only when relevant. Rules in docs/DESIGN_SYSTEM.md. No feature was removed to simplify a screen. | Owner: "Less UI. Less confusion. More clarity." | Accepted (Nov 17, U1) |
 | P15 | **Offline-tolerant trip mode (M12a), travel MVP:** the user's own trip data is saved on the phone per user and shown when the server can't be reached; Done, reorder, time, length and day work offline and sync later; nothing is overwritten or discarded silently (conflicts wait for the user). Offline, Google places show the user's **`myLabel`** (typed by the user, never filled from Google) or the category. | A reliable app on the trip (subway, roaming) without a risky architecture change before Nov 23. | Accepted (Nov 17, M12a) |
+| P16 | **Smart day planning (M13):** a day summary and warnings are always computed on the phone (free); "Plan this day" proposes a shorter order (only flexible, not-done, located stops move; ≥ 5 min saving) and start times for stops without one (the user's times never change); opening hours only on request. Nothing is applied until the user taps Apply (P5). | Owner chose "Smart day planning" as the next milestone. | Accepted (Nov 17, M13) |
 | P14 | **Four tabs:** Home (active trip + all trips), Discover (search icon), Saved (collection), Profile. The Trips tab is hidden, its route kept. | Home and Trips duplicated each other; the sparkles icon suggested AI-first, contradicting P2. | Accepted (Nov 17, U1) |
 
 ## Cost and services
@@ -38,6 +39,7 @@ Status: **Accepted** (in force) · **Open** (needs the owner) · **Pending POC**
 | C4 | Claude **Haiku 5.5** for "Ask AI" (prepaid, spend limit, daily + monthly caps). | Cheap, fast, structured output. | Accepted (Nov 17) |
 | C5 | Travel times are **free on-device estimates** (straight line × 1.3, walking 80 m/min, subway/taxi above 25 min), shown with "≈". | Routes API costs money (C2). | Accepted (Nov 17, M9) |
 | C6 | iPhone builds use a **free Apple ID (Personal Team)**: builds expire after 7 days; no push notifications. | No paid developer program. | Accepted |
+| C7 | Day planning may use **`regularOpeningHours`** (Place Details **Enterprise**, same SKU and caps as the preview: 1,000 free/month, then $20 per 1,000; our caps 30/day, 900/month). Fetched only when the user taps "Check opening hours" (one request per place), kept in memory only, never stored. | Owner approval 2026-11-17 ("approve B"). | Accepted (Nov 17, M13) |
 
 ## Technical
 
