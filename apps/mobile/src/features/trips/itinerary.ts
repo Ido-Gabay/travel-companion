@@ -1,4 +1,4 @@
-import type { TripPlace } from '@travel-companion/shared';
+import type { Trip, TripPlace } from '@travel-companion/shared';
 
 /** Places planned for one day, in their order. */
 export function placesForDay(places: readonly TripPlace[], day: string): TripPlace[] {
@@ -90,4 +90,46 @@ export function fromStartTime(startTime: string | null): Date {
   const date = new Date();
   date.setHours(hours ?? 9, minutes ?? 0, 0, 0);
   return date;
+}
+
+/** Whole days from one calendar date to another (negative when `to` is earlier). */
+export function daysBetween(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+}
+
+/** How far ahead Home starts showing a trip's countdown. */
+export const TRIP_MODE_LEAD_DAYS = 30;
+
+export type TripMode =
+  | { phase: 'during'; trip: Trip; dayNumber: number; totalDays: number }
+  | { phase: 'before'; trip: Trip; daysUntil: number };
+
+/**
+ * The trip Home should focus on: the one happening today, otherwise the next
+ * dated trip starting within TRIP_MODE_LEAD_DAYS. Null when there is none.
+ */
+export function tripMode(trips: readonly Trip[], today: string): TripMode | null {
+  const dated = trips.filter(
+    (trip): trip is Trip & { startDate: string; endDate: string } => trip.startDate !== null && trip.endDate !== null,
+  );
+  const current = dated
+    .filter((trip) => trip.startDate <= today && today <= trip.endDate)
+    .sort((a, b) => a.startDate.localeCompare(b.startDate))[0];
+  if (current) {
+    return {
+      phase: 'during',
+      trip: current,
+      dayNumber: daysBetween(current.startDate, today) + 1,
+      totalDays: daysBetween(current.startDate, current.endDate) + 1,
+    };
+  }
+  const next = dated
+    .filter((trip) => trip.startDate > today && daysBetween(today, trip.startDate) <= TRIP_MODE_LEAD_DAYS)
+    .sort((a, b) => a.startDate.localeCompare(b.startDate))[0];
+  return next ? { phase: 'before', trip: next, daysUntil: daysBetween(today, next.startDate) } : null;
+}
+
+/** The first stop of the day not yet marked visited. */
+export function nextStop(stops: readonly TripPlace[]): TripPlace | null {
+  return stops.find((stop) => stop.visitedAt === null) ?? null;
 }

@@ -16,7 +16,9 @@ import {
 } from '@/components/ui';
 import { useMe } from '@/features/me/queries';
 import { useTrips } from '@/features/trips/queries';
+import { tripMode } from '@/features/trips/itinerary';
 import { TripCard } from '@/features/trips/TripCard';
+import { TripModeCard } from '@/features/trips/TripModeCard';
 import { upcomingTrips } from '@/features/trips/upcoming';
 import { toIsoDate } from '@/lib/dates';
 import { useErrorMessage } from '@/lib/use-error-message';
@@ -28,10 +30,9 @@ export default function HomeScreen() {
   const me = useMe();
   const trips = useTrips();
 
-  const upcoming = useMemo(
-    () => upcomingTrips(trips.data?.items ?? [], toIsoDate(new Date())),
-    [trips.data],
-  );
+  const today = toIsoDate(new Date());
+  const upcoming = useMemo(() => upcomingTrips(trips.data?.items ?? [], today), [trips.data, today]);
+  const mode = useMemo(() => tripMode(trips.data?.items ?? [], today), [trips.data, today]);
   const name = me.data?.displayName;
 
   return (
@@ -46,6 +47,8 @@ export default function HomeScreen() {
         title={name ? t('home.greeting', { name }) : t('home.greetingNoName')}
         subtitle={t('home.subtitle')}
       />
+
+      {mode ? <TripModeCard mode={mode} today={today} /> : null}
 
       <Pressable
         accessibilityRole="search"

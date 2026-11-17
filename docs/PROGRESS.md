@@ -83,3 +83,7 @@ Legend: ✅ done and verified on the Mac · 🟡 written, waiting for verificati
   "walk the day's route" link to Google Maps, timeline of stops with time, reorder, move day, back to wishlist,
   add-from-wishlist sheet; Places tab shows each place's day and plans it from a day picker.
   Typecheck passes (shared, API, mobile); tests + smoke need a run on the Mac.
+- 2026-11-17: Itinerary verified by the user. Trip mode on Home: before a trip (within 30 days) a countdown with
+  planned / wishlist / days-planned counts and a "where you stay" hint; during the trip today's plan with the next
+  stop, directions, "Done", and a tick list of today's stops. "Done" also on each itinerary stop; visited updates
+  instantly in every loaded trip (rolled back if saving fails). App-only change: no migration or API deploy.

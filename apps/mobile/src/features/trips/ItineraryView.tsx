@@ -12,7 +12,7 @@ import { googleMapsEnabled, PlacesMap } from '@/components/maps/PlacesMap';
 import { AppText, Button, Card, EmptyState, Icon, IconButton, InlineError } from '@/components/ui';
 import { CATEGORY_ICONS } from '@/features/places/categories';
 import { openInMaps } from '@/features/places/open-in-maps';
-import { useGooglePlaces } from '@/features/places/queries';
+import { useGooglePlaces, useSetVisited } from '@/features/places/queries';
 import { usePlaceDisplay } from '@/features/places/use-place-display';
 import { useLocale } from '@/i18n/LocaleProvider';
 import { toIsoDate } from '@/lib/dates';
@@ -53,6 +53,7 @@ export function ItineraryView({ trip, onOpenPlace, onDiscover, onEditTrip }: Iti
   const errorMessage = useErrorMessage();
   const schedule = useScheduleTripPlace(trip.id);
   const reorder = useReorderTripDay(trip.id);
+  const setVisited = useSetVisited();
 
   const days = useMemo(() => tripDays(trip.startDate, trip.endDate), [trip.startDate, trip.endDate]);
   const today = toIsoDate(new Date());
@@ -188,6 +189,7 @@ export function ItineraryView({ trip, onOpenPlace, onDiscover, onEditTrip }: Iti
                     last={index === stops.length - 1}
                     onOpen={() => onOpenPlace(stop)}
                     onTime={(name) => setTimeFor({ place: stop, name })}
+                    onToggleVisited={() => setVisited.mutate({ id: stop.id, visited: stop.visitedAt === null })}
                     onUp={() => move(stop, -1)}
                     onDown={() => move(stop, 1)}
                     onMenu={(name) => openMenu(stop, name)}
@@ -302,13 +304,14 @@ interface StopRowProps {
   last: boolean;
   onOpen: () => void;
   onTime: (name: string) => void;
+  onToggleVisited: () => void;
   onUp: () => void;
   onDown: () => void;
   onMenu: (name: string) => void;
 }
 
 /** One stop of the day: number on a timeline, time, name, and quick actions. */
-function StopRow({ place, number, first, last, onOpen, onTime, onUp, onDown, onMenu }: StopRowProps) {
+function StopRow({ place, number, first, last, onOpen, onTime, onToggleVisited, onUp, onDown, onMenu }: StopRowProps) {
   const { t } = useTranslation();
   const { locale } = useLocale();
   const display = usePlaceDisplay(place);
@@ -376,6 +379,18 @@ function StopRow({ place, number, first, last, onOpen, onTime, onUp, onDown, onM
         ) : null}
         <View style={styles.stopActions}>
           <IconButton icon="navigate-outline" accessibilityLabel={t('places.directions')} onPress={directions} />
+          <Pressable
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: visited }}
+            accessibilityLabel={t('tripMode.markDone', { name: display.name })}
+            onPress={onToggleVisited}
+            style={({ pressed }) => [styles.doneChip, visited && styles.doneChipOn, pressed && styles.pressed]}
+          >
+            <Icon name="checkmark" size={14} color={visited ? colors.textOnAccent : colors.success} />
+            <AppText variant="caption" style={[styles.timeText, visited ? styles.onAccent : styles.successText]}>
+              {visited ? t('itinerary.visited') : t('tripMode.done')}
+            </AppText>
+          </Pressable>
           <View style={styles.flex} />
           {!first ? <IconButton icon="arrow-up" accessibilityLabel={t('itinerary.moveUp')} onPress={onUp} /> : null}
           {!last ? <IconButton icon="arrow-down" accessibilityLabel={t('itinerary.moveDown')} onPress={onDown} /> : null}
@@ -441,6 +456,18 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accentSoft,
   },
   timeSet: { backgroundColor: colors.accent },
+  doneChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xxs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.success,
+  },
+  doneChipOn: { backgroundColor: colors.success },
+  successText: { color: colors.success },
   timeText: { fontWeight: '600' },
   attribution: { writingDirection: 'ltr' },
   stopActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: spacing.xs },

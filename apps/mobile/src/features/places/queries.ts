@@ -4,6 +4,7 @@ import type {
   Place,
   PlaceList,
   SaveGooglePlacesInput,
+  TripDetail,
   UpdatePlaceInput,
 } from '@travel-companion/shared';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -122,5 +123,38 @@ export function useDeletePlace() {
       void queryClient.invalidateQueries({ queryKey: placeListKey });
       void queryClient.invalidateQueries({ queryKey: tripsPrefix });
     },
+  });
+}
+
+/**
+ * Mark any place visited or not visited. The check shows at once in every
+ * loaded trip (and is undone if saving fails), so ticking off stops feels instant.
+ */
+export function useSetVisited() {
+  const queryClient = useQueryClient();
+  const tripDetails = { queryKey: [...tripsPrefix, 'detail'] };
+  return useMutation({
+    mutationFn: ({ id, visited }: { id: string; visited: boolean }) => api.updatePlace(id, { visited }),
+    onMutate: async ({ id, visited }) => {
+      await queryClient.cancelQueries(tripDetails);
+      const previous = queryClient.getQueriesData<TripDetail>(tripDetails);
+      const visitedAt = visited ? new Date().toISOString() : null;
+      queryClient.setQueriesData<TripDetail>(tripDetails, (detail) =>
+        detail
+          ? { ...detail, places: detail.places.map((place) => (place.id === id ? { ...place, visitedAt } : place)) }
+          : detail,
+      );
+      return { previous };
+    },
+    onError: (_error, _vars, context) => {
+      for (const [key, data] of context?.previous ?? []) queryClient.setQueryData(key, data);
+    },
+    onSuccess: (place: Place) => {
+      queryClient.setQueryData(placeKey(place.id), place);
+      queryClient.setQueryData<PlaceList>(placeListKey, (list) =>
+        list ? { items: list.items.map((item) => (item.id === place.id ? place : item)) } : list,
+      );
+    },
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: tripsPrefix }),
   });
 }
