@@ -1,0 +1,115 @@
+#!/usr/bin/env node
+// End-to-end check of the running API with a real Supabase user.
+// Signs in through Supabase Auth, then calls the API with the access token.
+// Run from the repo root while `pnpm dev:api` is running: pnpm smoke:api
+import { existsSync, readFileSync } from 'node:fs';
+import { createInterface } from 'node:readline';
+
+const API_URL = process.env.API_URL ?? 'http://localhost:3000';
+const ENV_PATH = 'apps/api/.env';
+
+const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: true });
+let muted = false;
+const writeToOutput = rl._writeToOutput.bind(rl);
+rl._writeToOutput = (text) => {
+  if (!muted) writeToOutput(text);
+};
+const lines = rl[Symbol.asyncIterator]();
+
+async function ask(question, { hidden = false } = {}) {
+  process.stdout.write(question);
+  muted = hidden;
+  const { value = '' } = await lines.next();
+  if (muted) process.stdout.write('\n');
+  muted = false;
+  return value.trim();
+}
+
+function fail(message) {
+  console.error(`\n${message}`);
+  rl.close();
+  process.exit(1);
+}
+
+const env = existsSync(ENV_PATH) ? readFileSync(ENV_PATH, 'utf8') : '';
+const supabaseUrl = env.match(/^SUPABASE_URL=(.*)$/m)?.[1]?.trim().replace(/\/+$/, '');
+if (!supabaseUrl || supabaseUrl.includes('YOUR-PROJECT-REF')) {
+  fail(`SUPABASE_URL is not set in ${ENV_PATH}.`);
+}
+
+console.log('\nYou need the publishable key: Supabase dashboard -> Project Settings -> API Keys');
+console.log('(starts with sb_publishable_). It is a public key, safe to paste.\n');
+const publishableKey = await ask('Publishable key: ');
+const email = await ask('Test user email: ');
+const password = await ask('Test user password (not shown): ', { hidden: true });
+rl.close();
+
+// 1. Sign in with Supabase Auth.
+const authRes = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
+  method: 'POST',
+  headers: { apikey: publishableKey, 'Content-Type': 'application/json' },
+  body: JSON.stringify({ email, password }),
+});
+const auth = await authRes.json().catch(() => ({}));
+if (!authRes.ok || !auth.access_token) {
+  const reason = auth.msg ?? auth.error_description ?? auth.message ?? `HTTP ${authRes.status}`;
+  fail(
+    `Sign-in failed: ${reason}\n` +
+      'Create the user in the dashboard: Authentication -> Users -> Add user -> Create new user,\n' +
+      'tick "Auto Confirm User", then run this again.',
+  );
+}
+console.log(`\nSigned in as ${email}. Calling ${API_URL} ...\n`);
+
+const token = auth.access_token;
+let failures = 0;
+
+async function step(name, method, path, body, check) {
+  const res = await fetch(`${API_URL}${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  }).catch((error) => fail(`Could not reach the API at ${API_URL}: ${error.message}. Is pnpm dev:api running?`));
+  const json = await res.json().catch(() => null);
+  let ok = false;
+  try {
+    ok = check(res.status, json);
+  } catch {
+    ok = false;
+  }
+  if (!ok) failures++;
+  console.log(`${ok ? 'PASS' : 'FAIL'}  ${method} ${path}  -> ${res.status}  ${name}`);
+  if (!ok) console.log(`      response: ${JSON.stringify(json)}`);
+  return json;
+}
+
+await step('profile loads', 'GET', '/v1/me', null, (s, j) => s === 200 && j.email === email);
+await step('switch language to Hebrew', 'PATCH', '/v1/me/preferences', { locale: 'he' }, (s, j) => s === 200 && j.locale === 'he');
+await step('preference was saved', 'GET', '/v1/me/preferences', null, (s, j) => s === 200 && j.locale === 'he');
+await step('switch back to English', 'PATCH', '/v1/me/preferences', { locale: 'en' }, (s, j) => s === 200 && j.locale === 'en');
+await step('invalid language is rejected', 'PATCH', '/v1/me/preferences', { locale: 'xx' }, (s, j) => s === 400 && j.error.code === 'VALIDATION_FAILED');
+await step('trips list loads', 'GET', '/v1/trips', null, (s, j) => s === 200 && Array.isArray(j.items));
+await step('trip without a title is rejected', 'POST', '/v1/trips', { title: '  ' }, (s, j) => s === 400 && j.error.code === 'VALIDATION_FAILED');
+
+// Trips + places round trip. Everything created here is deleted at the end.
+const trip = await step('create a trip', 'POST', '/v1/trips', { title: 'Smoke test trip', startDate: '2026-11-23', endDate: '2026-11-29' }, (s, j) => s === 201 && j.placeCount === 0);
+const place = await step('save a place with notes', 'POST', '/v1/places', { name: 'Smoke test place', notes: 'Line one\nLine two' }, (s, j) => s === 201 && j.notes === 'Line one\nLine two');
+if (trip?.id && place?.id) {
+  await step('edit the place', 'PATCH', `/v1/places/${place.id}`, { address: 'Somewhere 1' }, (s, j) => s === 200 && j.address === 'Somewhere 1' && j.notes !== null);
+  await step('add the place to the trip', 'POST', `/v1/trips/${trip.id}/places`, { placeId: place.id }, (s, j) => s === 200 && j.places.length === 1 && j.placeCount === 1);
+  await step('adding it again changes nothing', 'POST', `/v1/trips/${trip.id}/places`, { placeId: place.id }, (s, j) => s === 200 && j.places.length === 1);
+  await step('trip detail lists the place', 'GET', `/v1/trips/${trip.id}`, null, (s, j) => s === 200 && j.places[0]?.placeId === place.id);
+  await step('place knows it is in 1 trip', 'GET', `/v1/places/${place.id}`, null, (s, j) => s === 200 && j.tripCount === 1);
+  await step('remove the place from the trip', 'DELETE', `/v1/trips/${trip.id}/places/${place.id}`, null, (s, j) => s === 200 && j.places.length === 0);
+  await step('unknown trip id is 404', 'GET', '/v1/trips/00000000-0000-4000-8000-000000000000', null, (s, j) => s === 404 && j.error.code === 'NOT_FOUND');
+  await step('malformed id is rejected', 'GET', '/v1/trips/not-a-uuid', null, (s, j) => s === 400 && j.error.code === 'VALIDATION_FAILED');
+  await step('delete the place (cleanup)', 'DELETE', `/v1/places/${place.id}`, null, (s) => s === 204);
+  await step('delete the trip (cleanup)', 'DELETE', `/v1/trips/${trip.id}`, null, (s) => s === 204);
+  await step('deleted trip is gone', 'GET', `/v1/trips/${trip.id}`, null, (s) => s === 404);
+}
+
+console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) failed.`);
+process.exit(failures === 0 ? 0 : 1);

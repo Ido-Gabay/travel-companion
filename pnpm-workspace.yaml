@@ -1,0 +1,12 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# React Native tooling (autolinking, CocoaPods, Gradle) is most reliable with a
+# flat node_modules. Revisit isolated installs once the mobile app is stable.
+nodeLinker: hoisted
+
+# pnpm 10 blocks dependency install scripts unless allowed here.
+onlyBuiltDependencies:
+  - "@swc/core"
+  - esbuild

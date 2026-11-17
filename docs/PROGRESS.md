@@ -1,0 +1,53 @@
+# Progress
+
+Goal: the app running on a physical iPhone for the New York trip
+(Nov 23–29, 2026), with trips and saved places, against a deployed API by Nov 22.
+
+Legend: ✅ done and verified on the Mac · 🟡 written, waiting for verification · ⬜ not started
+
+## Phase 1
+
+| # | Milestone | Status | How it is verified |
+| --- | --- | --- | --- |
+| M0 | Monorepo, tooling, docs, `packages/shared` | ✅ 32 tests, typecheck clean | `pnpm install`, `pnpm test`, `pnpm typecheck` |
+| M1 | Migration: `app` schema, profiles, preferences, trips, RLS, sign-up trigger | ✅ applied 2026-11-16 | `supabase db push`, then `supabase/checks/phase1_checks.sql` all `ok` |
+| M2 | API: config, health, JWT guard, `/v1/me`, `/v1/me/preferences`, `GET /v1/trips`, error format, tests | ✅ `pnpm smoke:api` 6/6 with a real user; unit tests pass | `pnpm dev:api`, then `pnpm smoke:api` |
+| M3 | Mobile shell: Expo Router tabs, design tokens/components, English/Hebrew + RTL, empty states | ✅ runs in the iOS Simulator (2026-11-17) | Runs in the iOS Simulator |
+| M4 | Auth screens, persistent session, API client with real data | ✅ runs in the iOS Simulator (2026-11-17) | Sign up → sign in → profile shows real data; restart keeps session |
+| M5 | Development build on the iPhone (Xcode, free Apple ID), Android check | ⏸ postponed by choice; do by Nov 22 (free-account builds expire after 7 days) | App opens on the phone and reaches the API over Wi-Fi |
+
+## Trips/places slice (after Phase 1)
+
+| Item | Status |
+| --- | --- |
+| `POST /v1/trips` + Create Trip screen | ✅ runs in the Simulator |
+| User-owned places with notes (global collection), add place to trip, trip detail, delete | ✅ smoke test 18/18, works in the Simulator |
+| Deploy the API (Render Free + Supabase Free + GitHub) and point the app at it | 🟡 config written; waiting for GitHub repo + Render setup |
+
+## Known limitations right now
+
+- No rate limiting yet (planned before the API is public).
+- Email confirmation links don't open the app yet; turn off **Confirm email** for development.
+- Session storage is AsyncStorage (not encrypted). Planned upgrade is documented in ARCHITECTURE.md.
+
+## Log
+
+- 2026-11-16: M0–M2 written. Shared schemas build and pass smoke tests against zod v4;
+  the rest is unverified until it runs on the Mac (no package registry access from the build sandbox).
+- 2026-11-16: Migration pushed (`db push --remote`). API compiles and starts; `/health/ready` ok.
+  `pnpm smoke:api` passed 6/6 with a real Supabase user, which also proves the API's
+  per-request `authenticated` role switch (RLS path) works. Added `pnpm setup:db` and `pnpm smoke:api`.
+  Note: Supabase project is in ap-southeast-1 (Singapore).
+- 2026-11-16: M3+M4 written together (one install, one native build): Expo Router tabs,
+  design tokens + components, en/he with immediate RTL flip, Supabase email auth with
+  persistent session, typed API client, Home/Trips/Places/Profile, Create Trip modal.
+  `POST /v1/trips` added to the API.
+- 2026-11-17: App builds with Xcode 26.4 and runs in the Simulator. Fixed RN 0.88 strict-type errors
+  (tab icon color, TextInput ref) and added `redirectTo` on the protected routes (SDK 58).
+- 2026-11-17: Phone install postponed. Places slice written: migration `places` + `trip_places`,
+  `/v1/places` CRUD, trip detail/delete, add/remove place to trip, Places tab, place form with notes,
+  trip detail screen, add-places picker, Open in Maps (user's own text as a search link).
+- 2026-11-17: Places slice verified (tests, typecheck, smoke 18/18, Simulator). Root scripts now
+  rebuild `packages/shared` first. Hosting decided: zero cost (Render Free + Supabase Free + GitHub),
+  no paid services without approval. Region assumption: keep Singapore for both. Added `render.yaml`,
+  CI workflow, docs/DEPLOYMENT.md, and cold-start handling in the app.

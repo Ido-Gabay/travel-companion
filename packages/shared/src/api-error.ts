@@ -1,0 +1,35 @@
+import { z } from 'zod';
+
+/**
+ * Every non-2xx API response has this body. `code` is stable and meant for
+ * programmatic handling; `message` is English, for logs and developers.
+ * The app shows its own translated text based on `code`.
+ */
+export const API_ERROR_CODES = [
+  'VALIDATION_FAILED',
+  'UNAUTHENTICATED',
+  'FORBIDDEN',
+  'NOT_FOUND',
+  'CONFLICT',
+  'RATE_LIMITED',
+  'SERVICE_UNAVAILABLE',
+  'INTERNAL',
+] as const;
+export const apiErrorCodeSchema = z.enum(API_ERROR_CODES);
+export type ApiErrorCode = z.infer<typeof apiErrorCodeSchema>;
+
+export const apiErrorSchema = z.object({
+  error: z.object({
+    code: apiErrorCodeSchema,
+    message: z.string(),
+    details: z
+      .array(
+        z.object({
+          path: z.string(),
+          message: z.string(),
+        }),
+      )
+      .optional(),
+  }),
+});
+export type ApiError = z.infer<typeof apiErrorSchema>;

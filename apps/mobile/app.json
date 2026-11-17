@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "Travel Companion",
+    "slug": "travel-companion",
+    "scheme": "travelcompanion",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "bundleIdentifier": "com.idogabay.travelcompanion",
+      "supportsTablet": false
+    },
+    "android": {
+      "package": "com.idogabay.travelcompanion"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-localization",
+        {
+          "supportedLocales": {
+            "ios": [
+              "en",
+              "he"
+            ],
+            "android": [
+              "en",
+              "he"
+            ]
+          }
+        }
+      ],
+      "expo-status-bar",
+      "expo-font",
+      "@react-native-community/datetimepicker"
+    ]
+  }
+}

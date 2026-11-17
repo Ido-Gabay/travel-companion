@@ -1,0 +1,52 @@
+# Render Blueprint for the Travel Companion API (free plan, no paid resources).
+# Render reads this file when you create the service from the repo
+# (Dashboard -> New -> Blueprint). See docs/DEPLOYMENT.md.
+#
+# Nothing here is Render-specific in the app itself: the API is a plain Node
+# process configured by environment variables, so the same build and start
+# commands work on Railway, Cloud Run (via a Node buildpack) or any VM.
+
+services:
+  - type: web
+    name: travel-companion-api
+    runtime: node
+    plan: free
+    # Same AWS region as the Supabase project (ap-southeast-1). The API talks to
+    # the database several times per request, so they must be close together.
+    region: singapore
+    branch: main
+    autoDeploy: true
+    # Only rebuild when something the API depends on changes (saves the
+    # workspace's monthly build minutes). Mobile-only commits don't deploy.
+    buildFilter:
+      paths:
+        - apps/api/**
+        - packages/shared/**
+        - package.json
+        - pnpm-lock.yaml
+        - pnpm-workspace.yaml
+        - render.yaml
+        - .nvmrc
+    buildCommand: >-
+      corepack enable &&
+      pnpm install --frozen-lockfile --filter "@travel-companion/api..." &&
+      pnpm --filter @travel-companion/shared build &&
+      pnpm --filter @travel-companion/api build
+    startCommand: node apps/api/dist/main.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      # We run the pnpm install ourselves in buildCommand.
+      - key: SKIP_INSTALL_DEPS
+        value: "true"
+      - key: DATABASE_SSL
+        value: require
+      # Small pool: one free instance, and Supabase Free limits connections.
+      - key: DATABASE_POOL_MAX
+        value: "5"
+      # Entered in the Render dashboard, never committed:
+      - key: SUPABASE_URL
+        sync: false
+      - key: DATABASE_URL
+        sync: false
