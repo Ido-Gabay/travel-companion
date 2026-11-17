@@ -33,7 +33,7 @@ export const googlePlaceTypeSchema = z.enum(GOOGLE_PLACE_TYPES);
 export type GooglePlaceType = z.infer<typeof googlePlaceTypeSchema>;
 
 /** Google place IDs: storable indefinitely under Google's terms. */
-export const googlePlaceIdSchema = z.string().regex(/^[A-Za-z0-9_-]{10,300}$/);
+export const googlePlaceIdSchema = z.string().regex(/^[A-Za-z0-9_-]{10,255}$/);
 
 export const latLngSchema = z.object({
   latitude: z.number().min(-90).max(90),

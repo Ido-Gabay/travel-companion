@@ -101,7 +101,7 @@ if (trip?.id && place?.id) {
   await step('edit the place', 'PATCH', `/v1/places/${place.id}`, { address: 'Somewhere 1' }, (s, j) => s === 200 && j.address === 'Somewhere 1' && j.notes !== null);
   await step('add the place to the trip', 'POST', `/v1/trips/${trip.id}/places`, { placeId: place.id }, (s, j) => s === 200 && j.places.length === 1 && j.placeCount === 1);
   await step('adding it again changes nothing', 'POST', `/v1/trips/${trip.id}/places`, { placeId: place.id }, (s, j) => s === 200 && j.places.length === 1);
-  await step('trip detail lists the place', 'GET', `/v1/trips/${trip.id}`, null, (s, j) => s === 200 && j.places[0]?.placeId === place.id);
+  await step('trip detail lists the place', 'GET', `/v1/trips/${trip.id}`, null, (s, j) => s === 200 && j.places[0]?.id === place.id);
   await step('place knows it is in 1 trip', 'GET', `/v1/places/${place.id}`, null, (s, j) => s === 200 && j.tripCount === 1);
   await step('remove the place from the trip', 'DELETE', `/v1/trips/${trip.id}/places/${place.id}`, null, (s, j) => s === 200 && j.places.length === 0);
   await step('unknown trip id is 404', 'GET', '/v1/trips/00000000-0000-4000-8000-000000000000', null, (s, j) => s === 404 && j.error.code === 'NOT_FOUND');
