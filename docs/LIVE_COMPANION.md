@@ -76,8 +76,10 @@ tests, so it can move to `packages/shared` if the server ever needs it.
   the hotel is used instead (handy when testing at home).
 - **Preview mode:** outside the trip dates (or with `preview=1`), Today shows a
   chosen day and time, labeled "Preview", with location optional.
-- **Time zone:** planned times are the destination's local times; Today uses the
-  phone's clock, which is right once the phone is in New York.
+- **Time zone:** planned times are the destination's local times. Today's
+  "today" and "now" use the trip's time zone (pinned hotel) since M11, so they
+  are right even while the phone is on home time; without a pinned hotel, the
+  phone's clock is used.
 
 ## Reminders (M10) as built
 

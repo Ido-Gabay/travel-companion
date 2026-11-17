@@ -10,6 +10,7 @@ import { GoogleModule } from './google/google.module.js';
 import { HealthController } from './health/health.controller.js';
 import { MeModule } from './me/me.module.js';
 import { PlacesModule } from './places/places.module.js';
+import { RateLimitGuard } from './rate-limit/rate-limit.guard.js';
 import { TripsModule } from './trips/trips.module.js';
 import { UsageModule } from './usage/usage.module.js';
 
@@ -27,7 +28,9 @@ import { UsageModule } from './usage/usage.module.js';
   ],
   controllers: [HealthController],
   providers: [
+    // Order matters: authenticate first, then count the request against the user.
     { provide: APP_GUARD, useClass: AuthGuard },
+    { provide: APP_GUARD, useClass: RateLimitGuard },
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
   ],
 })

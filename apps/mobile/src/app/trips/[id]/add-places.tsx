@@ -14,6 +14,7 @@ import {
   LoadingState,
   NavHeader,
 } from '@/components/ui';
+import { GoogleAttribution } from '@/components/GoogleAttribution';
 import { usePlaces } from '@/features/places/queries';
 import { usePlaceDisplay } from '@/features/places/use-place-display';
 import { useAddTripPlace, useRemoveTripPlace, useTrip } from '@/features/trips/queries';
@@ -84,6 +85,7 @@ export default function AddPlacesScreen() {
                   onPress={() => (inTrip.has(place.id) ? removePlace.mutate(place.id) : addPlace.mutate(place.id))}
                 />
               ))}
+              {places.data?.items.some((place) => place.source === 'google') ? <GoogleAttribution /> : null}
             </View>
             <Button label={t('addPlaces.newPlace')} icon="add" variant="secondary" onPress={openNewPlace} />
             <Button label={t('common.done')} onPress={() => router.back()} />

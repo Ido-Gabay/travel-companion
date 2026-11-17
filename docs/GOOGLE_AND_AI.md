@@ -70,7 +70,8 @@ results are reused for the preview and for saving, so those cost no extra lookup
 | Show photo authors | Every photo shows "Photo: <author>" linking to their Google Maps profile. |
 | Fetch fresh details when needed | `GET /v1/google/places/:id` calls Google every time (no server cache). |
 | Places shown on a map must be on a Google map | Maps use `react-native-maps` with `PROVIDER_GOOGLE` on iOS. |
-| Without a Google map, show Google attribution | Lists of Google results and Google-sourced place text show "Google Maps" text attribution. **To do:** swap the text for the official logo asset. |
+| Without a Google map, show Google attribution | One component, `components/GoogleAttribution.tsx`, everywhere Google place content appears outside a map (Discover lists, preview, cards, itinerary, Home, Today, add-places, hotel pin). Text "Google Maps" (allowed where space is limited) styled per Google's rules: sans-serif (Roboto on Android), weight 400, #5E5E5E, 12–16 sp, one line, never translated. Reminder notifications that name a Google place carry "Google Maps" as the iOS subtitle. The official logo (16–19 dp, Google's asset files) is optional polish. |
+| Credit photo authors and link photos to Google Maps | Each photo shows "Photo: <author>" (linking to the author) and opens the photo's `googleMapsUri` when tapped. |
 | Users must be able to reach the place on Google Maps | Every result and saved place has "Google Maps" / "Directions" buttons using `googleMapsUri` or official Maps URLs. |
 | Don't create content based on Google Maps content | Google results are never sent to Claude, and Claude never ranks or describes them. Claude only turns the user's words (plus their own trip name, destination and dates) into a search. The "Searching for …" line describes the request, not the places. |
 

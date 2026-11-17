@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { googleMapsEnabled, PlacesMap } from '@/components/maps/PlacesMap';
+import { GoogleAttribution } from '@/components/GoogleAttribution';
 import { AppText, Button, Icon, InlineError, Sheet } from '@/components/ui';
 import { CATEGORY_ICONS } from '@/features/places/categories';
 import { GooglePhotoView } from '@/features/places/GooglePhotoView';
@@ -227,9 +228,7 @@ export function PlacePreviewSheet({
         />
       ) : null}
 
-      <AppText variant="caption" color="tertiary" style={styles.attribution}>
-        Google Maps
-      </AppText>
+      <GoogleAttribution />
     </Sheet>
   );
 }
@@ -263,5 +262,4 @@ const styles = StyleSheet.create({
   hours: { gap: spacing.xxs, paddingStart: spacing.xxl + spacing.xs, paddingTop: spacing.xs },
   actions: { flexDirection: 'row', gap: spacing.md },
   savedRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  attribution: { writingDirection: 'ltr', textAlign: 'right' },
 });

@@ -18,7 +18,8 @@ yet verified by the owner · ⏳ in progress · ⬜ not started.
 | M7 | Trip mode on Home | ✅ | Countdown before; next stop + Done during |
 | M8 | Google-first Discover, place preview (rating/hours/photos), hotel pin, monthly cost caps + usage screen, companion location module | ✅ | Owner: "fully tested and working" on the Mac (Nov 17) |
 | M9 | Live Today v1: visit lengths, travel estimates, leave-by, free time, suggestions, late/overbooked hints, accept/dismiss, preview mode | 🟡 | Owner reported "implemented" (committed `4ef298a`); Simulator walkthrough and migration push not confirmed in writing |
-| M10 | Local reminders | 🟡 written (this session) | See below |
+| M10 | Local reminders | 🟡 committed (`52c49b6`); native rebuild done | Reminder behavior on the device not confirmed in writing |
+| M11 | Trip readiness: Today/Home in the trip's time zone, API rate limiting, Google attribution to policy (one component, photo links, notification subtitle), shorter Hebrew tab label | 🟡 written | See below |
 
 ### M10 – Local reminders: acceptance criteria
 
@@ -29,14 +30,23 @@ yet verified by the owner · ⏳ in progress · ⬜ not started.
 - [x] Opt-in; permission asked only when turning on; settings screen with scheduled list and test reminder; per-stop mute in the itinerary menu.
 - [x] Tapping a reminder opens Today.
 - [x] No push entitlement (free Apple ID can sign).
-- [ ] Owner: native rebuild, test reminder arrives, a real leave reminder arrives at the right time in the Simulator/iPhone.
+- [x] Owner: native rebuild (iOS project shows the notifications module and no push entitlement).
+- [ ] Owner: test reminder arrives; a real leave reminder arrives at the right time.
+
+### M11 – Trip readiness: acceptance criteria
+
+- [x] Today, Home's today card and the itinerary's opening day use the trip's time zone (pinned hotel); phone zone otherwise. Tested helper `zonedNow`.
+- [x] Per-user rate limits (240/min, 60/min paid routes) with `429 RATE_LIMITED`; unit tests.
+- [x] One "Google Maps" attribution component styled to Google's rules on every screen with Google place content; photos link to Google Maps; notifications naming Google places carry the attribution.
+- [x] Hebrew "Wishlist" tab label shortened.
+- [ ] Owner: tests on the Mac, deploy, Simulator check (Today with the pinned hotel; attribution visible; tapping a photo opens Google Maps).
 
 ## Next
 
 | # | Milestone | Status | Notes / acceptance |
 | --- | --- | --- | --- |
 | R1 | **iPhone Release install for the trip** | ⬜ | `pnpm ios:release` on **Nov 21–22** (free builds expire after 7 days); walk the test checklist in DEVELOPMENT_STATUS.md on cellular |
-| M11 | Trip-readiness polish | ⬜ | Fix whatever R1 finds; official Google Maps logo; rate limiting on the API; Today uses the trip time zone too (T9) |
+| M11b | Fixes from R1 | ⬜ | Whatever the iPhone test finds; official Google Maps logo (optional) |
 | M12 | Offline foundation | ⬜ | POCs 1–2 (PowerSync + op-sqlite/SQLCipher), D5a/D11/D15/D17; per-trip "Available offline" (D16) |
 | — | Background location / nearby alerts (geofencing) | ⬜ | Separate opt-in phase (P8, D2) |
 | — | Sharing a trip, Android release, route optimization (D3), open place data (D12) | ⬜ | After the NY trip |

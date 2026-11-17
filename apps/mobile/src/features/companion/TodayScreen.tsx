@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
+import { GoogleAttribution } from '@/components/GoogleAttribution';
 import { AppText, Button, Card, EmptyState, ErrorState, Icon, InlineError, LoadingState, NavHeader } from '@/components/ui';
 import { useMe } from '@/features/me/queries';
 import { CATEGORY_ICONS } from '@/features/places/categories';
@@ -18,13 +19,13 @@ import { dayChipParts, dayTitle, formatStartTime, initialDay, placesForDay } fro
 import { useTrip } from '@/features/trips/queries';
 import { formatDurationShort, TimeSheet } from '@/features/trips/TimeSheet';
 import { useLocale } from '@/i18n/LocaleProvider';
-import { toIsoDate } from '@/lib/dates';
 import { useErrorMessage } from '@/lib/use-error-message';
 import { colors, radii, shadows, spacing } from '@/theme/tokens';
 import { useDismissals } from './dismissals';
 import { formatDistance } from './geo';
 import { useCurrentLocation } from './location';
 import { useTodayAction } from './today-actions';
+import { zonedNow } from './zoned-time';
 import {
   computeToday,
   toClock,
@@ -100,7 +101,11 @@ function TodayContent({
   const now = useNow();
 
   const days = useMemo(() => tripDays(trip.startDate, trip.endDate), [trip.startDate, trip.endDate]);
-  const realToday = toIsoDate(now);
+  // "Today" and "now" in the trip's time zone (pinned hotel), so they're right
+  // even if the phone is still on home time; the phone's clock otherwise.
+  const hotel = useGooglePlace(trip.basePlaceId);
+  const tripNow = zonedNow(now.getTime(), hotel.data?.timeZone ?? null);
+  const realToday = tripNow.day;
   const live = !forcePreview && days.includes(realToday);
 
   // Preview: pretend a trip day and a time (for planning and testing before the trip).
@@ -108,7 +113,7 @@ function TodayContent({
   const [previewTime, setPreviewTime] = useState(DEFAULT_PREVIEW_TIME);
   const [pickingTime, setPickingTime] = useState(false);
   const day = live ? realToday : previewDay;
-  const nowMinutes = live ? now.getHours() * 60 + now.getMinutes() : toMinutes(previewTime);
+  const nowMinutes = live ? tripNow.minutes : toMinutes(previewTime);
   const dayIndex = day ? days.indexOf(day) : -1;
   const tomorrow = dayIndex >= 0 && dayIndex < days.length - 1 ? (days[dayIndex + 1] ?? null) : null;
 
@@ -121,7 +126,6 @@ function TodayContent({
   }, [live]);
   const here: LatLng | null = location.state.status === 'ready' ? location.state.coords : null;
 
-  const hotel = useGooglePlace(trip.basePlaceId);
   const { dismissed, dismiss } = useDismissals(trip.id, day);
   const act = useTodayAction(trip.id, day ?? '', tomorrow);
 
@@ -387,6 +391,9 @@ function TodayContent({
           <AppText variant="caption" color="tertiary">
             {t('today.estimateNote')}
           </AppText>
+          {stops.some((stop) => stop.id === result.next?.stop.id && stop.googlePlaceId) ? (
+            <GoogleAttribution inline />
+          ) : null}
         </View>
       ) : stops.length > 0 && !result.current ? (
         <View style={styles.doneCard}>
@@ -446,6 +453,7 @@ function TodayContent({
             {result.origin ? t('today.nothingFits') : t('today.needLocation')}
           </AppText>
         ) : null}
+        {result.suggestions.length > 0 ? <GoogleAttribution inline /> : null}
         <Button
           label={t('today.discoverNearby')}
           icon="search"
@@ -493,6 +501,7 @@ function TodayContent({
             {t('today.dayEnds', { time: clock(result.dayEndsAt) })}
           </AppText>
         ) : null}
+        {stops.some((stop) => stop.googlePlaceId) ? <GoogleAttribution inline /> : null}
       </View>
 
       <AppText variant="caption" color="tertiary" style={styles.footnote}>

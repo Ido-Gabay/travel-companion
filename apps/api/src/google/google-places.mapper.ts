@@ -28,6 +28,7 @@ export interface GoogleApiPlace {
     name?: string;
     widthPx?: number;
     heightPx?: number;
+    googleMapsUri?: string;
     authorAttributions?: { displayName?: string; uri?: string }[];
   }[];
 }
@@ -124,6 +125,7 @@ function toPhoto(raw: NonNullable<GoogleApiPlace['photos']>[number]): GooglePhot
     attributions: (raw.authorAttributions ?? [])
       .filter((author) => author.displayName)
       .map((author) => ({ displayName: author.displayName ?? '', uri: author.uri ?? null })),
+    googleMapsUri: raw.googleMapsUri?.startsWith('https://') ? raw.googleMapsUri : null,
   };
 }
 

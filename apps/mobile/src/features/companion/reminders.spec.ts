@@ -20,7 +20,7 @@ const ON = { ...DEFAULT_REMINDER_SETTINGS, enabled: true };
 const BEFORE_TRIP = Date.UTC(2026, 10, 20, 12, 0);
 
 function stop(id: string, extra: Partial<ReminderStop> = {}): ReminderStop {
-  return { id, name: id, category: 'sights', startTime: null, visited: false, location: MOMA, ...extra };
+  return { id, name: id, category: 'sights', startTime: null, visited: false, location: MOMA, google: true, ...extra };
 }
 
 function input(extra: Partial<ReminderInput>): ReminderInput {
@@ -52,7 +52,7 @@ describe('planReminders', () => {
     expect(result.map((r) => r.kind)).toEqual(['leaveSoon', 'leaveNow']);
     expect(result[1]?.fireAtMs).toBe(leaveAt);
     expect(result[0]?.fireAtMs).toBe(leaveAt - 10 * 60_000);
-    expect(result[0]?.vars).toMatchObject({ name: 'moma', lead: 10, travelMode: 'walk', travelMinutes: travel });
+    expect(result[0]?.vars).toMatchObject({ name: 'moma', lead: 10, travelMode: 'walk', travelMinutes: travel, google: true });
     // 11:00 in New York is 16:00 UTC: the reminder is not on Israel time.
     expect(new Date(nyTime('2026-11-23', '11:00')).toISOString()).toBe('2026-11-23T16:00:00.000Z');
   });

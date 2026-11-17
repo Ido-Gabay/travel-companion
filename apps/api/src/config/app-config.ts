@@ -41,6 +41,10 @@ const envSchema = z.object({
   // Claude is paid per token (no free allowance); caps bound the spend.
   AI_DAILY_CAP: z.coerce.number().int().min(0).default(300),
   AI_MONTHLY_CAP: z.coerce.number().int().min(0).default(3000),
+
+  // Per-user request limits per minute (abuse protection; cost caps still apply).
+  RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(1).default(240),
+  RATE_LIMIT_PAID_PER_MINUTE: z.coerce.number().int().min(1).default(60),
 });
 
 export interface AppConfig {
@@ -59,6 +63,8 @@ export interface AppConfig {
   aiModel: string;
   /** Daily and monthly call caps per paid metric. */
   caps: Record<UsageMetric, UsageCap>;
+  /** Requests per user per minute: all routes, and Google/Claude routes. */
+  rateLimit: { perMinute: number; paidPerMinute: number };
 }
 
 /**
@@ -98,5 +104,6 @@ export function parseAppConfig(env: NodeJS.ProcessEnv): AppConfig {
       google_place_photo: { daily: e.GOOGLE_PLACE_PHOTO_DAILY_CAP, monthly: e.GOOGLE_PLACE_PHOTO_MONTHLY_CAP },
       ai_interpret: { daily: e.AI_DAILY_CAP, monthly: e.AI_MONTHLY_CAP },
     },
+    rateLimit: { perMinute: e.RATE_LIMIT_PER_MINUTE, paidPerMinute: e.RATE_LIMIT_PAID_PER_MINUTE },
   };
 }

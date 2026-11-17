@@ -11,13 +11,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { Alert, Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { googleMapsEnabled, PlacesMap } from '@/components/maps/PlacesMap';
+import { GoogleAttribution } from '@/components/GoogleAttribution';
 import { AppText, Button, Card, EmptyState, Icon, IconButton, InlineError } from '@/components/ui';
 import { CATEGORY_ICONS } from '@/features/places/categories';
 import { openInMaps } from '@/features/places/open-in-maps';
-import { useGooglePlaces, useSetVisited } from '@/features/places/queries';
+import { useGooglePlace, useGooglePlaces, useSetVisited } from '@/features/places/queries';
+import { zonedNow } from '@/features/companion/zoned-time';
 import { usePlaceDisplay } from '@/features/places/use-place-display';
 import { useLocale } from '@/i18n/LocaleProvider';
-import { toIsoDate } from '@/lib/dates';
 import { useErrorMessage } from '@/lib/use-error-message';
 import { colors, radii, spacing } from '@/theme/tokens';
 import { AddToDaySheet } from './AddToDaySheet';
@@ -61,7 +62,9 @@ export function ItineraryView({ trip, onOpenPlace, onDiscover, onEditTrip }: Iti
   const toggleMuted = useToggleMuted();
 
   const days = useMemo(() => tripDays(trip.startDate, trip.endDate), [trip.startDate, trip.endDate]);
-  const today = toIsoDate(new Date());
+  // Open on the trip's today (pinned hotel's time zone), else the phone's.
+  const hotel = useGooglePlace(trip.basePlaceId);
+  const today = zonedNow(Date.now(), hotel.data?.timeZone ?? null).day;
   const [selectedDay, setSelectedDay] = useState<string | null>(() => initialDay(days, today));
   const [adding, setAdding] = useState(false);
   const [timeFor, setTimeFor] = useState<Named | null>(null);
@@ -389,9 +392,7 @@ function StopRow({ place, number, first, last, onOpen, onTime, onToggleVisited, 
           </AppText>
         ) : null}
         {place.source === 'google' && display.google ? (
-          <AppText variant="caption" color="tertiary" style={styles.attribution}>
-            Google Maps
-          </AppText>
+          <GoogleAttribution inline align="start" />
         ) : null}
         <View style={styles.stopActions}>
           <IconButton icon="navigate-outline" accessibilityLabel={t('places.directions')} onPress={directions} />
@@ -485,7 +486,6 @@ const styles = StyleSheet.create({
   doneChipOn: { backgroundColor: colors.success },
   successText: { color: colors.success },
   timeText: { fontWeight: '600' },
-  attribution: { writingDirection: 'ltr' },
   stopActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: spacing.xs },
   wishlistHint: {
     flexDirection: 'row',

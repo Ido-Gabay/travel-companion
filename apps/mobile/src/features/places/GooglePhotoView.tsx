@@ -17,6 +17,8 @@ interface GooglePhotoViewProps {
 /**
  * One Google photo. The image URL is fetched only when this view is shown
  * (each fetch is billed by Google and capped by the API) and never stored.
+ * Tapping it opens the photo on Google Maps; its author is credited below
+ * (both required by Google's Places policies).
  */
 export function GooglePhotoView({ photo, height, maxWidth = 800, showAttribution = true, style }: GooglePhotoViewProps) {
   const { t } = useTranslation();
@@ -25,7 +27,13 @@ export function GooglePhotoView({ photo, height, maxWidth = 800, showAttribution
 
   return (
     <View style={[styles.wrap, style]}>
-      <View style={[styles.frame, { height }]}>
+      <Pressable
+        accessibilityRole="link"
+        accessibilityLabel={t('preview.openPhoto')}
+        disabled={!photo.googleMapsUri}
+        onPress={() => photo.googleMapsUri && void Linking.openURL(photo.googleMapsUri).catch(() => undefined)}
+        style={[styles.frame, { height }]}
+      >
         {media.data ? (
           <Image source={{ uri: media.data.uri }} style={StyleSheet.absoluteFill} resizeMode="cover" accessibilityIgnoresInvertColors />
         ) : media.isError ? (
@@ -37,7 +45,7 @@ export function GooglePhotoView({ photo, height, maxWidth = 800, showAttribution
             <ActivityIndicator color={colors.textTertiary} />
           </View>
         )}
-      </View>
+      </Pressable>
       {showAttribution && author ? (
         <Pressable
           accessibilityRole={author.uri ? 'link' : 'text'}

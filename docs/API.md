@@ -369,7 +369,8 @@ Counts against the `GOOGLE_TEXT_SEARCH_*` caps (daily and monthly).
 
 The place preview: everything from the basic details plus `rating`,
 `userRatingCount`, `openNow`, `weekdayHours` (text lines in the requested
-language) and `photos` (up to 10: `name`, size, author `attributions`). One
+language) and `photos` (up to 10: `name`, size, author `attributions`, and
+`googleMapsUri`, the photo on Google Maps, which the app links each shown photo to). One
 Place Details Enterprise call (owner-approved, capped: `GOOGLE_PLACE_PREVIEW_*`).
 When the cap is reached it returns the free basic fields with `detail: "basic"`
 (otherwise `"full"`). No review text.
@@ -395,6 +396,16 @@ This server's paid API usage (all users together; no user data):
 Metrics: `google_text_search`, `google_place_details`, `google_place_preview`,
 `google_place_photo`, `ai_interpret`. When a cap is used up, the feature answers
 `429 DAILY_LIMIT_REACHED` or `429 MONTHLY_LIMIT_REACHED`.
+
+## Rate limits
+
+Every signed-in user may make **240 requests per minute** across the API and
+**60 per minute** on the paid routes (`/v1/discover/*`, `/v1/google/*`).
+Above that the API answers `429 RATE_LIMITED`, with
+`details: [{ "path": "retryAfterSeconds", "message": "<seconds>" }]`. Limits are
+per API instance and in memory (one Render instance today). Configure with
+`RATE_LIMIT_PER_MINUTE` and `RATE_LIMIT_PAID_PER_MINUTE`. The daily/monthly cost
+caps (`DAILY_LIMIT_REACHED`, `MONTHLY_LIMIT_REACHED`) apply on top.
 
 ## Versioning
 

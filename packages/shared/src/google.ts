@@ -119,6 +119,8 @@ export const googlePhotoSchema = z.object({
   heightPx: z.number().int().nonnegative(),
   /** Photo authors; must be shown with the photo. */
   attributions: z.array(z.object({ displayName: z.string(), uri: z.string().nullable() })),
+  /** The photo on Google Maps; Google requires each shown photo to link to it. Missing from older servers. */
+  googleMapsUri: z.string().nullable().default(null),
 });
 export type GooglePhoto = z.infer<typeof googlePhotoSchema>;
 

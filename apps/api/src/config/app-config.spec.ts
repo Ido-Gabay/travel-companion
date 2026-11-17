@@ -15,6 +15,7 @@ describe('parseAppConfig', () => {
     expect(config.jwtAudience).toBe('authenticated');
     expect(config.jwtIssuer).toBe('https://abcd1234.supabase.co/auth/v1');
     expect(config.jwksUrl).toBe('https://abcd1234.supabase.co/auth/v1/.well-known/jwks.json');
+    expect(config.rateLimit).toEqual({ perMinute: 240, paidPerMinute: 60 });
   });
 
   it('coerces PORT from a string', () => {

@@ -4,8 +4,10 @@ import { useMemo } from 'react';
 import { ActivityIndicator, Linking, Pressable, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { AppText, Button, Icon, InlineError } from '@/components/ui';
+import { GoogleAttribution } from '@/components/GoogleAttribution';
 import { openInMaps } from '@/features/places/open-in-maps';
-import { useSetVisited } from '@/features/places/queries';
+import { zonedNow } from '@/features/companion/zoned-time';
+import { useGooglePlace, useSetVisited } from '@/features/places/queries';
 import { usePlaceDisplay } from '@/features/places/use-place-display';
 import { useLocale } from '@/i18n/LocaleProvider';
 import { formatTripDates } from '@/lib/dates';
@@ -22,6 +24,9 @@ export function TripModeCard({ mode, today }: { mode: TripMode; today: string })
   const { t } = useTranslation();
   const { locale } = useLocale();
   const detail = useTrip(mode.trip.id);
+  // During the trip, "today" is the trip's day (pinned hotel's time zone), not the phone's.
+  const hotel = useGooglePlace(detail.data?.basePlaceId ?? null);
+  const tripToday = hotel.data?.timeZone ? zonedNow(Date.now(), hotel.data.timeZone).day : null;
   const openTrip = () => router.push({ pathname: '/trips/[id]', params: { id: mode.trip.id } });
   const openToday = () =>
     router.push({
@@ -60,7 +65,7 @@ export function TripModeCard({ mode, today }: { mode: TripMode; today: string })
       ) : mode.phase === 'before' ? (
         <BeforeTrip places={detail.data.places} totalDays={tripDays(detail.data.startDate, detail.data.endDate).length} hasBase={detail.data.baseLocation !== null} tripId={mode.trip.id} onOpen={openTrip} />
       ) : (
-        <Today stops={placesForDay(detail.data.places, today)} tripId={mode.trip.id} onOpen={openTrip} />
+        <Today stops={placesForDay(detail.data.places, tripToday ?? today)} tripId={mode.trip.id} onOpen={openTrip} />
       )}
 
       <Button
@@ -243,9 +248,7 @@ function NextStop({
           </AppText>
         ) : null}
         {stop.source === 'google' && display.google ? (
-          <AppText variant="caption" color="tertiary" style={styles.attribution}>
-            Google Maps
-          </AppText>
+          <GoogleAttribution inline align="start" />
         ) : null}
       </Pressable>
       <View style={styles.buttons}>
@@ -362,7 +365,6 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     backgroundColor: colors.background,
   },
-  attribution: { writingDirection: 'ltr' },
   allDone: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   list: { gap: spacing.sm },
   line: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },

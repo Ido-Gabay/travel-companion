@@ -371,6 +371,7 @@ export const en = {
     hours: 'Opening hours',
     morePhotos: 'Show more photos ({{count}})',
     photoBy: 'Photo: {{name}}',
+    openPhoto: 'Open this photo on Google Maps',
     basicOnly: "Ratings and photos are paused until tomorrow to stay within Google's free limit.",
   },
   hotelPin: {

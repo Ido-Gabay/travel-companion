@@ -3,7 +3,7 @@
 Give this file to any AI coding assistant (Claude Code, GitHub Copilot with
 Claude, …) that picks up this repository. Keep it current.
 
-**Last updated: 2026-11-17, after M10 (local reminders) was written.**
+**Last updated: 2026-11-17, after M11 (trip readiness) was written.**
 
 ## 1. What this project is
 
@@ -28,11 +28,12 @@ Google rules), `docs/LIVE_COMPANION.md` (Today + reminders design),
 
 ## 3. Current state
 
-- `main` is at M9 (`4ef298a`). M10 local reminders were written in the last
-  session and are **not yet verified on a device**; the owner must commit,
-  run `pnpm test && pnpm typecheck`, deploy, and do a clean native rebuild.
-- 143 pure-logic/API tests and all three typechecks passed in that session (run
-  outside vitest; see DEVELOPMENT_STATUS.md). UI and notifications are untested.
+- `main` is at M10 (`52c49b6`); the iOS project was rebuilt with reminders.
+  M11 trip readiness (trip time zone everywhere, API rate limiting, Google
+  attribution to policy) is written but **uncommitted/unverified** until the
+  owner runs the steps in DEVELOPMENT_STATUS.md.
+- 150 tests and all three typechecks passed in the M11 session (run outside
+  vitest). Device behavior of M9–M11 (Today, reminders) is not confirmed.
 
 ## 4. Decisions that need the owner's approval to change
 
@@ -51,21 +52,20 @@ Google rules), `docs/LIVE_COMPANION.md` (Today + reminders design),
 
 M0–M4 foundation, auth, en/he; trips and places; zero-cost deploy; Discovery v1;
 M6 itinerary; M7 Home trip mode; M8 Google-first Discover + preview + hotel pin
-+ cost caps/usage (owner verified); M9 Today v1 (committed); M10 reminders (written).
++ cost caps/usage (owner verified); M9 Today v1 (committed); M10 reminders (committed, rebuilt);
+M11 trip readiness (written).
 
 ## 6. Remaining
 
 - Owner verification of M9 and M10 on the Mac/Simulator (commands in DEVELOPMENT_STATUS.md).
 - R1: iPhone Release install on Nov 21–22 and the on-device checklist.
-- M11 trip-readiness polish: fixes from R1, official Google Maps logo, API rate
-  limiting, Today in the trip's time zone.
+- M11b: fixes from R1; optional official Google Maps logo.
 - Later: offline (PowerSync POCs), sharing, background location (opt-in), Android.
 
 ## 7. Exact next task
 
-Help the owner verify M10: run `pnpm test && pnpm typecheck`, fix any failure,
-commit (`git rm docs/PROGRESS.md` is part of it), push, `pnpm smoke:api` after
-the Render deploy, then `npx expo prebuild --platform ios --clean` and
-`pnpm ios` and walk the reminder checks in DEVELOPMENT_STATUS.md → "Exact next
-steps". Then update DEVELOPMENT_STATUS.md, ROADMAP.md and this file with what
-was actually verified.
+Help the owner verify M11 (and the M10 reminder checks): `pnpm test &&
+pnpm typecheck`, fix any failure, commit, push, `pnpm smoke:api` after the
+Render deploy, `pnpm ios`, and walk the checks in DEVELOPMENT_STATUS.md →
+"Exact next steps". Then R1 on Nov 21–22. Update DEVELOPMENT_STATUS.md,
+ROADMAP.md and this file with what was actually verified.

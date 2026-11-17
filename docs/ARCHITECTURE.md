@@ -68,7 +68,8 @@ apps/api            NestJS 12 (ESM, TypeScript strict, Vitest)
   src/google        the only code that calls Google Places API (New)
   src/ai            Claude: request -> structured search plan / clarification
   src/discover      interpret + search endpoints (AI proposes, Google finds, user saves)
-  src/usage         daily cost caps for paid APIs (app.provider_usage)
+  src/usage         daily/monthly cost caps for paid APIs (app.provider_usage), GET /v1/usage
+  src/rate-limit    per-user request limits (global guard after AuthGuard)
 apps/mobile         Expo SDK 58 app
   src/app           Expo Router routes: (auth), (tabs) Home/Discover/Trips/Places/Profile,
                     trips/[id]/*, places/*, today, settings/usage, settings/reminders
@@ -88,6 +89,10 @@ supabase/migrations SQL migrations, applied with `supabase db push`
 **Modules by feature.** Each feature (`me`, `trips`, later `places`, `itinerary`)
 is a Nest module with its own controller, service and SQL. Modules talk through
 services, never through each other's tables. No microservices.
+
+**Rate limits.** `RateLimitGuard` runs after `AuthGuard`: per user, 240
+requests/minute overall and 60/minute on Google/Claude routes, in memory
+(single instance; decision T13). Cost caps apply on top.
 
 **Deny by default.** `AuthGuard` is registered globally. Every route needs a
 valid user token unless it is explicitly marked `@Public()` (today only health).

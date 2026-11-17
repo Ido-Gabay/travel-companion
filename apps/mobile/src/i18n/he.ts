@@ -103,7 +103,7 @@ export const he: Translations = {
   },
   itinerary: {
     plan: 'מסלול',
-    places: 'רשימת משאלות',
+    places: 'משאלות',
     today: 'היום',
     dayNumber: 'יום {{number}}',
     add: 'הוספה',
@@ -373,6 +373,7 @@ export const he: Translations = {
     hours: 'שעות פתיחה',
     morePhotos: 'עוד תמונות ({{count}})',
     photoBy: 'צילום: {{name}}',
+    openPhoto: 'פתיחת התמונה ב-Google Maps',
     basicOnly: 'דירוגים ותמונות מושהים עד מחר כדי להישאר במכסה החינמית של Google.',
   },
   hotelPin: {

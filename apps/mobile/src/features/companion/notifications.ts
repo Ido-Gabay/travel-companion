@@ -96,6 +96,8 @@ export interface ReminderContent {
   id: string;
   title: string;
   body: string;
+  /** iOS subtitle line; "Google Maps" when the text names a Google place. */
+  subtitle?: string;
   fireAtMs: number;
   fingerprint: string;
   tripId: string;
@@ -108,6 +110,7 @@ export async function scheduleReminder(content: ReminderContent): Promise<void> 
     content: {
       title: content.title,
       body: content.body,
+      ...(content.subtitle ? { subtitle: content.subtitle } : {}),
       sound: 'default',
       data: {
         tc: 1,

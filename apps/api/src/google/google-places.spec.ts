@@ -105,6 +105,7 @@ describe('place preview (approved: rating + hours + photos, no reviews)', () => 
           name: 'places/ChIJN1t_tDeuEmsRUsoyG83frY4/photos/AXCi2Q6abcdefghijk',
           widthPx: 4032,
           heightPx: 3024,
+          googleMapsUri: 'https://www.google.com/maps/place//data=photo',
           authorAttributions: [{ displayName: 'Ana', uri: 'https://maps.google.com/maps/contrib/1' }],
         },
         { name: 'not-a-photo' },
@@ -115,6 +116,7 @@ describe('place preview (approved: rating + hours + photos, no reviews)', () => 
     expect(preview?.openNow).toBe(true);
     expect(preview?.photos).toHaveLength(1);
     expect(preview?.photos[0]?.attributions[0]?.displayName).toBe('Ana');
+    expect(preview?.photos[0]?.googleMapsUri).toBe('https://www.google.com/maps/place//data=photo');
     expect(preview?.detail).toBe('full');
   });
 

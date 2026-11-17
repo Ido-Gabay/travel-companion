@@ -55,6 +55,8 @@ export interface ReminderStop {
   startTime: string | null;
   visited: boolean;
   location: LatLng | null;
+  /** The name comes from Google (needs "Google Maps" attribution in the notification). */
+  google: boolean;
 }
 
 export interface ReminderDay {
@@ -94,6 +96,8 @@ export interface PlannedReminder {
     travelMinutes?: number;
     travelMode?: 'walk' | 'transit' | 'unknown';
     count?: number;
+    /** The text includes a Google place name. */
+    google?: boolean;
   };
 }
 
@@ -127,7 +131,10 @@ export function planReminders(input: ReminderInput): PlannedReminder[] {
         tripId,
         day,
         placeId: null,
-        vars: { count: open.length, ...(firstTimed ? { name: firstTimed.name, time: firstTimed.startTime ?? '' } : {}) },
+        vars: {
+          count: open.length,
+          ...(firstTimed ? { name: firstTimed.name, time: firstTimed.startTime ?? '', google: firstTimed.google } : {}),
+        },
       });
     }
 
@@ -139,7 +146,7 @@ export function planReminders(input: ReminderInput): PlannedReminder[] {
       const travel = previous && stop.location ? estimateTravel(previous, stop.location) : null;
       const travelMinutes = travel?.minutes ?? UNKNOWN_TRAVEL_MIN;
       const leaveAt = start - travelMinutes - BUFFER_MIN;
-      const travelVars = { travelMinutes, travelMode: travel?.mode ?? ('unknown' as const) };
+      const travelVars = { travelMinutes, travelMode: travel?.mode ?? ('unknown' as const), google: stop.google };
       const base = { tripId, day, placeId: stop.id };
 
       const leaveSoonAt = leaveAt - settings.leadMinutes;
@@ -169,7 +176,7 @@ export function planReminders(input: ReminderInput): PlannedReminder[] {
           id: `tc:headsUp:${tripId}:${stop.id}`,
           kind: 'headsUp',
           fireAtMs: at(day, headsUpAt),
-          vars: { name: stop.name, time: stop.startTime },
+          vars: { name: stop.name, time: stop.startTime, google: stop.google },
         });
       }
     });

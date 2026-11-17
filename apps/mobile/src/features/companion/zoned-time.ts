@@ -47,3 +47,26 @@ export function zonedDateTimeToUtc(day: string, time: string, timeZone: string |
   instant = asUtc - offsetAt(instant, timeZone);
   return instant;
 }
+
+/**
+ * The calendar day ("YYYY-MM-DD") and minutes since midnight at an instant, in
+ * a time zone (the trip's), or on the phone's clock without a valid zone.
+ */
+export function zonedNow(instant: number, timeZone: string | null): { day: string; minutes: number } {
+  if (!timeZone || !isValidTimeZone(timeZone)) {
+    const date = new Date(instant);
+    const day = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    return { day, minutes: date.getHours() * 60 + date.getMinutes() };
+  }
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hourCycle: 'h23',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).formatToParts(instant);
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? '00';
+  return { day: `${get('year')}-${get('month')}-${get('day')}`, minutes: Number(get('hour')) * 60 + Number(get('minute')) };
+}

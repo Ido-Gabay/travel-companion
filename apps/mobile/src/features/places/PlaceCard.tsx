@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { AppText, Card, Icon } from '@/components/ui';
+import { GoogleAttribution } from '@/components/GoogleAttribution';
 import { colors, radii, spacing } from '@/theme/tokens';
 import { CATEGORY_ICONS } from './categories';
 import { usePlaceDisplay } from './use-place-display';
@@ -69,9 +70,7 @@ export function PlaceCard({ place, onPress, actions, showNotes = true, badge }: 
             </View>
           ) : null}
           {place.source === 'google' && display.google ? (
-            <AppText variant="caption" color="tertiary" style={styles.attribution}>
-              Google Maps
-            </AppText>
+            <GoogleAttribution inline align="start" />
           ) : null}
         </View>
         {actions ?? <Icon name="chevron-forward" size={18} color={colors.textTertiary} flipInRtl />}
@@ -113,5 +112,4 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accentSoft,
   },
   planBadgeText: { fontWeight: '600' },
-  attribution: { writingDirection: 'ltr', marginTop: spacing.xxs },
 });

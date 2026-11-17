@@ -108,6 +108,7 @@ function Scheduler({ trip, hasTrip }: { trip: TripDetail | null; hasTrip: boolea
         startTime: place.startTime,
         visited: place.visitedAt !== null,
         location: place.googlePlaceId ? (details.get(place.googlePlaceId)?.location ?? null) : null,
+        google: place.googlePlaceId !== null,
       })),
     }));
     return {
@@ -158,6 +159,7 @@ function Scheduler({ trip, hasTrip }: { trip: TripDetail | null; hasTrip: boolea
             id: reminder.id,
             title: text.title,
             body: text.body,
+            ...(text.subtitle ? { subtitle: text.subtitle } : {}),
             fireAtMs: reminder.fireAtMs,
             fingerprint: reminderFingerprint(reminder, lang),
             tripId: reminder.tripId,

@@ -1,16 +1,18 @@
 # Development status
 
-**Last updated: 2026-11-17 (end of M10 implementation session).**
+**Last updated: 2026-11-17 (M11 trip readiness written).**
 Update this file at the end of every milestone or meaningful change.
 
 ## Snapshot
 
-- **Last commit on `main`:** `4ef298a` "M9: Live Today v1 …".
-- **Uncommitted when this was written:** all of M10 (local reminders), the
-  trip time-zone field, the AI handoff documentation set, monthly caps in
-  `apps/api/.env.example` and `render.yaml`. The owner commits and pushes.
-- **Current milestone:** M10 written; needs the owner's native rebuild and
-  device check. Next: iPhone Release install for the trip (R1).
+- **Last commit on `main`:** `52c49b6` "M10: local reminders, trip time zone; AI handoff docs".
+- **Uncommitted when this was written:** M11 trip readiness (trip time zone for
+  Today/Home/itinerary, API rate limiting, Google attribution component, photo
+  links, notification attribution, Hebrew tab label) and these doc updates.
+- **Native build:** the iOS project was regenerated after M10 (contains
+  `expo-notifications`, entitlements empty = no push). M11 needs no native rebuild.
+- **Current milestone:** M11 written. Next: owner verification, then the iPhone
+  Release install for the trip (R1, Nov 21–22).
 - **Trip:** New York, Nov 23–29, 2026. Install the Release build on Nov 21–22.
 
 ## What works (verified by the owner)
@@ -28,10 +30,19 @@ Update this file at the end of every milestone or meaningful change.
 | Item | What is still unverified |
 | --- | --- |
 | M9 Today v1 | Owner reported "implemented" and committed it; no written confirmation of the Simulator walkthrough, `pnpm test`, the migration push (`20261117220000_visit_duration`) or the smoke test after deploy. |
-| M10 reminders | Everything on a device: permission prompt, test reminder, real leave reminder timing, tap → Today, re-sync after edits, sign-out cancel. Native rebuild not done yet. |
-| Trip time zone (`googlePlace.timeZone`) | Needs the new API deployed (older servers omit it; the app then falls back to the phone's zone). |
+| M10 reminders | Native rebuild done. Not confirmed: permission prompt, test reminder, real leave reminder timing, tap → Today, re-sync after edits, sign-out cancel. |
+| Trip time zone (`googlePlace.timeZone`) | Deployed with the M10 push if Render deployed it; not checked against the live API. Older servers omit it and the app falls back to the phone's zone. |
+| M11 | Everything: vitest on the Mac, deploy, Simulator check of Today with a pinned hotel, attribution labels, photo links, rate limits against the live API. |
 
 ## Tests
+
+### Executed in the M11 session (2026-11-17)
+
+Same method as below (Node TypeScript mode + vitest stand-in on the Mac's Linux shell):
+app 69 (incl. `zonedNow` 3 new), shared 44, API 37 (incl. `rate-limit` 4 new) =
+**150 passed, 0 failed**; translation parity clean; `tsc --noEmit` clean for
+shared, API and app. Not run: `auth.spec.ts`, real vitest, anything on a device
+or against the live API.
 
 ### Executed in the M10 session (2026-11-17)
 
@@ -93,15 +104,16 @@ M10 adds no migration.
 
 ## Known bugs, limitations and technical debt
 
-- **Time zones:** Today uses the phone's clock (correct once in New York);
-  reminders use the trip's zone. Before the trip, Today's live mode isn't used
-  (preview mode is). Unify in M11.
+- **Time zones:** everything uses the trip's zone from the pinned hotel; without
+  a pinned hotel, the phone's zone (so pin the hotel before the trip).
 - **Travel times are estimates** (no Routes API); subway/taxi estimate is coarse.
 - **Reminders follow the plan only** (no location); they refresh when the app
   opens or the itinerary changes. A plan edited on another device won't update
   this phone's reminders until the app opens here.
-- **Google attribution** is the text "Google Maps"; the official logo asset is a to-do.
-- **No API rate limiting** yet (needed before any public use).
+- **Google attribution** is the text "Google Maps" (allowed where space is
+  limited, styled per Google's rules); the official logo is optional polish.
+- **Rate limits are in memory** per API instance (fine for one Render instance;
+  restarts reset them).
 - **Session storage** is AsyncStorage (not encrypted).
 - **Email confirmation links** don't open the app; keep "Confirm email" off for development.
 - **Usage counters** use UTC days/months; Google's billing month may differ slightly (monthly caps keep a 10% margin).
@@ -109,24 +121,23 @@ M10 adds no migration.
 - **Free Apple ID**: rebuild every 7 days; after `expo prebuild --clean` set the signing Team again in Xcode.
 - The iOS Maps key was once shared in a chat; the owner may regenerate it (restricted to the bundle ID).
 - No offline mode yet (D5a/D11/D15/D17 pending POCs).
-- Hebrew label "רשימת משאלות · N" can be long in the three-segment trip control.
 
 ## Exact next steps
 
-1. **Owner (M10 verification):**
+1. **Owner (M11 verification):**
    ```sh
    cd ~/Programing/travel-companion
    pnpm test && pnpm typecheck
-   git rm docs/PROGRESS.md        # folded into this file
-   git add -A && git commit -m "M10: local reminders; AI handoff docs" && git push
+   git add -A && git commit -m "M11: trip readiness" && git push
    pnpm smoke:api                 # after Render shows the new deploy as Live
-   cd apps/mobile && npx expo prebuild --platform ios --clean && cd ../..
-   pnpm ios
+   pnpm ios                       # no native rebuild needed for M11
    ```
-   Then: Profile → Reminders → turn on → allow → "Send a test reminder"
-   (arrives in ~5 s). Give an itinerary stop a time ~20 min from now on
-   today's trip day (or use a trip whose dates include today), check the
-   scheduled list, and wait for "Leave in 10 min".
+   Check: Today with the NY hotel pinned shows New York's day/time (Preview is
+   used before the trip); "Google Maps" label under Google content; tapping a
+   preview photo opens Google Maps; Hebrew trip tabs fit.
+   Also the M10 checks: Profile → Reminders → on → allow → "Send a test
+   reminder" (~5 s); a stop timed ~20 min ahead on a trip day that includes
+   today → "Leave in 10 min".
 2. Confirm the `visit_duration` migration is applied (`npx supabase migration list --linked`).
 3. **R1 (Nov 21–22):** set Team in Xcode, `pnpm ios:release`, walk the checklist:
    cellular data only; sign in; pin hotel; Discover near hotel; save; plan days
@@ -168,6 +179,10 @@ a normal terminal on the Mac should simply run `pnpm test` and `pnpm typecheck`.
   `GET /v1/usage`, location module, Live Companion design. Owner verified; CI fix `bd777ca`.
 - 2026-11-17: M9 Live Today v1 (`duration_minutes`, travel estimates, `computeToday`
   engine, Today screen with preview mode). Committed `4ef298a`.
+- 2026-11-17: M10 committed (`52c49b6`); iOS project regenerated (notifications module, no push entitlement).
+- 2026-11-17: M11 trip readiness written: `zonedNow` + trip time zone for Today/Home/itinerary; per-user rate
+  limits (`RateLimitGuard`, 240/60 per min); `GoogleAttribution` per Google's text rules on all Google content,
+  photo `googleMapsUri` links, notification subtitle attribution; shorter Hebrew tab label. 150 tests pass (stand-in runner).
 - 2026-11-17: M10 local reminders written: `expo-notifications` (installed by the
   owner, `~58.1.9`) with `enableRemoteNotifications: false`; trip time zone from
   the pinned hotel (`timeZone`, Pro field); pure planner + diff with tests;
