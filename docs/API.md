@@ -210,7 +210,8 @@ detail (`200`). Idempotent.
 ### Itinerary (days)
 
 Every place in a trip has `day` (`"YYYY-MM-DD"` or `null`), `startTime`
-(`"HH:MM"` or `null`) and `position` (order within the day). `day: null` means
+(`"HH:MM"` or `null`), `position` (order within the day) and
+`durationMinutes` (planned visit length or `null`). `day: null` means
 the place is on the trip's **wishlist**; a set day means it is **planned** for
 that day. Trip detail lists planned days first (by day, then position), then the
 wishlist.
@@ -228,6 +229,10 @@ Body (send at least one):
   (`400 VALIDATION_FAILED`). A time the place already has is kept.
 - `day: null`: back to the wishlist; also clears the time.
 - `startTime`: 24-hour `HH:MM`, or `null` to clear. Needs a day.
+- `durationMinutes`: planned visit length, 5–720, or `null` to use the
+  category default (coffee 30, food 60, sights 90, shopping 60, nightlife 90,
+  outdoors 60, other 45). Kept when the place moves between days; cleared when
+  it leaves the trip. Used by Today for free time and leave-by estimates.
 
 Returns the trip detail (`200`). `404` if the place isn't in the trip.
 

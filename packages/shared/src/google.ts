@@ -65,8 +65,13 @@ export function googleMapsPlaceUrl(placeId: string, name: string): string {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name)}&query_place_id=${encodeURIComponent(placeId)}`;
 }
 
-export function googleMapsDirectionsUrl(placeId: string, name: string): string {
-  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(name)}&destination_place_id=${encodeURIComponent(placeId)}`;
+export function googleMapsDirectionsUrl(
+  placeId: string,
+  name: string,
+  travelMode?: 'walking' | 'transit' | 'driving',
+): string {
+  const mode = travelMode ? `&travelmode=${travelMode}` : '';
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(name)}&destination_place_id=${encodeURIComponent(placeId)}${mode}`;
 }
 
 /** Most stops a Google Maps route link takes (destination + waypoints) across platforms. */

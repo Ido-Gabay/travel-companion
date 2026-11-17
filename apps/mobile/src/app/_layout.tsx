@@ -72,6 +72,7 @@ function RootNavigator() {
             <Stack.Screen name="trips/[id]/edit" options={{ presentation: 'modal' }} />
             <Stack.Screen name="places/new" options={{ presentation: 'modal' }} />
             <Stack.Screen name="places/[id]" />
+            <Stack.Screen name="today" />
             <Stack.Screen name="settings/usage" options={{ presentation: 'modal' }} />
           </Stack.Protected>
           <Stack.Protected guard={!signedIn} redirectTo="/">

@@ -23,6 +23,11 @@ export function TripModeCard({ mode, today }: { mode: TripMode; today: string })
   const { locale } = useLocale();
   const detail = useTrip(mode.trip.id);
   const openTrip = () => router.push({ pathname: '/trips/[id]', params: { id: mode.trip.id } });
+  const openToday = () =>
+    router.push({
+      pathname: '/today',
+      params: mode.phase === 'during' ? { tripId: mode.trip.id } : { tripId: mode.trip.id, preview: '1' },
+    });
 
   const overline =
     mode.phase === 'during'
@@ -57,6 +62,13 @@ export function TripModeCard({ mode, today }: { mode: TripMode; today: string })
       ) : (
         <Today stops={placesForDay(detail.data.places, today)} tripId={mode.trip.id} onOpen={openTrip} />
       )}
+
+      <Button
+        label={mode.phase === 'during' ? t('tripMode.openToday') : t('tripMode.previewToday')}
+        icon={mode.phase === 'during' ? 'compass' : 'eye-outline'}
+        variant={mode.phase === 'during' ? 'primary' : 'secondary'}
+        onPress={openToday}
+      />
     </View>
   );
 }

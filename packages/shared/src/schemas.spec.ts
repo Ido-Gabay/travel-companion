@@ -4,6 +4,7 @@ import {
   scheduleTripPlaceSchema,
   reorderTripDaySchema,
   tripDays,
+  visitMinutes,
   estimatedCostUsd,
   googlePhotoNameSchema,
   categoryForGoogleType,
@@ -219,6 +220,7 @@ describe('discover contract', () => {
     expect(googleMapsDirectionsUrl('ChIJN1t_tDeuEmsRUsoyG83frY4', "Katz's Deli")).toBe(
       "https://www.google.com/maps/dir/?api=1&destination=Katz's%20Deli&destination_place_id=ChIJN1t_tDeuEmsRUsoyG83frY4",
     );
+    expect(googleMapsDirectionsUrl('ChIJN1t_tDeuEmsRUsoyG83frY4', 'K', 'transit')).toMatch(/&travelmode=transit$/);
   });
 });
 
@@ -354,5 +356,19 @@ describe('cost control', () => {
     expect(googlePhotoNameSchema.safeParse('places/ChIJN1t_tDeuEmsRUsoyG83frY4/photos/AXCi2Q6abcdefghijk').success).toBe(true);
     expect(googlePhotoNameSchema.safeParse('places/ChIJN1t_tDeuEmsRUsoyG83frY4/photos/../../x').success).toBe(false);
     expect(googlePhotoNameSchema.safeParse('https://evil.example/photo').success).toBe(false);
+  });
+});
+
+describe('visit duration', () => {
+  it('can be set or cleared on its own', () => {
+    expect(scheduleTripPlaceSchema.parse({ durationMinutes: 45 })).toEqual({ durationMinutes: 45 });
+    expect(scheduleTripPlaceSchema.parse({ durationMinutes: null })).toEqual({ durationMinutes: null });
+    expect(scheduleTripPlaceSchema.safeParse({ durationMinutes: 2 }).success).toBe(false);
+    expect(scheduleTripPlaceSchema.safeParse({ durationMinutes: 721 }).success).toBe(false);
+  });
+
+  it('falls back to the category default', () => {
+    expect(visitMinutes({ durationMinutes: null, category: 'coffee' })).toBe(30);
+    expect(visitMinutes({ durationMinutes: 120, category: 'coffee' })).toBe(120);
   });
 });

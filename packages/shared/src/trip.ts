@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { googlePlaceIdSchema } from './google.js';
-import { placeSchema } from './place.js';
+import { placeSchema, type PlaceCategory } from './place.js';
 
 export const TRIP_TITLE_MAX = 120;
 export const TRIP_DESTINATION_MAX = 120;
@@ -107,6 +107,8 @@ export const tripPlaceSchema = placeSchema.extend({
   day: calendarDateSchema.nullable(),
   startTime: startTimeSchema.nullable(),
   position: z.number().int().nonnegative(),
+  /** Planned visit length; null means the category default (see defaultVisitMinutes). */
+  durationMinutes: z.number().int().min(5).max(720).nullable(),
 });
 export type TripPlace = z.infer<typeof tripPlaceSchema>;
 
@@ -134,9 +136,11 @@ export const scheduleTripPlaceSchema = z
   .strictObject({
     day: calendarDateSchema.nullable().optional(),
     startTime: startTimeSchema.nullable().optional(),
+    /** Planned visit length in minutes, or null for the category default. */
+    durationMinutes: z.number().int().min(5).max(720).nullable().optional(),
   })
-  .refine((body) => body.day !== undefined || body.startTime !== undefined, {
-    error: 'Provide day or startTime.',
+  .refine((body) => body.day !== undefined || body.startTime !== undefined || body.durationMinutes !== undefined, {
+    error: 'Provide day, startTime or durationMinutes.',
   })
   .refine((body) => !(body.day === null && typeof body.startTime === 'string'), {
     error: 'A time needs a day.',
@@ -175,4 +179,21 @@ export function tripDays(startDate: string | null, endDate: string | null): stri
     cursor.setUTCDate(cursor.getUTCDate() + 1);
   }
   return days;
+}
+
+/** Typical visit length per category (minutes), used when a stop has no duration set. */
+export const DEFAULT_VISIT_MINUTES: Record<PlaceCategory, number> = {
+  food: 60,
+  coffee: 30,
+  sights: 90,
+  shopping: 60,
+  nightlife: 90,
+  outdoors: 60,
+  stay: 0,
+  other: 45,
+};
+
+/** The planned visit length: the user's own, else the category default. */
+export function visitMinutes(place: { durationMinutes: number | null; category: PlaceCategory }): number {
+  return place.durationMinutes ?? DEFAULT_VISIT_MINUTES[place.category];
 }

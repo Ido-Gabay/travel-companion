@@ -96,3 +96,10 @@ Legend: ✅ done and verified on the Mac · 🟡 written, waiting for verificati
   ID only) used for "near my hotel" (also by AI via `nearBase`), Discover with Search / Ask AI modes, where + category
   chips, near me (foreground location via expo-location), "Search this area", place preview sheet, trip tabs renamed
   Itinerary / Wishlist, docs/LIVE_COMPANION.md (architecture + roadmap M9 Live Today, M10 reminders).
+- 2026-11-17: M8 verified on the Mac by the user (CI fix: trip schema test for basePlaceId).
+- 2026-11-17: M9 Live Today v1. Migration `visit_duration` (`trip_places.duration_minutes`, null = category default),
+  `durationMinutes` in the schedule endpoint, Time & visit length sheet, free travel estimates (no Routes API),
+  `computeToday` engine (timeline, next, leave-by, free time, suggestions from wishlist + collection, late and
+  overbooked hints, accept/dismiss), Today screen with preview mode, Home links. Tested here: engine 18, other app
+  logic 15, shared 44, API mapper/Google/AI 25 tests, translations check; typecheck clean for shared, API and app.
+  Not yet run: the Today screen in the Simulator, vitest on the Mac, migration push, smoke test.

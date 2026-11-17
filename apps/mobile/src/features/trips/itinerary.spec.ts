@@ -32,6 +32,7 @@ function place(id: string, day: string | null, position: number, addedAt = '2026
     day,
     startTime: null,
     position,
+    durationMinutes: null,
   };
 }
 

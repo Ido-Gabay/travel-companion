@@ -1,4 +1,6 @@
 import {
+  DEFAULT_VISIT_MINUTES,
+  visitMinutes,
   googleMapsDirectionsUrl,
   googleMapsRouteUrl,
   tripDays,
@@ -31,7 +33,7 @@ import {
   wishlistPlaces,
 } from './itinerary';
 import { useReorderTripDay, useScheduleTripPlace } from './queries';
-import { TimeSheet } from './TimeSheet';
+import { formatDurationShort, TimeSheet } from './TimeSheet';
 
 /** A place plus the name to show for it (Google names aren't stored in the trip). */
 interface Named {
@@ -232,9 +234,10 @@ export function ItineraryView({ trip, onOpenPlace, onDiscover, onEditTrip }: Iti
       <TimeSheet
         visible={timeFor !== null}
         placeName={timeFor?.name ?? ''}
-        value={timeFor?.place.startTime ?? null}
-        onSave={(startTime) => {
-          if (timeFor) schedule.mutate({ placeId: timeFor.place.id, startTime });
+        value={{ startTime: timeFor?.place.startTime ?? null, durationMinutes: timeFor?.place.durationMinutes ?? null }}
+        defaultDuration={timeFor ? DEFAULT_VISIT_MINUTES[timeFor.place.category] : 60}
+        onSave={(value) => {
+          if (timeFor) schedule.mutate({ placeId: timeFor.place.id, ...value });
           setTimeFor(null);
         }}
         onClose={() => setTimeFor(null)}
@@ -356,6 +359,10 @@ function StopRow({ place, number, first, last, onOpen, onTime, onToggleVisited, 
               {place.startTime ? formatStartTime(place.startTime, locale) : t('itinerary.addTime')}
             </AppText>
           </Pressable>
+          <AppText variant="caption" color="secondary">
+            {formatDurationShort(visitMinutes(place), t)}
+            {place.durationMinutes === null ? ' ' + t('itinerary.approx') : ''}
+          </AppText>
           <View style={styles.flex} />
           <Icon name={CATEGORY_ICONS[place.category]} size={16} color={colors.textTertiary} />
         </View>

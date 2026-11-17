@@ -48,18 +48,36 @@ keeps it on the wishlist; removing it from the trip keeps it in the collection.
 | Hotel as a real location | ✅ M8 | `trips.base_google_place_id` (ID only), `HotelPinSheet` |
 | Current location, foreground, one reading | ✅ M8 | `features/companion/location.ts` (`useCurrentLocation`) |
 | Distance helpers | ✅ M8 | `features/companion/geo.ts` (haversine, formatting in km/mi) |
-| Planned duration per stop | M9 | `trip_places.duration_minutes` (user-set, default by category) |
-| Travel time to next stop | M9 | Walking estimate from distance first (free); Routes API only after cost approval |
-| Leave-by time | M9 | `next.startTime − travel time − buffer` (pure function, unit-tested) |
-| Free-time detection | M9 | Gaps between `end of stop` and `next start_time` (pure function) |
-| Suggestions that fit | M9 | Wishlist + collection places ranked by distance, fitting the gap; opening hours from the preview data when available |
-| Running late / ahead | M9 | Compare now + location with the plan; produce suggestions, never edits |
+| Planned duration per stop | ✅ M9 | `trip_places.duration_minutes` (null = category default, `visitMinutes()` in shared) |
+| Travel time to next stop | ✅ M9 | `features/companion/travel.ts`: straight line × 1.3, walk 80 m/min up to 25 min, else subway/taxi estimate (10 min + 333 m/min). Free; shown as "≈". Routes API only after cost approval |
+| Leave-by time | ✅ M9 | `computeToday()`: start time − travel − 5 min buffer |
+| Free-time detection | ✅ M9 | `computeToday()`: from now (or the end of the current visit) to the leave-by time; rest of the day once the plan is done |
+| Suggestions that fit | ✅ M9 | Wishlist first, then collection (max 40); travel there + visit + travel on must fit the gap; walking distance only after the plan is done. Opening hours not used yet (would cost Enterprise calls) |
+| Running late / overbooked | ✅ M9 | ≥10 min late: "Start at …" or "Move to tomorrow"/"Remove from today"; plan past 23:00: move the last stop. Accept or dismiss (dismissals stored on the phone per day) |
 | Local reminders ("leave in 10 min") | M10 | `expo-notifications`, scheduled on the device from the itinerary |
 | Nearby saved place alerts | Later | Background location / geofencing, own permission, opt-in |
 
 `features/companion/` is the home for Live Companion code in the app. Pure
 logic (gaps, leave-by, ranking) lives in plain TypeScript files with unit
 tests, so it can move to `packages/shared` if the server ever needs it.
+
+## Today v1 (M9) as built
+
+- **Screen:** `app/today.tsx` → `features/companion/TodayScreen.tsx`, opened from the
+  Home trip card ("Open Today" during the trip, "Preview Today" before it).
+- **Engine:** `features/companion/today-engine.ts` (`computeToday`): pure and
+  deterministic, no AI, no network; unit tests in `today-engine.spec.ts`. It
+  returns the timeline, current and next stop, leave-by, free time, hints and
+  suggestions. Every change is a `TodayAction` the user must tap.
+- **Actions:** `today-actions.ts` runs an accepted action through the normal
+  itinerary endpoints (schedule, add to trip, reorder). Nothing else writes.
+- **Location:** one reading when Today opens for real, and on pull-to-refresh.
+  If the phone is more than 50 km from every place in the plan, it's ignored and
+  the hotel is used instead (handy when testing at home).
+- **Preview mode:** outside the trip dates (or with `preview=1`), Today shows a
+  chosen day and time, labeled "Preview", with location optional.
+- **Time zone:** planned times are the destination's local times; Today uses the
+  phone's clock, which is right once the phone is in New York.
 
 ## Location and privacy
 
@@ -87,7 +105,7 @@ tests, so it can move to `packages/shared` if the server ever needs it.
 | --- | --- | --- |
 | M6 | Day-by-day itinerary | ✅ |
 | M7 | Trip mode on Home (countdown, today, next stop, Done) | ✅ |
-| **M8** | **Google-first Discover** (search, categories, areas incl. pinned hotel and near me, map "Search this area", place preview with rating/hours/photos), optional Ask AI, cost caps and usage monitor, companion location module | in progress |
-| M9 | **Live Today v1**: Today screen with the four questions, durations, travel-time estimate, leave-by, free time, suggestions that fit, late/ahead hints (suggest only) | next |
-| M10 | Context-aware local reminders and notifications | |
+| M8 | Google-first Discover, place preview, hotel pin, cost caps + usage monitor, companion location module | ✅ |
+| M9 | **Live Today v1**: Today screen with the four questions, visit durations, travel estimate, leave-by, free time, suggestions that fit, late/overbooked hints, accept/dismiss, preview mode | ✅ written, engine tested |
+| M10 | Context-aware local reminders and notifications | next |
 | Later | Background location, nearby alerts, geofencing (opt-in) | |

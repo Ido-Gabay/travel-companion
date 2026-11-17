@@ -160,7 +160,7 @@ export class TripsService {
       if (link) {
         await tx`
           update app.trip_places
-          set deleted_at = now(), day = null, start_time = null, position = 0
+          set deleted_at = now(), day = null, start_time = null, position = 0, duration_minutes = null
           where id = ${link.id}
         `;
         if (link.day !== null) await renumberDay(tx, tripId, link.day);
@@ -236,6 +236,10 @@ export class TripsService {
       if (input.startTime !== undefined && day !== null) {
         await tx`update app.trip_places set start_time = ${input.startTime}::time where id = ${link.id}`;
       }
+      // Duration belongs to the place in this trip; kept when moving between days.
+      if (input.durationMinutes !== undefined) {
+        await tx`update app.trip_places set duration_minutes = ${input.durationMinutes} where id = ${link.id}`;
+      }
       return this.getInTx(tx, user, tripId);
     });
   }
@@ -281,7 +285,8 @@ export class TripsService {
         tp.created_at as added_at,
         tp.day::text as day,
         to_char(tp.start_time, 'HH24:MI') as start_time,
-        tp.position
+        tp.position,
+        tp.duration_minutes
       from app.trip_places tp
       join app.places p on p.id = tp.place_id and p.deleted_at is null
       where tp.trip_id = ${tripId} and tp.owner_id = ${user.id} and tp.deleted_at is null
