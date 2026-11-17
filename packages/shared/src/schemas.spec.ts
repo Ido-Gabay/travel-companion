@@ -93,6 +93,7 @@ describe('createTripSchema', () => {
       title: 'New York',
       destination: null,
       baseLocation: null,
+      basePlaceId: null,
       startDate: null,
       endDate: null,
     });
