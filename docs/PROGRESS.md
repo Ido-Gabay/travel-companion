@@ -75,3 +75,11 @@ Legend: ✅ done and verified on the Mac · 🟡 written, waiting for verificati
   save/dedupe/wishlist). Fixed: place ID check regex {10,300} exceeded Postgres' 255 limit (migration
   20261117130000); Simulator crash on the map fixed by `expo prebuild --clean`. Added: edit trip, trip
   "staying at" (sent to the AI for "near my hotel"), visited progress + hide visited.
+- 2026-11-17: Phone test postponed again (user's choice); free-account builds expire after 7 days, so install
+  on Nov 21–22. Day-by-day itinerary written: migration `itinerary` (`day`, `start_time`, `position` on
+  `trip_places`), `PATCH /v1/trips/:id/places/:placeId` (plan for a day / time / back to wishlist),
+  `PUT /v1/trips/:id/days/:day/order`, places outside new trip dates go back to the wishlist. Trip screen now
+  has Plan / Places / Map: day strip (opens on today during the trip), numbered day map with the route line,
+  "walk the day's route" link to Google Maps, timeline of stops with time, reorder, move day, back to wishlist,
+  add-from-wishlist sheet; Places tab shows each place's day and plans it from a day picker.
+  Typecheck passes (shared, API, mobile); tests + smoke need a run on the Mac.

@@ -203,6 +203,39 @@ trip changes nothing. `404` if the trip or place isn't the caller's.
 Takes the place out of the trip (it stays in the collection). Returns the trip
 detail (`200`). Idempotent.
 
+### Itinerary (days)
+
+Every place in a trip has `day` (`"YYYY-MM-DD"` or `null`), `startTime`
+(`"HH:MM"` or `null`) and `position` (order within the day). `day: null` means
+the place is on the trip's **wishlist**; a set day means it is **planned** for
+that day. Trip detail lists planned days first (by day, then position), then the
+wishlist.
+
+#### `PATCH /v1/trips/:id/places/:placeId`
+
+Body (send at least one):
+
+```json
+{ "day": "2026-11-24", "startTime": "09:30" }
+```
+
+- `day` set: plans the place for that day, appended at the end. The day must be
+  within the trip dates; a trip without both dates can't be planned
+  (`400 VALIDATION_FAILED`). A time the place already has is kept.
+- `day: null`: back to the wishlist; also clears the time.
+- `startTime`: 24-hour `HH:MM`, or `null` to clear. Needs a day.
+
+Returns the trip detail (`200`). `404` if the place isn't in the trip.
+
+#### `PUT /v1/trips/:id/days/:day/order`
+
+Body `{ "placeIds": ["<uuid>", ...] }`: every place planned for that day, in the
+new order. Returns the trip detail. `409 CONFLICT` if the list doesn't match the
+day's places exactly (the day changed elsewhere; refresh and retry).
+
+Changing a trip's dates moves places whose day falls outside the new dates back
+to the wishlist. Removing a place from a trip also drops its plan.
+
 ## Places (the global collection)
 
 A place is either:

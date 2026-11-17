@@ -1,6 +1,6 @@
-import { googleMapsDirectionsUrl, type TripPlace } from '@travel-companion/shared';
+import { googleMapsDirectionsUrl, tripDays, type TripPlace } from '@travel-companion/shared';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Alert, Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
@@ -14,7 +14,6 @@ import {
   InlineError,
   LoadingState,
   NavHeader,
-  Section,
   SegmentedControl,
 } from '@/components/ui';
 import { groupByCategory } from '@/features/places/categories';
@@ -22,7 +21,15 @@ import { CollectionMap } from '@/features/places/CollectionMap';
 import { openInMaps } from '@/features/places/open-in-maps';
 import { PlaceCard } from '@/features/places/PlaceCard';
 import { usePlaceDisplay } from '@/features/places/use-place-display';
-import { useDeleteTrip, useRemoveTripPlace, useTrip } from '@/features/trips/queries';
+import { DayPickerSheet } from '@/features/trips/DayPickerSheet';
+import { countByDay, dayShort, formatStartTime } from '@/features/trips/itinerary';
+import { ItineraryView } from '@/features/trips/ItineraryView';
+import {
+  useDeleteTrip,
+  useRemoveTripPlace,
+  useScheduleTripPlace,
+  useTrip,
+} from '@/features/trips/queries';
 import { useLocale } from '@/i18n/LocaleProvider';
 import { formatTripDates } from '@/lib/dates';
 import { useErrorMessage } from '@/lib/use-error-message';
@@ -36,8 +43,15 @@ export default function TripScreen() {
   const trip = useTrip(id);
   const removePlace = useRemoveTripPlace(id);
   const deleteTrip = useDeleteTrip();
+  const schedule = useScheduleTripPlace(id);
 
-  const [view, setView] = useState<'list' | 'map'>('list');
+  const [view, setView] = useState<'plan' | 'places' | 'map'>('plan');
+  const [planning, setPlanning] = useState<{ place: TripPlace; name: string } | null>(null);
+  const days = useMemo(
+    () => tripDays(trip.data?.startDate ?? null, trip.data?.endDate ?? null),
+    [trip.data?.startDate, trip.data?.endDate],
+  );
+  const counts = useMemo(() => countByDay(trip.data?.places ?? []), [trip.data?.places]);
   const [hideVisited, setHideVisited] = useState(false);
   const allPlaces = trip.data?.places ?? [];
   const visitedCount = allPlaces.filter((place) => place.visitedAt !== null).length;
@@ -45,6 +59,14 @@ export default function TripScreen() {
   const openAddPlaces = () =>
     router.push({ pathname: '/trips/[id]/add-places', params: { id } });
   const openDiscover = () => router.push({ pathname: '/trips/[id]/discover', params: { id } });
+  const openEdit = () => router.push({ pathname: '/trips/[id]/edit', params: { id } });
+  const openPlace = (place: TripPlace) => router.push({ pathname: '/places/[id]', params: { id: place.id } });
+  const planBadge = (place: TripPlace) =>
+    place.day
+      ? [dayShort(place.day, locale), place.startTime ? formatStartTime(place.startTime, locale) : null]
+          .filter(Boolean)
+          .join(' · ')
+      : null;
 
   const confirmDelete = () => {
     Alert.alert(t('tripDetail.deleteTripTitle'), t('tripDetail.deleteTripBody'), [
@@ -65,7 +87,7 @@ export default function TripScreen() {
             <IconButton
               icon="create-outline"
               accessibilityLabel={t('editTrip.title')}
-              onPress={() => router.push({ pathname: '/trips/[id]/edit', params: { id } })}
+              onPress={openEdit}
             />
           ) : undefined
         }
@@ -112,82 +134,103 @@ export default function TripScreen() {
               <Button label={t('tripDetail.fromCollection')} variant="secondary" icon="bookmark-outline" onPress={openAddPlaces} block={false} />
             </View>
 
-            <Section title={`${t('tripDetail.places')} · ${trip.data.places.length}`}>
-              {trip.data.places.length === 0 ? (
-                <EmptyState
-                  icon="bookmark-outline"
-                  title={t('tripDetail.emptyTitle')}
-                  body={t('tripDetail.emptyBody')}
-                />
-              ) : (
-                <>
-                  <View style={styles.progressRow}>
-                    <View style={styles.progressText}>
-                      <AppText variant="caption" color="secondary">
-                        {t('tripDetail.visitedProgress', { visited: visitedCount, total: allPlaces.length })}
-                      </AppText>
-                      <View style={styles.progressTrack}>
-                        <View
-                          style={[
-                            styles.progressFill,
-                            { width: `${Math.round((visitedCount / Math.max(allPlaces.length, 1)) * 100)}%` },
-                          ]}
-                        />
-                      </View>
+            <SegmentedControl
+              accessibilityLabel={t('discover.view')}
+              options={[
+                { value: 'plan', label: t('itinerary.plan') },
+                { value: 'places', label: `${t('itinerary.places')} · ${trip.data.places.length}` },
+                { value: 'map', label: t('discover.map') },
+              ]}
+              value={view}
+              onChange={setView}
+            />
+
+            {view === 'plan' ? (
+              <ItineraryView
+                trip={trip.data}
+                onOpenPlace={openPlace}
+                onDiscover={openDiscover}
+                onEditTrip={openEdit}
+              />
+            ) : trip.data.places.length === 0 ? (
+              <EmptyState
+                icon="bookmark-outline"
+                title={t('tripDetail.emptyTitle')}
+                body={t('tripDetail.emptyBody')}
+              />
+            ) : (
+              <View style={styles.placesBody}>
+                <View style={styles.progressRow}>
+                  <View style={styles.progressText}>
+                    <AppText variant="caption" color="secondary">
+                      {t('tripDetail.visitedProgress', { visited: visitedCount, total: allPlaces.length })}
+                    </AppText>
+                    <View style={styles.progressTrack}>
+                      <View
+                        style={[
+                          styles.progressFill,
+                          { width: `${Math.round((visitedCount / Math.max(allPlaces.length, 1)) * 100)}%` },
+                        ]}
+                      />
                     </View>
-                    {visitedCount > 0 ? (
-                      <Pressable
-                        accessibilityRole="switch"
-                        accessibilityState={{ checked: hideVisited }}
-                        onPress={() => setHideVisited((value) => !value)}
-                        style={[styles.hideToggle, hideVisited && styles.hideToggleOn]}
-                      >
-                        <Icon
-                          name={hideVisited ? 'eye-off-outline' : 'eye-outline'}
-                          size={14}
-                          color={hideVisited ? colors.textOnAccent : colors.textSecondary}
-                        />
-                        <AppText variant="caption" style={[styles.hideText, hideVisited && styles.hideTextOn]}>
-                          {t('tripDetail.hideVisited')}
-                        </AppText>
-                      </Pressable>
-                    ) : null}
                   </View>
-                  <SegmentedControl
-                    accessibilityLabel={t('discover.view')}
-                    options={[
-                      { value: 'list', label: t('discover.list') },
-                      { value: 'map', label: t('discover.map') },
-                    ]}
-                    value={view}
-                    onChange={setView}
-                  />
-                  {view === 'map' ? (
-                    <CollectionMap
-                      places={shownPlaces}
-                      onOpen={(place) => router.push({ pathname: '/places/[id]', params: { id: place.id } })}
-                    />
-                  ) : (
-                    groupByCategory(shownPlaces).map((group) => (
-                      <View key={group.category} style={styles.group}>
-                        <AppText variant="overline" color="tertiary">
-                          {t(`categories.${group.category}`).toUpperCase()}
-                        </AppText>
-                        {group.items.map((place) => (
-                          <TripPlaceCard
-                            key={place.id}
-                            place={place}
-                            removing={removePlace.isPending && removePlace.variables === place.id}
-                            onRemove={() => removePlace.mutate(place.id)}
-                          />
-                        ))}
-                      </View>
-                    ))
-                  )}
-                  {removePlace.isError ? <InlineError message={errorMessage(removePlace.error)} /> : null}
-                </>
-              )}
-            </Section>
+                  {visitedCount > 0 ? (
+                    <Pressable
+                      accessibilityRole="switch"
+                      accessibilityState={{ checked: hideVisited }}
+                      onPress={() => setHideVisited((value) => !value)}
+                      style={[styles.hideToggle, hideVisited && styles.hideToggleOn]}
+                    >
+                      <Icon
+                        name={hideVisited ? 'eye-off-outline' : 'eye-outline'}
+                        size={14}
+                        color={hideVisited ? colors.textOnAccent : colors.textSecondary}
+                      />
+                      <AppText variant="caption" style={[styles.hideText, hideVisited && styles.hideTextOn]}>
+                        {t('tripDetail.hideVisited')}
+                      </AppText>
+                    </Pressable>
+                  ) : null}
+                </View>
+                {view === 'map' ? (
+                  <CollectionMap places={shownPlaces} onOpen={openPlace} />
+                ) : (
+                  groupByCategory(shownPlaces).map((group) => (
+                    <View key={group.category} style={styles.group}>
+                      <AppText variant="overline" color="tertiary">
+                        {t(`categories.${group.category}`).toUpperCase()}
+                      </AppText>
+                      {group.items.map((place) => (
+                        <TripPlaceCard
+                          key={place.id}
+                          place={place}
+                          badge={planBadge(place)}
+                          canPlan={days.length > 0}
+                          removing={removePlace.isPending && removePlace.variables === place.id}
+                          onPlan={(name) => setPlanning({ place, name })}
+                          onRemove={() => removePlace.mutate(place.id)}
+                        />
+                      ))}
+                    </View>
+                  ))
+                )}
+                {removePlace.isError ? <InlineError message={errorMessage(removePlace.error)} /> : null}
+                {schedule.isError ? <InlineError message={errorMessage(schedule.error)} /> : null}
+              </View>
+            )}
+
+            <DayPickerSheet
+              visible={planning !== null}
+              placeName={planning?.name ?? ''}
+              days={days}
+              current={planning?.place.day ?? null}
+              counts={counts}
+              onPick={(day) => {
+                if (planning && day !== planning.place.day) schedule.mutate({ placeId: planning.place.id, day });
+                setPlanning(null);
+              }}
+              onClose={() => setPlanning(null)}
+            />
 
             <View style={styles.danger}>
               {deleteTrip.isError ? <InlineError message={errorMessage(deleteTrip.error)} /> : null}
@@ -208,11 +251,17 @@ export default function TripScreen() {
 
 function TripPlaceCard({
   place,
+  badge,
+  canPlan,
   removing,
+  onPlan,
   onRemove,
 }: {
   place: TripPlace;
+  badge: string | null;
+  canPlan: boolean;
   removing: boolean;
+  onPlan: (name: string) => void;
   onRemove: () => void;
 }) {
   const { t } = useTranslation();
@@ -228,9 +277,17 @@ function TripPlaceCard({
     <View style={removing ? styles.removing : undefined}>
       <PlaceCard
         place={place}
+        badge={badge}
         onPress={() => router.push({ pathname: '/places/[id]', params: { id: place.id } })}
         actions={
           <View style={styles.actions}>
+            {canPlan ? (
+              <IconButton
+                icon={place.day ? 'calendar' : 'calendar-outline'}
+                accessibilityLabel={t('itinerary.pickDay')}
+                onPress={() => onPlan(display.name)}
+              />
+            ) : null}
             <IconButton icon="navigate-outline" accessibilityLabel={t('places.directions')} onPress={navigate} />
             <IconButton
               icon="remove-circle-outline"
@@ -258,6 +315,7 @@ const styles = StyleSheet.create({
   discoverRow: { flexDirection: 'row', gap: spacing.md },
   flex: { flex: 1 },
   group: { gap: spacing.md },
+  placesBody: { gap: spacing.lg },
   progressRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   progressText: { flex: 1, gap: spacing.xs },
   progressTrack: { height: 6, borderRadius: radii.pill, backgroundColor: colors.surfaceMuted, overflow: 'hidden' },

@@ -17,6 +17,7 @@
     "dev:mobile": "pnpm build:shared && pnpm --filter @travel-companion/mobile start",
     "ios": "pnpm build:shared && pnpm --filter @travel-companion/mobile ios",
     "ios:device": "pnpm build:shared && pnpm --filter @travel-companion/mobile ios:device",
+    "ios:release": "pnpm build:shared && pnpm --filter @travel-companion/mobile ios:release",
     "dev:shared": "pnpm --filter @travel-companion/shared dev",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

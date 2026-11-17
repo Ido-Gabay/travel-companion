@@ -1,8 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import type { PendingQuery, Row } from 'postgres';
-import type { CreateTripData, Trip, TripDetail, TripList, UpdateTripData } from '@travel-companion/shared';
+import {
+  TRIP_DAY_MAX_PLACES,
+  type CreateTripData,
+  type ScheduleTripPlaceData,
+  type Trip,
+  type TripDetail,
+  type TripList,
+  type UpdateTripData,
+} from '@travel-companion/shared';
 import type { AuthUser } from '../auth/auth.types.js';
-import { notFound } from '../common/api-exception.js';
+import { ApiException, notFound } from '../common/api-exception.js';
 import { DatabaseService, type Tx } from '../database/database.service.js';
 import { placeColumns } from '../places/place-columns.js';
 import type { TripPlaceRow } from '../places/places.mapper.js';
@@ -87,6 +95,18 @@ export class TripsService {
         returning id
       `;
       if (rows.length === 0) throw notFound('Trip not found.');
+
+      // Days outside the new dates no longer exist: move their places back to the wishlist.
+      if (input.startDate !== undefined || input.endDate !== undefined) {
+        await tx`
+          update app.trip_places tp
+          set day = null, start_time = null, position = 0
+          from app.trips t
+          where t.id = tp.trip_id and tp.trip_id = ${tripId} and tp.owner_id = ${user.id}
+            and tp.day is not null
+            and (t.start_date is null or t.end_date is null or tp.day < t.start_date or tp.day > t.end_date)
+        `;
+      }
       return toTrip(await findTrip(tx, user, tripId));
     });
   }
@@ -117,21 +137,135 @@ export class TripsService {
         insert into app.trip_places (owner_id, trip_id, place_id)
         values (${user.id}, ${tripId}, ${placeId})
         on conflict (trip_id, place_id) do update
-          set deleted_at = null
+          set deleted_at = null, created_at = now()
           where app.trip_places.deleted_at is not null
       `;
       return this.getInTx(tx, user, tripId);
     });
   }
 
-  /** Removes a place from a trip. The place stays in the collection. Idempotent. */
+  /** Removes a place from a trip (and its plan). The place stays in the collection. Idempotent. */
   removePlace(user: AuthUser, tripId: string, placeId: string): Promise<TripDetail> {
     return this.db.asUser(user, async (tx) => {
       await findTrip(tx, user, tripId);
-      await tx`
-        update app.trip_places set deleted_at = now()
+      const [link] = await tx<{ id: string; day: string | null }[]>`
+        select id, day::text as day from app.trip_places
         where trip_id = ${tripId} and place_id = ${placeId}
           and owner_id = ${user.id} and deleted_at is null
+        for update
+      `;
+      if (link) {
+        await tx`
+          update app.trip_places
+          set deleted_at = now(), day = null, start_time = null, position = 0
+          where id = ${link.id}
+        `;
+        if (link.day !== null) await renumberDay(tx, tripId, link.day);
+      }
+      return this.getInTx(tx, user, tripId);
+    });
+  }
+
+  /**
+   * Plans a trip place for a day (appended at the end of that day; a time it
+   * already has is kept), sets or clears its time, or moves it back to the wishlist (day null, which also
+   * clears the time).
+   */
+  schedulePlace(
+    user: AuthUser,
+    tripId: string,
+    placeId: string,
+    input: ScheduleTripPlaceData,
+  ): Promise<TripDetail> {
+    return this.db.asUser(user, async (tx) => {
+      const trip = await findTrip(tx, user, tripId);
+      const [link] = await tx<{ id: string; day: string | null }[]>`
+        select tp.id, tp.day::text as day
+        from app.trip_places tp
+        join app.places p on p.id = tp.place_id and p.deleted_at is null
+        where tp.trip_id = ${tripId} and tp.place_id = ${placeId}
+          and tp.owner_id = ${user.id} and tp.deleted_at is null
+        for update of tp
+      `;
+      if (!link) throw notFound('This place is not in the trip.');
+
+      const day = input.day === undefined ? link.day : input.day;
+      if (input.day !== undefined && input.day !== null) {
+        if (!trip.start_date || !trip.end_date) {
+          throw invalid('day', 'Set the trip dates before planning days.');
+        }
+        if (input.day < trip.start_date || input.day > trip.end_date) {
+          throw invalid('day', 'The day must be within the trip dates.');
+        }
+      }
+      if (typeof input.startTime === 'string' && day === null) {
+        throw invalid('startTime', 'Plan the place for a day before setting a time.');
+      }
+
+      if (day !== link.day) {
+        if (day === null) {
+          await tx`
+            update app.trip_places set day = null, start_time = null, position = 0
+            where id = ${link.id}
+          `;
+        } else {
+          const [count] = await tx<{ count: number }[]>`
+            select count(*)::int as count from app.trip_places
+            where trip_id = ${tripId} and day = ${day}::date and deleted_at is null
+          `;
+          if ((count?.count ?? 0) >= TRIP_DAY_MAX_PLACES) {
+            throw invalid('day', `A day can hold up to ${TRIP_DAY_MAX_PLACES} places.`);
+          }
+          await tx`
+            update app.trip_places
+            set day = ${day}::date,
+                position = (
+                  select coalesce(max(position) + 1, 0) from app.trip_places
+                  where trip_id = ${tripId} and day = ${day}::date and deleted_at is null
+                )
+            where id = ${link.id}
+          `;
+        }
+        // Close the gap left in the old day.
+        if (link.day !== null) await renumberDay(tx, tripId, link.day);
+      }
+
+      if (input.startTime !== undefined && day !== null) {
+        await tx`update app.trip_places set start_time = ${input.startTime}::time where id = ${link.id}`;
+      }
+      return this.getInTx(tx, user, tripId);
+    });
+  }
+
+  /** Sets the order of one day. placeIds must be exactly the places planned for that day. */
+  reorderDay(user: AuthUser, tripId: string, day: string, placeIds: string[]): Promise<TripDetail> {
+    return this.db.asUser(user, async (tx) => {
+      await findTrip(tx, user, tripId);
+      const current = await tx<{ place_id: string }[]>`
+        select tp.place_id
+        from app.trip_places tp
+        join app.places p on p.id = tp.place_id and p.deleted_at is null
+        where tp.trip_id = ${tripId} and tp.owner_id = ${user.id}
+          and tp.day = ${day}::date and tp.deleted_at is null
+        for update of tp
+      `;
+      const currentIds = new Set(current.map((row) => row.place_id));
+      if (currentIds.size !== placeIds.length || placeIds.some((id) => !currentIds.has(id))) {
+        throw new ApiException(
+          409,
+          'CONFLICT',
+          'The day changed since it was loaded. Refresh and try again.',
+        );
+      }
+      await tx`
+        update app.trip_places tp
+        set position = ordered.position
+        from (
+          select place_id, (ordinality - 1)::int as position
+          from unnest(${tx.array(placeIds)}::uuid[]) with ordinality as list(place_id, ordinality)
+        ) as ordered
+        where tp.trip_id = ${tripId} and tp.place_id = ordered.place_id
+          and tp.day = ${day}::date and tp.deleted_at is null
       `;
       return this.getInTx(tx, user, tripId);
     });
@@ -140,11 +274,15 @@ export class TripsService {
   private async getInTx(tx: Tx, user: AuthUser, tripId: string): Promise<TripDetail> {
     const trip = await findTrip(tx, user, tripId);
     const places = await tx<TripPlaceRow[]>`
-      select ${placeColumns(tx)}, tp.updated_at as added_at
+      select ${placeColumns(tx)},
+        tp.created_at as added_at,
+        tp.day::text as day,
+        to_char(tp.start_time, 'HH24:MI') as start_time,
+        tp.position
       from app.trip_places tp
       join app.places p on p.id = tp.place_id and p.deleted_at is null
       where tp.trip_id = ${tripId} and tp.owner_id = ${user.id} and tp.deleted_at is null
-      order by tp.updated_at asc
+      order by tp.day asc nulls last, tp.position asc, tp.created_at asc
     `;
     return toTripDetail(trip, places);
   }
@@ -158,4 +296,22 @@ async function findTrip(tx: Tx, user: AuthUser, tripId: string): Promise<TripRow
   `;
   if (!row) throw notFound('Trip not found.');
   return row;
+}
+
+function invalid(path: string, message: string): ApiException {
+  return new ApiException(400, 'VALIDATION_FAILED', message, [{ path, message }]);
+}
+
+/** Renumbers a day's positions 0..n-1, keeping their order. */
+async function renumberDay(tx: Tx, tripId: string, day: string): Promise<void> {
+  await tx`
+    update app.trip_places tp
+    set position = ranked.position
+    from (
+      select id, (row_number() over (order by position, created_at) - 1)::int as position
+      from app.trip_places
+      where trip_id = ${tripId} and day = ${day}::date and deleted_at is null
+    ) as ranked
+    where tp.id = ranked.id and tp.position <> ranked.position
+  `;
 }

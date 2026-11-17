@@ -18,6 +18,11 @@ export interface PlaceRow {
 
 export interface TripPlaceRow extends PlaceRow {
   added_at: Date;
+  /** Selected as ::text so the calendar day never shifts with server time zones. */
+  day: string | null;
+  /** Selected as to_char(..., 'HH24:MI'). */
+  start_time: string | null;
+  position: number;
 }
 
 export function toPlace(row: PlaceRow): Place {
@@ -39,5 +44,11 @@ export function toPlace(row: PlaceRow): Place {
 }
 
 export function toTripPlace(row: TripPlaceRow): TripPlace {
-  return { ...toPlace(row), addedAt: row.added_at.toISOString() };
+  return {
+    ...toPlace(row),
+    addedAt: row.added_at.toISOString(),
+    day: row.day,
+    startTime: row.start_time,
+    position: row.position,
+  };
 }

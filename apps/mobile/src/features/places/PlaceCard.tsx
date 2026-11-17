@@ -13,9 +13,11 @@ interface PlaceCardProps {
   /** Optional trailing controls (e.g. remove from trip). */
   actions?: ReactNode;
   showNotes?: boolean;
+  /** Small highlighted label, e.g. the day a trip place is planned for. */
+  badge?: string | null;
 }
 
-export function PlaceCard({ place, onPress, actions, showNotes = true }: PlaceCardProps) {
+export function PlaceCard({ place, onPress, actions, showNotes = true, badge }: PlaceCardProps) {
   const { t } = useTranslation();
   const display = usePlaceDisplay(place);
   const visited = place.visitedAt !== null;
@@ -46,6 +48,14 @@ export function PlaceCard({ place, onPress, actions, showNotes = true }: PlaceCa
             <AppText variant="body" color="secondary" numberOfLines={2}>
               {place.notes}
             </AppText>
+          ) : null}
+          {badge ? (
+            <View style={styles.planBadge}>
+              <Icon name="calendar-outline" size={12} color={colors.accent} />
+              <AppText variant="caption" color="accent" style={styles.planBadgeText}>
+                {badge}
+              </AppText>
+            </View>
           ) : null}
           {place.tags.length > 0 ? (
             <View style={styles.tags}>
@@ -91,5 +101,17 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     backgroundColor: colors.surfaceMuted,
   },
+  planBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: spacing.xxs,
+    marginTop: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xxs,
+    borderRadius: radii.pill,
+    backgroundColor: colors.accentSoft,
+  },
+  planBadgeText: { fontWeight: '600' },
   attribution: { writingDirection: 'ltr', marginTop: spacing.xxs },
 });

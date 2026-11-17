@@ -10,3 +10,4 @@ export { Section } from './Section';
 export { SegmentedControl } from './SegmentedControl';
 export { EmptyState, ErrorState, InlineError, LoadingState } from './States';
 export { TextField, type TextFieldHandle } from './TextField';
+export { Sheet } from './Sheet';

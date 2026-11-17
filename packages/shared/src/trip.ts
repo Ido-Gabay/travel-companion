@@ -88,13 +88,27 @@ export const updateTripSchema = z
 export type UpdateTripInput = z.input<typeof updateTripSchema>;
 export type UpdateTripData = z.output<typeof updateTripSchema>;
 
-/** A place in a trip's wishlist: the user's place plus when it was added. */
+/** Planned start time, 24-hour "HH:MM" (local time at the destination). */
+export const startTimeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, {
+  error: 'Use a 24-hour time like 09:30.',
+});
+
+/**
+ * A place in a trip: the user's place plus its plan in this trip.
+ * day null = on the wishlist; day set = planned for that day, ordered by position.
+ */
 export const tripPlaceSchema = placeSchema.extend({
   addedAt: z.iso.datetime({ offset: true }),
+  day: calendarDateSchema.nullable(),
+  startTime: startTimeSchema.nullable(),
+  position: z.number().int().nonnegative(),
 });
 export type TripPlace = z.infer<typeof tripPlaceSchema>;
 
-/** Response of GET /v1/trips/:id. Places are in the order they were added. */
+/**
+ * Response of GET /v1/trips/:id. Places are sorted by day (planned days first,
+ * then the wishlist), then by position within the day.
+ */
 export const tripDetailSchema = tripSchema.extend({
   places: z.array(tripPlaceSchema),
 });
@@ -105,3 +119,55 @@ export const addTripPlaceSchema = z.strictObject({
   placeId: z.uuid(),
 });
 export type AddTripPlaceInput = z.infer<typeof addTripPlaceSchema>;
+
+/**
+ * Request body of PATCH /v1/trips/:id/places/:placeId.
+ * day: plan the place for that day (must be inside the trip dates), or null to move it back to the wishlist.
+ * startTime: set or clear the time; a time needs a day. Moving to the wishlist clears the time.
+ */
+export const scheduleTripPlaceSchema = z
+  .strictObject({
+    day: calendarDateSchema.nullable().optional(),
+    startTime: startTimeSchema.nullable().optional(),
+  })
+  .refine((body) => body.day !== undefined || body.startTime !== undefined, {
+    error: 'Provide day or startTime.',
+  })
+  .refine((body) => !(body.day === null && typeof body.startTime === 'string'), {
+    error: 'A time needs a day.',
+    path: ['startTime'],
+  });
+export type ScheduleTripPlaceInput = z.input<typeof scheduleTripPlaceSchema>;
+export type ScheduleTripPlaceData = z.output<typeof scheduleTripPlaceSchema>;
+
+/** Most places one day can hold (and the most ids one reorder request may send). */
+export const TRIP_DAY_MAX_PLACES = 100;
+
+/** Request body of PUT /v1/trips/:id/days/:day/order: every place of that day, in the new order. */
+export const reorderTripDaySchema = z.strictObject({
+  placeIds: z
+    .array(z.uuid())
+    .min(1)
+    .max(TRIP_DAY_MAX_PLACES)
+    .refine((ids) => new Set(ids).size === ids.length, { error: 'Each place may appear only once.' }),
+});
+export type ReorderTripDayInput = z.infer<typeof reorderTripDaySchema>;
+
+/** Longest trip the itinerary shows day by day. */
+export const TRIP_MAX_DAYS = 60;
+
+/**
+ * Every calendar day from start to end (inclusive), as "YYYY-MM-DD".
+ * Empty when a date is missing or the range is reversed; capped at TRIP_MAX_DAYS.
+ */
+export function tripDays(startDate: string | null, endDate: string | null): string[] {
+  if (!startDate || !endDate || endDate < startDate) return [];
+  const days: string[] = [];
+  const cursor = new Date(`${startDate}T00:00:00Z`);
+  const end = new Date(`${endDate}T00:00:00Z`);
+  while (cursor <= end && days.length < TRIP_MAX_DAYS) {
+    days.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return days;
+}

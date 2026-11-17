@@ -78,11 +78,13 @@ describe('toTripDetail', () => {
         updated_at: created,
         version: 1,
       },
-      [{ ...placeRow, added_at: updated }],
+      [{ ...placeRow, added_at: updated, day: '2026-11-24', start_time: '09:30', position: 0 }],
     );
     expect(tripDetailSchema.parse(detail)).toEqual(detail);
     expect(detail.places[0]?.addedAt).toBe('2026-11-16T11:30:00.000Z');
     expect(detail.places[0]?.source).toBe('google');
+    expect(detail.places[0]?.day).toBe('2026-11-24');
+    expect(detail.places[0]?.startTime).toBe('09:30');
   });
 });
 

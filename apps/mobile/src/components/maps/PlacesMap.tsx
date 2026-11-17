@@ -1,7 +1,7 @@
 import Constants from 'expo-constants';
 import { useEffect, useMemo, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
-import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useTranslation } from 'react-i18next';
 import { AppText, Icon } from '@/components/ui';
 import { colors, radii, spacing } from '@/theme/tokens';
@@ -11,6 +11,8 @@ export interface MapPoint {
   latitude: number;
   longitude: number;
   title: string;
+  /** Short text drawn in the marker, e.g. the stop number in a day plan. */
+  label?: string;
 }
 
 interface PlacesMapProps {
@@ -18,6 +20,8 @@ interface PlacesMapProps {
   selectedId?: string | null;
   onSelect?: (id: string | null) => void;
   height?: number;
+  /** Draw a line through the points in order (a day's route, as the crow flies). */
+  connect?: boolean;
 }
 
 /** True when the app was built with a Google Maps iOS key (see app.config.ts). */
@@ -29,7 +33,7 @@ export const googleMapsEnabled = Boolean(
  * A Google map with one marker per point. Google Places content shown on a
  * map must be on a Google map, so this always uses PROVIDER_GOOGLE.
  */
-export function PlacesMap({ points, selectedId, onSelect, height }: PlacesMapProps) {
+export function PlacesMap({ points, selectedId, onSelect, height, connect = false }: PlacesMapProps) {
   const { t } = useTranslation();
   const ref = useRef<MapView>(null);
   const coordinates = useMemo(
@@ -74,18 +78,34 @@ export function PlacesMap({ points, selectedId, onSelect, height }: PlacesMapPro
         onPress={() => onSelect?.(null)}
         toolbarEnabled={false}
       >
+        {connect && coordinates.length > 1 ? (
+          <Polyline
+            coordinates={coordinates}
+            strokeColor={colors.accent}
+            strokeWidth={3}
+            lineDashPattern={[8, 6]}
+          />
+        ) : null}
         {points.map((point) => (
           <Marker
-            key={point.id}
+            key={`${point.id}:${point.label ?? ''}:${point.id === selectedId ? 1 : 0}`}
             identifier={point.id}
             coordinate={{ latitude: point.latitude, longitude: point.longitude }}
             title={point.title}
-            pinColor={point.id === selectedId ? colors.danger : colors.accent}
+            pinColor={point.label ? undefined : point.id === selectedId ? colors.danger : colors.accent}
             onPress={(event) => {
               event.stopPropagation();
               onSelect?.(point.id);
             }}
-          />
+          >
+            {point.label ? (
+              <View style={[styles.numbered, point.id === selectedId && styles.numberedSelected]}>
+                <AppText variant="caption" color="onAccent" style={styles.numberedText}>
+                  {point.label}
+                </AppText>
+              </View>
+            ) : undefined}
+          </Marker>
         ))}
       </MapView>
     </View>
@@ -93,6 +113,19 @@ export function PlacesMap({ points, selectedId, onSelect, height }: PlacesMapPro
 }
 
 const styles = StyleSheet.create({
+  numbered: {
+    minWidth: 28,
+    height: 28,
+    paddingHorizontal: spacing.xs,
+    borderRadius: radii.pill,
+    backgroundColor: colors.accent,
+    borderWidth: 2,
+    borderColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  numberedSelected: { backgroundColor: colors.danger },
+  numberedText: { fontWeight: '700' },
   frame: { borderRadius: radii.lg, overflow: 'hidden', backgroundColor: colors.surfaceMuted },
   fill: { flex: 1, minHeight: 360 },
   placeholder: {

@@ -105,6 +105,13 @@ if (trip?.id && place?.id) {
   await step('adding it again changes nothing', 'POST', `/v1/trips/${trip.id}/places`, { placeId: place.id }, (s, j) => s === 200 && j.places.length === 1);
   await step('trip detail lists the place', 'GET', `/v1/trips/${trip.id}`, null, (s, j) => s === 200 && j.places[0]?.id === place.id);
   await step('place knows it is in 1 trip', 'GET', `/v1/places/${place.id}`, null, (s, j) => s === 200 && j.tripCount === 1);
+  await step('new trip place is on the wishlist', 'GET', `/v1/trips/${trip.id}`, null, (s, j) => s === 200 && j.places[0]?.day === null && j.places[0]?.startTime === null);
+  await step('plan it for Nov 24 at 09:30', 'PATCH', `/v1/trips/${trip.id}/places/${place.id}`, { day: '2026-11-24', startTime: '09:30' }, (s, j) => s === 200 && j.places[0]?.day === '2026-11-24' && j.places[0]?.startTime === '09:30' && j.places[0]?.position === 0);
+  await step('a day outside the trip is rejected', 'PATCH', `/v1/trips/${trip.id}/places/${place.id}`, { day: '2026-12-15' }, (s, j) => s === 400 && j.error.code === 'VALIDATION_FAILED');
+  await step('reorder the day', 'PUT', `/v1/trips/${trip.id}/days/2026-11-24/order`, { placeIds: [place.id] }, (s, j) => s === 200 && j.places[0]?.position === 0);
+  await step('a stale reorder is a conflict', 'PUT', `/v1/trips/${trip.id}/days/2026-11-25/order`, { placeIds: [place.id] }, (s, j) => s === 409 && j.error.code === 'CONFLICT');
+  await step('shorter dates move it back to the wishlist', 'PATCH', `/v1/trips/${trip.id}`, { endDate: '2026-11-23' }, (s, j) => s === 200 && j.endDate === '2026-11-23');
+  await step('it is on the wishlist again, time cleared', 'GET', `/v1/trips/${trip.id}`, null, (s, j) => s === 200 && j.places[0]?.day === null && j.places[0]?.startTime === null);
   await step('remove the place from the trip', 'DELETE', `/v1/trips/${trip.id}/places/${place.id}`, null, (s, j) => s === 200 && j.places.length === 0);
   await step('unknown trip id is 404', 'GET', '/v1/trips/00000000-0000-4000-8000-000000000000', null, (s, j) => s === 404 && j.error.code === 'NOT_FOUND');
   await step('malformed id is rejected', 'GET', '/v1/trips/not-a-uuid', null, (s, j) => s === 400 && j.error.code === 'VALIDATION_FAILED');

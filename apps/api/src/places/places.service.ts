@@ -86,7 +86,7 @@ export class PlacesService {
             insert into app.trip_places (owner_id, trip_id, place_id)
             values (${user.id}, ${input.tripId}, ${row.id})
             on conflict (trip_id, place_id) do update
-              set deleted_at = null
+              set deleted_at = null, created_at = now()
               where app.trip_places.deleted_at is not null
           `;
         }

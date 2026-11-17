@@ -1,4 +1,10 @@
-import type { CreateTripInput, TripDetail, TripList, UpdateTripInput } from '@travel-companion/shared';
+import type {
+  CreateTripInput,
+  ScheduleTripPlaceInput,
+  TripDetail,
+  TripList,
+  UpdateTripInput,
+} from '@travel-companion/shared';
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/features/auth/AuthProvider';
 import { placesKey } from '@/features/places/queries';
@@ -82,5 +88,44 @@ export function useRemoveTripPlace(tripId: string) {
   return useMutation({
     mutationFn: (placeId: string) => api.removeTripPlace(tripId, placeId),
     onSuccess: (detail) => applyTripDetail(queryClient, detail),
+  });
+}
+
+/** Plan a trip place for a day, set its time, or move it back to the wishlist. */
+export function useScheduleTripPlace(tripId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ placeId, ...body }: ScheduleTripPlaceInput & { placeId: string }) =>
+      api.scheduleTripPlace(tripId, placeId, body),
+    onSuccess: (detail) => queryClient.setQueryData(tripKey(detail.id), detail),
+    onError: () => void queryClient.invalidateQueries({ queryKey: tripKey(tripId) }),
+  });
+}
+
+/** Reorder one day. The new order shows at once and is rolled back if saving fails. */
+export function useReorderTripDay(tripId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ day, placeIds }: { day: string; placeIds: string[] }) =>
+      api.reorderTripDay(tripId, day, { placeIds }),
+    onMutate: async ({ day, placeIds }) => {
+      await queryClient.cancelQueries({ queryKey: tripKey(tripId) });
+      const previous = queryClient.getQueryData<TripDetail>(tripKey(tripId));
+      if (previous) {
+        const order = new Map(placeIds.map((id, index) => [id, index]));
+        queryClient.setQueryData<TripDetail>(tripKey(tripId), {
+          ...previous,
+          places: previous.places.map((place) =>
+            place.day === day && order.has(place.id) ? { ...place, position: order.get(place.id) ?? 0 } : place,
+          ),
+        });
+      }
+      return { previous };
+    },
+    onError: (_error, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(tripKey(tripId), context.previous);
+      void queryClient.invalidateQueries({ queryKey: tripKey(tripId) });
+    },
+    onSuccess: (detail) => queryClient.setQueryData(tripKey(detail.id), detail),
   });
 }

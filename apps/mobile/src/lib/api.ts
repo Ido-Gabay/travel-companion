@@ -20,6 +20,8 @@ import {
   type SaveGooglePlacesResponse,
   type SupportedLocale,
   type CreateTripInput,
+  type ReorderTripDayInput,
+  type ScheduleTripPlaceInput,
   type Place,
   type PlaceList,
   type TripDetail,
@@ -60,7 +62,7 @@ async function accessToken(): Promise<string> {
   return token;
 }
 
-type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE';
+type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 async function send(method: Method, path: string, body?: unknown): Promise<Response> {
   if (!envResult.ok) throw new ApiClientError('UNKNOWN', null, 'App is not configured.');
@@ -135,6 +137,10 @@ export const api = {
     request('POST', `/v1/trips/${tripId}/places`, tripDetailSchema, { placeId }),
   removeTripPlace: (tripId: string, placeId: string): Promise<TripDetail> =>
     request('DELETE', `/v1/trips/${tripId}/places/${placeId}`, tripDetailSchema),
+  scheduleTripPlace: (tripId: string, placeId: string, body: ScheduleTripPlaceInput): Promise<TripDetail> =>
+    request('PATCH', `/v1/trips/${tripId}/places/${placeId}`, tripDetailSchema, body),
+  reorderTripDay: (tripId: string, day: string, body: ReorderTripDayInput): Promise<TripDetail> =>
+    request('PUT', `/v1/trips/${tripId}/days/${day}/order`, tripDetailSchema, body),
 
   listPlaces: (): Promise<PlaceList> => request('GET', '/v1/places', placeListSchema),
   getPlace: (id: string): Promise<Place> => request('GET', `/v1/places/${id}`, placeSchema),

@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   updateTripSchema,
+  scheduleTripPlaceSchema,
+  reorderTripDaySchema,
+  tripDays,
   addTripPlaceSchema,
   googleMapsDirectionsUrl,
+  googleMapsRouteUrl,
   interpretResponseSchema,
   saveGooglePlacesSchema,
   searchPlanSchema,
@@ -221,5 +225,60 @@ describe('updateTripSchema', () => {
   it('rejects an empty body and a reversed date range', () => {
     expect(updateTripSchema.safeParse({}).success).toBe(false);
     expect(updateTripSchema.safeParse({ startDate: '2026-11-29', endDate: '2026-11-23' }).success).toBe(false);
+  });
+});
+
+describe('itinerary', () => {
+  it('lists every day of a trip, inclusive', () => {
+    expect(tripDays('2026-11-23', '2026-11-29')).toEqual([
+      '2026-11-23', '2026-11-24', '2026-11-25', '2026-11-26', '2026-11-27', '2026-11-28', '2026-11-29',
+    ]);
+    expect(tripDays('2026-12-31', '2027-01-01')).toEqual(['2026-12-31', '2027-01-01']);
+    expect(tripDays('2026-11-23', null)).toEqual([]);
+    expect(tripDays('2026-11-29', '2026-11-23')).toEqual([]);
+    expect(tripDays('2026-01-01', '2027-01-01')).toHaveLength(60);
+  });
+
+  it('plans a place for a day, with an optional time', () => {
+    expect(scheduleTripPlaceSchema.parse({ day: '2026-11-24' })).toEqual({ day: '2026-11-24' });
+    expect(scheduleTripPlaceSchema.parse({ startTime: '09:30' })).toEqual({ startTime: '09:30' });
+    expect(scheduleTripPlaceSchema.parse({ day: null })).toEqual({ day: null });
+  });
+
+  it('rejects bad times, an empty body and a time without a day', () => {
+    expect(scheduleTripPlaceSchema.safeParse({}).success).toBe(false);
+    expect(scheduleTripPlaceSchema.safeParse({ startTime: '24:00' }).success).toBe(false);
+    expect(scheduleTripPlaceSchema.safeParse({ startTime: '9:30' }).success).toBe(false);
+    expect(scheduleTripPlaceSchema.safeParse({ day: null, startTime: '09:30' }).success).toBe(false);
+    expect(scheduleTripPlaceSchema.safeParse({ day: '2026-11-24', extra: 1 }).success).toBe(false);
+  });
+
+  it('reorders with unique place ids only', () => {
+    const a = '11111111-1111-4111-8111-111111111111';
+    const b = '22222222-2222-4222-8222-222222222222';
+    expect(reorderTripDaySchema.safeParse({ placeIds: [a, b] }).success).toBe(true);
+    expect(reorderTripDaySchema.safeParse({ placeIds: [a, a] }).success).toBe(false);
+    expect(reorderTripDaySchema.safeParse({ placeIds: [] }).success).toBe(false);
+  });
+});
+
+describe('googleMapsRouteUrl', () => {
+  it('routes through the stops in order, the last one as destination', () => {
+    const url = googleMapsRouteUrl([
+      { placeId: 'ChIJaaaaaaaaaa', name: 'Cafe A' },
+      { placeId: 'ChIJbbbbbbbbbb', name: 'Museum B' },
+      { placeId: 'ChIJcccccccccc', name: 'Park C' },
+    ]);
+    expect(url).toBe(
+      'https://www.google.com/maps/dir/?api=1&destination=Park%20C&destination_place_id=ChIJcccccccccc' +
+        '&travelmode=walking&waypoints=Cafe%20A%7CMuseum%20B&waypoint_place_ids=ChIJaaaaaaaaaa%7CChIJbbbbbbbbbb',
+    );
+  });
+
+  it('handles one stop and no stops', () => {
+    expect(googleMapsRouteUrl([{ placeId: 'ChIJaaaaaaaaaa', name: 'A' }], 'transit')).toBe(
+      'https://www.google.com/maps/dir/?api=1&destination=A&destination_place_id=ChIJaaaaaaaaaa&travelmode=transit',
+    );
+    expect(googleMapsRouteUrl([])).toBeNull();
   });
 });

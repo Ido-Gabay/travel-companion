@@ -8,13 +8,19 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
 } from '@nestjs/common';
 import {
   addTripPlaceSchema,
+  calendarDateSchema,
   createTripSchema,
+  reorderTripDaySchema,
+  scheduleTripPlaceSchema,
   updateTripSchema,
   type AddTripPlaceInput,
   type CreateTripData,
+  type ReorderTripDayInput,
+  type ScheduleTripPlaceData,
   type Trip,
   type TripDetail,
   type TripList,
@@ -81,5 +87,27 @@ export class TripsController {
     @Param('placeId', uuid) placeId: string,
   ): Promise<TripDetail> {
     return this.trips.removePlace(user, id, placeId);
+  }
+
+  /** Plan a trip place for a day, set its time, or move it back to the wishlist. */
+  @Patch(':id/places/:placeId')
+  schedulePlace(
+    @CurrentUser() user: AuthUser,
+    @Param('id', uuid) id: string,
+    @Param('placeId', uuid) placeId: string,
+    @Body(new ZodValidationPipe(scheduleTripPlaceSchema)) body: ScheduleTripPlaceData,
+  ): Promise<TripDetail> {
+    return this.trips.schedulePlace(user, id, placeId, body);
+  }
+
+  /** Set the order of one day's places. */
+  @Put(':id/days/:day/order')
+  reorderDay(
+    @CurrentUser() user: AuthUser,
+    @Param('id', uuid) id: string,
+    @Param('day', new ZodValidationPipe(calendarDateSchema)) day: string,
+    @Body(new ZodValidationPipe(reorderTripDaySchema)) body: ReorderTripDayInput,
+  ): Promise<TripDetail> {
+    return this.trips.reorderDay(user, id, day, body.placeIds);
   }
 }
