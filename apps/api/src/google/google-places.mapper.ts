@@ -20,6 +20,7 @@ export interface GoogleApiPlace {
   primaryTypeDisplayName?: { text?: string };
   googleMapsUri?: string;
   businessStatus?: string;
+  timeZone?: { id?: string };
   rating?: number;
   userRatingCount?: number;
   currentOpeningHours?: { openNow?: boolean; weekdayDescriptions?: string[] };
@@ -45,6 +46,8 @@ export const PLACE_FIELDS = [
   'primaryTypeDisplayName',
   'googleMapsUri',
   'businessStatus',
+  // Pro, like the fields above; used to schedule reminders in the trip's time zone.
+  'timeZone',
 ] as const;
 
 export const TEXT_SEARCH_FIELD_MASK = PLACE_FIELDS.map((field) => `places.${field}`).join(',');
@@ -81,6 +84,7 @@ export function toGooglePlace(raw: GoogleApiPlace): GooglePlace | null {
     typeLabel: raw.primaryTypeDisplayName?.text ?? null,
     googleMapsUri: raw.googleMapsUri ?? null,
     businessStatus: raw.businessStatus ?? null,
+    timeZone: raw.timeZone?.id ?? null,
   };
 }
 

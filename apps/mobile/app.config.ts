@@ -33,6 +33,15 @@ const locationPlugin: [string, unknown] = [
   },
 ];
 
+/**
+ * Local reminders only. Expo applies the expo-notifications plugin even when it
+ * isn't listed, and by default it adds the iOS push entitlement
+ * (aps-environment), which a free Apple ID (Personal Team) cannot sign. Listing
+ * it with enableRemoteNotifications: false keeps the entitlement out. Push
+ * would need the paid Apple Developer Program and is not used.
+ */
+const notificationsPlugin: [string, unknown] = ['expo-notifications', { enableRemoteNotifications: false }];
+
 export default ({ config }: ConfigContext): ExpoConfig => {
   const iosMapsKey = process.env.GOOGLE_MAPS_IOS_API_KEY?.trim() || null;
 
@@ -45,6 +54,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       // Only link Google Maps when a key exists; otherwise the map shows a notice.
       ...(iosMapsKey ? [['react-native-maps', { iosGoogleMapsApiKey: iosMapsKey }] as [string, unknown]] : []),
       ...(hasPackage('expo-location') ? [locationPlugin] : []),
+      ...(hasPackage('expo-notifications') ? [notificationsPlugin] : []),
     ],
     extra: {
       ...config.extra,

@@ -32,8 +32,10 @@ describe('toGooglePlace', () => {
       primaryTypeDisplayName: { text: 'Deli' },
       googleMapsUri: 'https://maps.google.com/?cid=1',
       businessStatus: 'OPERATIONAL',
+      timeZone: { id: 'America/New_York' },
     });
     expect(place).not.toBeNull();
+    expect(place?.timeZone).toBe('America/New_York');
     expect(googlePlaceSchema.parse(place)).toEqual(place);
     expect(place?.address).toBe('205 E Houston St, New York');
   });

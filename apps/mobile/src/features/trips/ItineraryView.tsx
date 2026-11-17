@@ -32,6 +32,7 @@ import {
   placesForDay,
   wishlistPlaces,
 } from './itinerary';
+import { muteKey, useMutedStops, useToggleMuted } from '@/features/companion/reminder-settings';
 import { useReorderTripDay, useScheduleTripPlace } from './queries';
 import { formatDurationShort, TimeSheet } from './TimeSheet';
 
@@ -56,6 +57,8 @@ export function ItineraryView({ trip, onOpenPlace, onDiscover, onEditTrip }: Iti
   const schedule = useScheduleTripPlace(trip.id);
   const reorder = useReorderTripDay(trip.id);
   const setVisited = useSetVisited();
+  const muted = useMutedStops();
+  const toggleMuted = useToggleMuted();
 
   const days = useMemo(() => tripDays(trip.startDate, trip.endDate), [trip.startDate, trip.endDate]);
   const today = toIsoDate(new Date());
@@ -103,7 +106,13 @@ export function ItineraryView({ trip, onOpenPlace, onDiscover, onEditTrip }: Iti
       { text: t('itinerary.openPlace'), onPress: () => onOpenPlace(place) },
       { text: t('itinerary.changeDay'), onPress: () => setMoving({ place, name }) },
       ...(place.startTime
-        ? [{ text: t('itinerary.clearTime'), onPress: () => schedule.mutate({ placeId: place.id, startTime: null }) }]
+        ? [
+            { text: t('itinerary.clearTime'), onPress: () => schedule.mutate({ placeId: place.id, startTime: null }) },
+            {
+              text: muted.data?.includes(muteKey(trip.id, place.id)) ? t('reminders.unmuteStop') : t('reminders.muteStop'),
+              onPress: () => toggleMuted.mutate(muteKey(trip.id, place.id)),
+            },
+          ]
         : []),
       {
         text: t('itinerary.backToWishlist'),

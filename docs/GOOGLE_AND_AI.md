@@ -41,7 +41,8 @@ Google Cloud billing is the final word: keep the budget alert below.
 **Field masks** (`apps/api/src/google/google-places.mapper.ts`):
 
 - Search and basic details: `id, displayName, formattedAddress, shortFormattedAddress,
-  location, primaryType, primaryTypeDisplayName, googleMapsUri, businessStatus` (Pro).
+  location, primaryType, primaryTypeDisplayName, googleMapsUri, businessStatus,
+  timeZone` (all Pro; `timeZone` added in M10 to schedule reminders in the trip's zone).
 - Preview: the same plus `rating, userRatingCount, currentOpeningHours, photos`
   (Enterprise). Unit tests fail if `reviews`, `reviewSummary`, `editorialSummary`,
   `generativeSummary` or other Atmosphere fields slip in, or if any Enterprise

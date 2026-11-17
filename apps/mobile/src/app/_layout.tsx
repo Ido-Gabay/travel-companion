@@ -7,6 +7,7 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ConfigErrorScreen } from '@/components/ConfigErrorScreen';
 import { AuthProvider, useAuth } from '@/features/auth/AuthProvider';
+import { ReminderSync } from '@/features/companion/ReminderSync';
 import { LocaleSync } from '@/features/me/LocaleSync';
 import { AppLocaleProvider, useLocale } from '@/i18n/LocaleProvider';
 import { wakeApi } from '@/lib/api';
@@ -56,6 +57,7 @@ function RootNavigator() {
       <View style={[styles.root, { direction }]}>
         <StatusBar style="dark" />
         {signedIn ? <LocaleSync /> : null}
+        <ReminderSync signedIn={signedIn} />
         <Stack
           screenOptions={{
             headerShown: false,
@@ -74,6 +76,7 @@ function RootNavigator() {
             <Stack.Screen name="places/[id]" />
             <Stack.Screen name="today" />
             <Stack.Screen name="settings/usage" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="settings/reminders" options={{ presentation: 'modal' }} />
           </Stack.Protected>
           <Stack.Protected guard={!signedIn} redirectTo="/">
             <Stack.Screen name="(auth)" />

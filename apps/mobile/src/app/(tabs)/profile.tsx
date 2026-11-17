@@ -167,6 +167,15 @@ export default function ProfileScreen() {
         ) : null}
       </Section>
 
+      <Section title={t('reminders.title')}>
+        <Button
+          label={t('reminders.title')}
+          icon="notifications-outline"
+          variant="secondary"
+          onPress={() => router.push('/settings/reminders')}
+        />
+      </Section>
+
       <Section title={t('profile.costs')}>
         <Button
           label={t('usage.title')}

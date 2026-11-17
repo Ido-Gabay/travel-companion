@@ -54,7 +54,7 @@ keeps it on the wishlist; removing it from the trip keeps it in the collection.
 | Free-time detection | ✅ M9 | `computeToday()`: from now (or the end of the current visit) to the leave-by time; rest of the day once the plan is done |
 | Suggestions that fit | ✅ M9 | Wishlist first, then collection (max 40); travel there + visit + travel on must fit the gap; walking distance only after the plan is done. Opening hours not used yet (would cost Enterprise calls) |
 | Running late / overbooked | ✅ M9 | ≥10 min late: "Start at …" or "Move to tomorrow"/"Remove from today"; plan past 23:00: move the last stop. Accept or dismiss (dismissals stored on the phone per day) |
-| Local reminders ("leave in 10 min") | M10 | `expo-notifications`, scheduled on the device from the itinerary |
+| Local reminders ("leave in 10 min") | ✅ M10 (written) | See "Reminders (M10) as built" below |
 | Nearby saved place alerts | Later | Background location / geofencing, own permission, opt-in |
 
 `features/companion/` is the home for Live Companion code in the app. Pure
@@ -78,6 +78,36 @@ tests, so it can move to `packages/shared` if the server ever needs it.
   chosen day and time, labeled "Preview", with location optional.
 - **Time zone:** planned times are the destination's local times; Today uses the
   phone's clock, which is right once the phone is in New York.
+
+## Reminders (M10) as built
+
+- **What:** for itinerary stops with a planned time: "Leave in N min for X"
+  (N = 5/10/15/30), "Time to leave for X", an optional heads-up 1 h before
+  (skipped when it would land next to "leave soon"), and an optional morning
+  summary at 08:00 on trip days. Never for visited, muted or past stops.
+- **When to leave:** start − travel estimate from the previous stop (or the
+  hotel for the first stop) − 5 min buffer; 20 min is assumed when a location is
+  unknown, and the text says so.
+- **Time zone:** reminders are scheduled before the trip, so times are converted
+  in the **trip's time zone** (Google `timeZone` of the pinned hotel; Pro field,
+  not stored) with `zoned-time.ts`. Without a pinned hotel the phone's zone is
+  used and Settings warns.
+- **Keeping them current:** `ReminderSync` (mounted at the app root) builds the
+  full desired set with `planReminders()` and applies only the difference from
+  what is scheduled (`diffReminders()`, by stable id + fingerprint of time and
+  text). It runs on input changes (debounced) and whenever the app becomes
+  active. It cancels all of this app's reminders when reminders are off,
+  permission is missing, there is no current/upcoming trip, or the user signs out.
+- **Limits:** at most 50 scheduled (iOS keeps 64 per app). Only the current or
+  next trip (within 30 days) is scheduled.
+- **Control:** opt-in in Profile → Reminders (permission asked only then); lead
+  time and each kind can be switched; per-stop mute from the itinerary menu;
+  "Send a test reminder"; scheduled list. Settings live on the device (T11).
+- **Tap:** opens Today for that trip.
+- **No push:** local notifications only; `enableRemoteNotifications: false`
+  keeps the push entitlement out of the iOS app (free Personal Team, T10).
+- **Not done (future):** snooze/actions on the notification, reminders that
+  react to location (needs background location), server-side scheduling.
 
 ## Location and privacy
 
@@ -106,6 +136,6 @@ tests, so it can move to `packages/shared` if the server ever needs it.
 | M6 | Day-by-day itinerary | ✅ |
 | M7 | Trip mode on Home (countdown, today, next stop, Done) | ✅ |
 | M8 | Google-first Discover, place preview, hotel pin, cost caps + usage monitor, companion location module | ✅ |
-| M9 | **Live Today v1**: Today screen with the four questions, visit durations, travel estimate, leave-by, free time, suggestions that fit, late/overbooked hints, accept/dismiss, preview mode | ✅ written, engine tested |
-| M10 | Context-aware local reminders and notifications | next |
+| M9 | **Live Today v1**: Today screen with the four questions, visit durations, travel estimate, leave-by, free time, suggestions that fit, late/overbooked hints, accept/dismiss, preview mode | ✅ committed (`4ef298a`) |
+| M10 | Local reminders (leave soon / time to leave / heads-up / morning summary), trip time zone, settings, mute | 🟡 written, device test pending |
 | Later | Background location, nearby alerts, geofencing (opt-in) | |

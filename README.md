@@ -1,26 +1,73 @@
 # Travel Companion
 
-A personal travel planning app: plan trips, keep a global collection of places,
-and (later) build day-by-day itineraries that work offline.
+> **Your trip. Fully planned. Always in control.**
 
-This repository is a pnpm monorepo:
+An iPhone app that helps a traveler **discover** real places (Google Maps search
+first, AI optional), **collect** them, **plan** them day by day, and get **live
+help during the trip**: a Today screen (what's next, when to leave, what fits
+your free time, whether to change the plan) and local reminders. The app
+suggests; you decide. First real use: a New York trip, Nov 23–29, 2026.
+
+**New here (human or AI assistant)? Start with [docs/AI_HANDOFF.md](docs/AI_HANDOFF.md)
+and [AGENTS.md](AGENTS.md).**
+
+## Main features
+
+- Email sign-in; English and Hebrew (full RTL); km or miles.
+- Trips with dates, "Staying at" and a hotel pinned on Google Maps.
+- **Discover**: Google Places search by keyword or category, near your hotel /
+  destination / you / anywhere, list + map, "Search this area", place preview
+  (photo, rating, hours, map, directions); optional **Ask AI** (Claude) that
+  turns your words into a Google search.
+- **Global collection** and **trip wishlist** (deduplicated by Google place ID),
+  notes, tags, visited.
+- **Itinerary**: day by day, times, visit lengths, order, day map and route.
+- **Today**: timeline, next stop with leave-by and travel estimate, free time
+  with suggestions that fit, running-late hints (accept or dismiss), preview mode.
+- **Local reminders**: leave soon, time to leave, heads-up, morning summary.
+- **Cost control**: hard caps on every paid API and an in-app usage screen.
+
+## Technology
+
+| Part | Stack |
+| --- | --- |
+| Mobile | Expo SDK 58, React Native 0.88, React 19, Expo Router, TanStack Query, i18next, react-native-maps (Google provider), expo-location, expo-notifications |
+| API | NestJS 12 (ESM), postgres.js (plain SQL), zod 4, jose (JWT/JWKS), Vitest |
+| Data / Auth | Supabase Postgres (private `app` schema, RLS) and Supabase Auth |
+| Integrations | Google Places API (New), Google Maps SDK for iOS, Claude Haiku 5.5 |
+| Hosting | Render Free (API), Supabase Free, GitHub + Actions (CI) — all $0 |
+
+## Repository
 
 | Path | What it is |
 | --- | --- |
-| `apps/api` | NestJS 12 REST API, a modular monolith. The backend is the source of truth. |
-| `apps/mobile` | Expo SDK 58 / React Native app with Expo Router (development builds, not Expo Go). |
-| `packages/shared` | zod schemas and TypeScript types shared by the API and the app. |
-| `supabase/migrations` | Plain SQL migrations for the Supabase Postgres database. |
-| `supabase/checks` | SQL you can run to confirm a migration did what it should. |
-| `docs/` | Architecture, API reference, and the progress log. |
+| `apps/api` | NestJS REST API, a modular monolith. The backend is the source of truth. |
+| `apps/mobile` | Expo / React Native app (development builds, not Expo Go). |
+| `packages/shared` | zod schemas and types shared by API and app (the API contract). |
+| `supabase/migrations` | Append-only SQL migrations. `supabase/checks` has verification SQL. |
+| `scripts/` | Setup helpers and the API smoke test. |
+| `docs/` | Project documentation (see below). |
+| `AGENTS.md` | Rules for AI coding assistants. |
 
-Read next: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/API.md](docs/API.md), [docs/GOOGLE_AND_AI.md](docs/GOOGLE_AND_AI.md),
-[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md), [docs/PROGRESS.md](docs/PROGRESS.md).
+## Documentation
+
+| Document | Contents |
+| --- | --- |
+| [docs/AI_HANDOFF.md](docs/AI_HANDOFF.md) | Start here: state, rules, next task |
+| [docs/DEVELOPMENT_STATUS.md](docs/DEVELOPMENT_STATUS.md) | Exact status, tests run / not run, migrations, deployment, known issues, history |
+| [docs/PROJECT_CONTEXT.md](docs/PROJECT_CONTEXT.md) | Vision, principles, users, flows |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | Milestones and acceptance criteria |
+| [docs/DECISIONS.md](docs/DECISIONS.md) | Product and technical decisions, open questions |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, data model, security |
+| [docs/API.md](docs/API.md) | Endpoint reference |
+| [docs/GOOGLE_AND_AI.md](docs/GOOGLE_AND_AI.md) | Google/Claude setup, prices, caps, rules |
+| [docs/LIVE_COMPANION.md](docs/LIVE_COMPANION.md) | Today + reminders design |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Render/Supabase free tiers and deploys |
 
 ## Requirements
 
-- macOS with Xcode (for the iPhone build, milestone M5)
-- **Node.js 24 LTS**, 24.15 or newer (the Nest CLI and Expo SDK 58 both need it)
+- macOS with Xcode 26.4+ (iOS Simulator and iPhone builds; a free Apple ID is enough)
+- **Node.js 24 LTS**, 24.15 or newer (CI uses 24; Node 25 also works locally)
 - **pnpm 10** via Corepack (bundled with Node 24)
 - A Supabase cloud project
 - Optional: `jq` for the curl examples (`brew install jq`)
@@ -123,7 +170,7 @@ Expo picks the native library versions that match SDK 58, so they are added with
 ```sh
 pnpm install
 cd apps/mobile
-npx expo install react-native-maps
+npx expo install react-native-maps expo-location expo-notifications
 npx expo install react react-native expo-router react-native-screens react-native-safe-area-context expo-linking expo-constants expo-status-bar expo-localization expo-dev-client expo-font @expo/vector-icons @react-native-async-storage/async-storage @react-native-community/datetimepicker react-native-url-polyfill @supabase/supabase-js @tanstack/react-query i18next react-i18next
 npx expo install typescript @types/react -- --save-dev
 npx expo-doctor
@@ -184,6 +231,7 @@ After the deploy, check `https://<service>.onrender.com/health/ready` and run
 | `pnpm smoke:api` | Sign in as a test user and check the running API |
 | `pnpm setup:mobile` | Write `apps/mobile/.env` (Supabase URL, publishable key, API URL on your Wi-Fi) |
 | `pnpm ios` | Build and launch the app in the iOS Simulator |
+| `pnpm ios:release` | Release build on a connected iPhone (set the signing Team in Xcode first) |
 | `pnpm dev:mobile` | Start Metro for an already-installed development build |
 | `pnpm dev:shared` | Rebuild `packages/shared` on save (run next to `dev:api` when editing schemas) |
 | `pnpm test` | All unit tests |
@@ -199,3 +247,13 @@ After the deploy, check `https://<service>.onrender.com/health/ready` and run
   **publishable** key, and the API URL (`EXPO_PUBLIC_*`). Anything prefixed
   `EXPO_PUBLIC_` is compiled into the app and readable by anyone.
 - `.env` files are git-ignored; `.env.example` files document every variable.
+
+## Native rebuilds and the iPhone
+
+- After adding a native package or changing `app.config.ts` / plugins:
+  `cd apps/mobile && npx expo prebuild --platform ios --clean && cd ../.. && pnpm ios`.
+- `prebuild --clean` recreates `apps/mobile/ios`: set **Signing & Capabilities →
+  Team** (your Personal Team) again in Xcode before an iPhone build.
+- Free Apple ID builds stop opening after **7 days**; reinstall with `pnpm ios:release`.
+- Reminders are local notifications only. Push is deliberately disabled
+  (`enableRemoteNotifications: false`) because a free Personal Team can't sign it.

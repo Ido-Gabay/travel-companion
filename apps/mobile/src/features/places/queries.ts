@@ -170,7 +170,7 @@ export function usePrimeGooglePlaces() {
   const { locale } = useLocale();
   return (places: readonly GooglePlace[]) => {
     for (const place of places) {
-      const { placeId, name, address, location, primaryType, typeLabel, googleMapsUri, businessStatus } = place;
+      const { placeId, name, address, location, primaryType, typeLabel, googleMapsUri, businessStatus, timeZone } = place;
       queryClient.setQueryData<GooglePlace>(googlePlaceKey(placeId, locale), {
         placeId,
         name,
@@ -180,6 +180,7 @@ export function usePrimeGooglePlaces() {
         typeLabel,
         googleMapsUri,
         businessStatus,
+        timeZone,
       });
     }
   };

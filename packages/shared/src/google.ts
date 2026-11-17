@@ -57,6 +57,8 @@ export const googlePlaceSchema = z.object({
   googleMapsUri: z.string().nullable(),
   /** OPERATIONAL, CLOSED_TEMPORARILY, CLOSED_PERMANENTLY or null. */
   businessStatus: z.string().nullable(),
+  /** IANA time zone of the place, e.g. "America/New_York" (Pro field). Missing from older servers. */
+  timeZone: z.string().nullable().default(null),
 });
 export type GooglePlace = z.infer<typeof googlePlaceSchema>;
 

@@ -57,10 +57,25 @@ services:
         sync: false
       - key: AI_MODEL
         value: claude-haiku-5-5
-      # Daily cost caps (see docs/GOOGLE_AND_AI.md).
+      # Cost caps, daily / monthly (see docs/GOOGLE_AND_AI.md). Monthly caps stay
+      # under Google's free allowance; raising them needs the owner's approval.
       - key: GOOGLE_TEXT_SEARCH_DAILY_CAP
         value: "160"
+      - key: GOOGLE_TEXT_SEARCH_MONTHLY_CAP
+        value: "4500"
       - key: GOOGLE_PLACE_DETAILS_DAILY_CAP
         value: "160"
+      - key: GOOGLE_PLACE_DETAILS_MONTHLY_CAP
+        value: "4500"
+      - key: GOOGLE_PLACE_PREVIEW_DAILY_CAP
+        value: "30"
+      - key: GOOGLE_PLACE_PREVIEW_MONTHLY_CAP
+        value: "900"
+      - key: GOOGLE_PLACE_PHOTO_DAILY_CAP
+        value: "60"
+      - key: GOOGLE_PLACE_PHOTO_MONTHLY_CAP
+        value: "900"
       - key: AI_DAILY_CAP
         value: "300"
+      - key: AI_MONTHLY_CAP
+        value: "3000"

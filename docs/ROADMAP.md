@@ -1,0 +1,49 @@
+# Roadmap
+
+Status: ✅ done and verified by the owner on the Mac/Simulator · 🟡 written, not
+yet verified by the owner · ⏳ in progress · ⬜ not started.
+"Verified" means the owner ran it; see DEVELOPMENT_STATUS.md for exact test results.
+
+## Completed and current
+
+| # | Milestone | Status | Acceptance criteria |
+| --- | --- | --- | --- |
+| M0 | Monorepo, tooling, shared schemas | ✅ | `pnpm install`, `pnpm test`, `pnpm typecheck` pass |
+| M1 | DB foundation: `app` schema, profiles, preferences, trips, RLS, sign-up trigger | ✅ | Migration applied; `supabase/checks/phase1_checks.sql` all ok |
+| M2 | API: config, health, JWT guard, `/v1/me`, preferences, trips, error format | ✅ | `pnpm smoke:api` passes with a real user |
+| M3–M4 | Mobile shell, auth, en/he + RTL, API client | ✅ | Sign up/in, profile shows real data, session survives restart (Simulator) |
+| — | Trips/places slice; zero-cost deploy (Render + Supabase + GitHub CI) | ✅ | Smoke passes against Render |
+| — | Discovery v1: Google Places + Claude, collection, wishlist, maps | ✅ | Real Google results saved and deduped |
+| M6 | Day-by-day itinerary | ✅ | Plan/reorder/move days; dates shrink → out-of-range back to wishlist |
+| M7 | Trip mode on Home | ✅ | Countdown before; next stop + Done during |
+| M8 | Google-first Discover, place preview (rating/hours/photos), hotel pin, monthly cost caps + usage screen, companion location module | ✅ | Owner: "fully tested and working" on the Mac (Nov 17) |
+| M9 | Live Today v1: visit lengths, travel estimates, leave-by, free time, suggestions, late/overbooked hints, accept/dismiss, preview mode | 🟡 | Owner reported "implemented" (committed `4ef298a`); Simulator walkthrough and migration push not confirmed in writing |
+| M10 | Local reminders | 🟡 written (this session) | See below |
+
+### M10 – Local reminders: acceptance criteria
+
+- [x] Reminder kinds: leave in N min (5/10/15/30), time to leave, heads-up (1 h before), morning summary (08:00).
+- [x] Only stops with a planned time; never for visited, muted or past stops; at most 50 scheduled (iOS limit 64).
+- [x] Scheduled in the trip's time zone (pinned hotel); phone zone fallback with a warning.
+- [x] Re-sync on app foreground and itinerary changes; full plan vs. scheduled diff → no duplicates or stale reminders; cancels all on sign-out or when turned off.
+- [x] Opt-in; permission asked only when turning on; settings screen with scheduled list and test reminder; per-stop mute in the itinerary menu.
+- [x] Tapping a reminder opens Today.
+- [x] No push entitlement (free Apple ID can sign).
+- [ ] Owner: native rebuild, test reminder arrives, a real leave reminder arrives at the right time in the Simulator/iPhone.
+
+## Next
+
+| # | Milestone | Status | Notes / acceptance |
+| --- | --- | --- | --- |
+| R1 | **iPhone Release install for the trip** | ⬜ | `pnpm ios:release` on **Nov 21–22** (free builds expire after 7 days); walk the test checklist in DEVELOPMENT_STATUS.md on cellular |
+| M11 | Trip-readiness polish | ⬜ | Fix whatever R1 finds; official Google Maps logo; rate limiting on the API; Today uses the trip time zone too (T9) |
+| M12 | Offline foundation | ⬜ | POCs 1–2 (PowerSync + op-sqlite/SQLCipher), D5a/D11/D15/D17; per-trip "Available offline" (D16) |
+| — | Background location / nearby alerts (geofencing) | ⬜ | Separate opt-in phase (P8, D2) |
+| — | Sharing a trip, Android release, route optimization (D3), open place data (D12) | ⬜ | After the NY trip |
+
+## Dependencies and blockers
+
+- **Free Apple ID**: 7-day build expiry; no push notifications (local only). Reinstall Nov 21–22.
+- **Render Free** sleeps after 15 min (first request ~1 min). **Supabase Free** pauses after ~1 week of inactivity.
+- **Paid features need approval**: Routes API (exact travel times), review text (Atmosphere SKU).
+- **The build sandbox used by Claude sessions has no npm registry or GitHub access**: installs, vitest, native builds and pushes are run by the owner on the Mac.

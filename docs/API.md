@@ -301,11 +301,15 @@ Fresh Place Details from Google (Pro fields only), for display. Never stored.
   "primaryType": "deli",
   "typeLabel": "Deli",
   "googleMapsUri": "https://maps.google.com/?cid=…",
-  "businessStatus": "OPERATIONAL"
+  "businessStatus": "OPERATIONAL",
+  "timeZone": "America/New_York"
 }
 ```
 
-Counts against `GOOGLE_PLACE_DETAILS_DAILY_CAP`. `404` if Google no longer knows the place.
+Counts against the `GOOGLE_PLACE_DETAILS_*` caps (daily and monthly). `404` if
+Google no longer knows the place. `timeZone` (added in M10) is the place's IANA
+zone; the app uses the pinned hotel's zone to schedule reminders. Older servers
+omit it; the app treats a missing value as `null`.
 
 ## Discover
 
@@ -359,7 +363,7 @@ result, from Google's type (falling back to the plan's category):
 { "results": [ { …GooglePlace, "savedPlaceId": null, "inTrip": false, "category": "coffee" } ] }
 ```
 
-Counts against `GOOGLE_TEXT_SEARCH_DAILY_CAP`.
+Counts against the `GOOGLE_TEXT_SEARCH_*` caps (daily and monthly).
 
 ### `GET /v1/google/places/:placeId/preview?lang=en|he`
 
