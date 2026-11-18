@@ -30,7 +30,7 @@ jest.mock('@/lib/api', () => {
     'getMe', 'updateMe', 'updatePreferences', 'listTrips', 'createTrip', 'getTrip', 'updateTrip', 'deleteTrip',
     'addTripPlace', 'removeTripPlace', 'scheduleTripPlace', 'reorderTripDay', 'listPlaces', 'getPlace',
     'createPlace', 'updatePlace', 'deletePlace', 'saveGooglePlaces', 'getGooglePlace', 'getGooglePlacePreview',
-    'getGooglePhoto', 'getUsage', 'interpret', 'discoverSearch', 'getJournal', 'updateJournalDay',
+    'getGooglePhoto', 'getUsage', 'interpret', 'discoverSearch', 'getJournal', 'updateJournalDay', 'computeRoutes',
   ];
   const api: Record<string, unknown> = {};
   for (const name of methods) api[name] = jest.fn(() => Promise.reject(new Error(`api.${name} not mocked`)));

@@ -1,12 +1,12 @@
 # Development status
 
-**Last updated: 2026-11-18 (U2 map-first Today written on main, on top of M15 stage 1 and M14).**
+**Last updated: 2026-11-18 (M16 real travel times written on main, on top of U2, M15 stage 1 and M14).**
 Update this file at the end of every milestone or meaningful change.
 
 ## Snapshot
 
 - **Last commit seen on the Mac:** `9560555` "M14: screen tests + CI"; tag `trip-safe` = `37dbf49` (M12a).
-- **Uncommitted when this was written:** M15 stage 1 (shared, API, app, migration `20261118120000_trip_journal`), U2 (map-first Today, app only) and these doc updates. Commit them together (see Exact next steps, step 0).
+- **Uncommitted when this was written:** M15 stage 1 (shared, API, app, migration `20261118120000_trip_journal`), U2 (map-first Today, app only), M16 (Routes API: shared, API, app) and these doc updates. Commit them together (see Exact next steps, step 0).
 - **Native build:** the iOS project was regenerated after M10 (contains
   `expo-notifications`, entitlements empty = no push). M11 needs no native rebuild.
 - **Current milestone:** M13 written. Still open: owner verification of M12a (migration
@@ -34,6 +34,40 @@ Update this file at the end of every milestone or meaningful change.
 | Trip time zone (`googlePlace.timeZone`) | Deployed with the M10 push if Render deployed it; not checked against the live API. Older servers omit it and the app falls back to the phone's zone. |
 | M11 | Everything: vitest on the Mac, deploy, Simulator check of Today with a pinned hotel, attribution labels, photo links, rate limits against the live API. |
 | U1 redesign | Everything visual: no screen was rendered. Typecheck and logic tests only. See the U1 checklist in "Exact next steps". |
+
+## M16 – Real travel times (Routes API Essentials; written, owner setup pending)
+
+Approved by the owner on Nov 18 (SKU **Routes: Compute Routes Essentials**, 10,000
+free/month, then $5 per 1,000; our caps 150/day, 2,000/month). See DECISIONS P19.
+- **API:** `POST /v1/google/routes` (≤ 10 legs, one Compute Routes call per leg,
+  walk or transit, field mask duration + distance + polyline only; never
+  traffic-aware, waypoint optimization or intermediates). Counted in
+  `provider_usage` as `google_routes` (Usage screen shows it). Past a cap the
+  remaining legs come back null (`limited: true`).
+- **App:** Today and "Plan this day" (times, warnings) ask for the legs on screen
+  when online; real legs show without "≈" and with "Google Maps"; the next leg is
+  drawn as the real (solid) route. Offline, capped or on any error: the on-device
+  estimate, as before. Results are memory-only (20 min), never saved.
+- **Unchanged on purpose:** reminders and "Shorter order" stay on estimates
+  (reminders must not depend on the network).
+
+Tests (real `pnpm test`, scratch copy): shared 50 (+3), API 57 (+5
+`google-routes.spec`: Essentials-only body, field mask, transit time window,
+mapping), app logic 155 (+9: `route-legs` 6, `today-map` +2, `day-planner` +1), app
+screens 26 (+3: real route shown without ≈ and leave-by follows it; cap/error → estimate
+silently; offline → no calls); `pnpm typecheck` clean; en/he parity clean.
+
+**Owner setup before it works (else the app just keeps estimates):**
+1. Google Cloud → APIs & Services → Library → enable **Routes API** (same project).
+2. Credentials → the server key → API restrictions → add **Routes API** (or create a
+   separate server key and set `GOOGLE_ROUTES_API_KEY` in Render).
+3. Render → deploy the API (new env defaults `GOOGLE_ROUTES_DAILY_CAP=150`,
+   `GOOGLE_ROUTES_MONTHLY_CAP=2000` come from render.yaml, or add them by hand).
+4. Optional safety net: Routes API → Quotas → *ComputeRoutes requests per day* ≈ 150.
+**M16 checks:** online, open Today on a trip day → travel line without "≈" plus
+"Google Maps", solid route to the next stop; Profile → Usage → "Travel times (routes)"
+counts a few calls; airplane mode → "≈" estimates again; "Plan this day" → the note
+says times use Google Maps routes.
 
 ## U2 – Live Companion redesign: map-first Today (written; device checks pending)
 
@@ -276,7 +310,7 @@ M10 adds no migration.
 
 - **Time zones:** everything uses the trip's zone from the pinned hotel; without
   a pinned hotel, the phone's zone (so pin the hotel before the trip).
-- **Travel times are estimates** (no Routes API); subway/taxi estimate is coarse. Unreliable estimates (bad coordinates, > 60 km or > 180 min) are shown as unavailable.
+- **Travel times are estimates** (no Routes API); subway/taxi estimate is coarse. Unreliable estimates (bad coordinates, > 60 km or > 180 min) are shown as unavailable. Online, Today and day planning use real Google routes (M16, capped); reminders and "Shorter order" still use estimates; real routes need a connection (never stored).
 - **U2 map-first Today:** map lines are straight (no route geometry: that would need the paid Routes/Directions API); offline, the map may show no tiles (pins and the sheet still work); the sheet's drag runs on the JS thread (RN Animated + PanResponder, no Reanimated), so it can feel less smooth while the JS thread is busy; the map isn't rendered in tests (mocked), so map visuals are device checks only.
 - **Reminders follow the plan only** (no location); they refresh when the app
   opens or the itinerary changes. A plan edited on another device won't update
@@ -304,17 +338,17 @@ M10 adds no migration.
 
 ## Exact next steps
 
-0. **Owner: commit M15 + U2 (Nov 18)** — one commit: both touch the same files
+0. **Owner: commit M15 + U2 + M16 (Nov 18)** — one commit: they touch the same files
    (en/he strings, test helpers), so splitting them isn't clean. `trip-safe` stays the fallback.
    ```sh
    cd ~/Programing/travel-companion
    pnpm test && pnpm typecheck
    npx supabase db push --remote            # trip_journal (and my_label if not yet pushed) BEFORE the API deploy
-   git add -A && git commit -m "M15 journal + recap, U2 map-first Today" && git push
+   git add -A && git commit -m "M15 journal + recap, U2 map-first Today, M16 real travel times" && git push
    # check the GitHub CI run is green; Render deploys the API (M15 endpoints)
    pnpm ios                                  # no native rebuild (U2 adds no native module)
    ```
-   Then the M15 and U2 checks (sections above).
+   Then the M16 Google setup (section M16), and the M15, U2 and M16 checks.
 
 1. **Owner: test, migrate, commit, deploy**
    ```sh

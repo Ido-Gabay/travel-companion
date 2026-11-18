@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ROUTE_LEGS_MAX,
+  routeLegsRequestSchema,
   updateTripSchema,
   scheduleTripPlaceSchema,
   reorderTripDaySchema,
@@ -390,5 +392,23 @@ describe('visit duration', () => {
   it('falls back to the category default', () => {
     expect(visitMinutes({ durationMinutes: null, category: 'coffee' })).toBe(30);
     expect(visitMinutes({ durationMinutes: 120, category: 'coffee' })).toBe(120);
+  });
+});
+
+describe('routes (M16)', () => {
+  const leg = { from: { latitude: 40.75, longitude: -73.98 }, to: { latitude: 40.78, longitude: -73.96 }, mode: 'walk' };
+  it('accepts up to the leg limit and rejects more', () => {
+    expect(routeLegsRequestSchema.safeParse({ legs: [leg] }).success).toBe(true);
+    expect(routeLegsRequestSchema.safeParse({ legs: Array(ROUTE_LEGS_MAX + 1).fill(leg) }).success).toBe(false);
+    expect(routeLegsRequestSchema.safeParse({ legs: [] }).success).toBe(false);
+  });
+  it('rejects unknown modes and bad departure times', () => {
+    expect(routeLegsRequestSchema.safeParse({ legs: [{ ...leg, mode: 'drive' }] }).success).toBe(false);
+    expect(routeLegsRequestSchema.safeParse({ legs: [{ ...leg, departAt: 'tomorrow' }] }).success).toBe(false);
+    expect(routeLegsRequestSchema.safeParse({ legs: [{ ...leg, departAt: '2026-11-24T10:00:00-05:00' }] }).success).toBe(true);
+  });
+  it('prices routes inside the free allowance at zero', () => {
+    expect(estimatedCostUsd('google_routes', 2000)).toBe(0);
+    expect(estimatedCostUsd('google_routes', 12000)).toBe(10);
   });
 });

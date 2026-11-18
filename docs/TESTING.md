@@ -65,6 +65,9 @@ is mocked (`react-native-maps` → plain views; markers are pressable) and tests
 enable it by mocking `expo-constants` (`googleMapsEnabled`). Collapsed, the sheet
 body is hidden from accessibility, so tests open the sheet before using the list.
 
+M16 added: Today online with real routes (no "≈", leave-by follows the route time),
+routes failing or capped (estimate, no error shown), offline (no route calls).
+
 Bugs these found when first run (fixed in M14): Profile showed an error instead of
 the saved copy offline, and its error-screen "Sign out" skipped the unsynced-changes
 warning; the action menu relied only on iOS `Modal.onDismiss` (now has a fallback).

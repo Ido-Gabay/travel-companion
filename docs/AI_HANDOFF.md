@@ -3,7 +3,7 @@
 Give this file to any AI coding assistant (Claude Code, GitHub Copilot with
 Claude, …) that picks up this repository. Keep it current.
 
-**Last updated: 2026-11-18, after U2 (map-first Today) was written on main, on top of M15 stage 1.**
+**Last updated: 2026-11-18, after M16 (real travel times) was written on main, on top of U2 and M15 stage 1.**
 
 ## 1. What this project is
 
@@ -41,6 +41,10 @@ Google rules), `docs/LIVE_COMPANION.md` (Today + reminders design),
   bottom sheet, `MapSheet` on RN Animated/PanResponder, one-shot "Show my location",
   travel shown only when reliable). Decisions P18. Real run: shared 47, API 52, app
   logic 146, app screens 23; typecheck clean. Not seen on a screen yet.
+- **M16 written (uncommitted): real travel times** via `POST /v1/google/routes` (Routes API
+  Compute Routes Essentials only, caps 150/day, 2,000/month, never stored). Decision P19.
+  Needs the owner to enable Routes API and allow it on the server key. Real run: shared 50,
+  API 57, app logic 155, app screens 26; typecheck clean.
 - Open owner decision: M15 stage 2 (photos) now / after the trip / never (P17).
 - **Nothing from U1 or M12a has been looked at on a screen yet.** Device behavior
   of M9–M11 (Today, reminders) is also unconfirmed in writing.
@@ -87,7 +91,7 @@ recap stage 1 and U2 map-first Today (written).
 ## 7. Exact next task
 
 First: `pnpm test && pnpm typecheck`, `npx supabase db push --remote` (journal
-migration) before pushing the API, commit M15 + U2 together, push, confirm
+migration) before pushing the API, commit M15 + U2 + M16 together, enable Routes API (DEVELOPMENT_STATUS → M16), push, confirm
 GitHub CI is green, then the M15 and U2 checks in DEVELOPMENT_STATUS.md.
 When touching Today: keep the map the workspace, the next action in the collapsed
 sheet, alerts visible collapsed, and never show a travel time `reliableTravel`

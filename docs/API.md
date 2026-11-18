@@ -328,6 +328,17 @@ Google no longer knows the place. `timeZone` (added in M10) is the place's IANA
 zone; the app uses the pinned hotel's zone to schedule reminders. Older servers
 omit it; the app treats a missing value as `null`.
 
+### `POST /v1/google/routes?lang=en|he` (M16)
+
+Real travel times. Body: `{ "legs": [{ "from": LatLng, "to": LatLng, "mode": "walk" | "transit",
+"departAt"?: ISO datetime with offset }] }`, 1–10 legs. Response: `{ "legs": [RouteLeg | null],
+"limited": boolean }`, one entry per leg in order; `RouteLeg = { minutes, meters, mode,
+polyline | null }` (Google encoded polyline). A leg is `null` when Google has no route
+(e.g. no transit) or a cap stopped it (`limited: true`). One Google Compute Routes
+Essentials call per leg, each counted against `GOOGLE_ROUTES_*` caps (150/day,
+2,000/month by default). Paid rate-limit class. Nothing is stored. `503 NOT_CONFIGURED`
+without a key.
+
 ## Discover
 
 Two steps so the app can show what it understood before searching.

@@ -5,7 +5,8 @@ import TodayRoute from '@/app/today';
 import { tripDetail, tripPlace, uuid } from '@/features/offline/test-fixtures';
 import { formatDurationShort } from '@/features/trips/TimeSheet';
 import i18n from '@/i18n/i18n';
-import { goOffline, renderApp, resetAll, seedSavedCopy, setRouteParams, storedOps } from '../render';
+import { ApiClientError } from '@/lib/api-error';
+import { goOffline, mockApi, renderApp, resetAll, seedSavedCopy, serverHas, setRouteParams, storedOps } from '../render';
 
 // Pretend this build has a Google Maps key, so the map (mocked) draws our pins.
 jest.mock('expo-constants', () => {
@@ -169,5 +170,43 @@ describe('Today (map first)', () => {
     expect(sheetState()).toBe(t('today.sheetHalf'));
     expect(screen.getAllByRole('tab').length).toBe(7);
     expect(screen.getByText(t('today.previewBody'))).toBeTruthy();
+  });
+
+  describe('real travel times (M16)', () => {
+    it('online: uses the Google route for the next leg (no ≈) and the leave-by follows it', async () => {
+      await seedSavedCopy([day()], SAVED_AT, { coords });
+      serverHas([day()]);
+      mockApi.computeRoutes.mockImplementation(((body: { legs: { mode: 'walk' | 'transit' }[] }) =>
+        Promise.resolve({
+          legs: body.legs.map((leg) => ({ minutes: 31, meters: 3900, mode: leg.mode, polyline: null })),
+          limited: false,
+        })) as never);
+      await renderApp(<TodayRoute />);
+      const travel = await screen.findByText(new RegExp(`^${t('today.transitRoute', { min: 31, dist: '3.9 km' })}`));
+      expect(String(travel.props.children)).not.toContain('≈');
+      // 12:30 − 31 min − 5 min buffer.
+      expect(screen.getAllByText(/11:54/).length).toBeGreaterThan(0);
+      expect(mockApi.computeRoutes).toHaveBeenCalled();
+      const [body] = mockApi.computeRoutes.mock.calls[0] as unknown as [{ legs: unknown[] }];
+      expect(body.legs.length).toBeLessThanOrEqual(10);
+    });
+
+    it('past the daily limit (or any error): quietly keeps the on-device estimate', async () => {
+      await seedSavedCopy([day()], SAVED_AT, { coords });
+      serverHas([day()]);
+      mockApi.computeRoutes.mockImplementation(() =>
+        Promise.reject(new ApiClientError('DAILY_LIMIT_REACHED', 429, 'limit')),
+      );
+      await renderApp(<TodayRoute />);
+      await screen.findByTestId('today-travel');
+      expect(String(screen.getByTestId('today-travel').props.children)).toContain('≈');
+      expect(screen.getAllByText(/12:02/).length).toBeGreaterThan(0);
+      expect(screen.queryByText(t('errors.DAILY_LIMIT_REACHED'))).toBeNull();
+    });
+
+    it('offline: never asks for routes', async () => {
+      await openOffline();
+      expect(mockApi.computeRoutes).not.toHaveBeenCalled();
+    });
   });
 });

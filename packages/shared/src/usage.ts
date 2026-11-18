@@ -6,6 +6,7 @@ export const USAGE_METRICS = [
   'google_place_details',
   'google_place_preview',
   'google_place_photo',
+  'google_routes',
   'ai_interpret',
 ] as const;
 export const usageMetricSchema = z.enum(USAGE_METRICS);
@@ -22,6 +23,8 @@ export const PROVIDER_PRICING: Record<UsageMetric, { sku: string; freePerMonth: 
   google_place_details: { sku: 'Places API Place Details Pro', freePerMonth: 5000, usdPer1000: 17 },
   google_place_preview: { sku: 'Places API Place Details Enterprise', freePerMonth: 1000, usdPer1000: 20 },
   google_place_photo: { sku: 'Places API Place Details Photos', freePerMonth: 1000, usdPer1000: 7 },
+  // M16: Routes API Compute Routes, Essentials only (no traffic, no waypoint optimization).
+  google_routes: { sku: 'Routes: Compute Routes Essentials', freePerMonth: 10000, usdPer1000: 5 },
   // Anthropic bills per token, with no free allowance; the cap limits calls.
   ai_interpret: { sku: 'Claude Haiku 5.5 (per token)', freePerMonth: null, usdPer1000: null },
 };

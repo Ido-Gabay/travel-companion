@@ -4,6 +4,9 @@ import {
   googlePlacePreviewSchema,
   googlePlaceSchema,
   usageReportSchema,
+  routeLegsResponseSchema,
+  type RouteLegsRequest,
+  type RouteLegsResponse,
   interpretResponseSchema,
   meSchema,
   saveGooglePlacesResponseSchema,
@@ -197,6 +200,9 @@ export const api = {
   getGooglePhoto: (name: string, maxWidth: number): Promise<GooglePhotoMedia> =>
     request('GET', `/v1/google/photos?name=${encodeURIComponent(name)}&maxWidth=${maxWidth}`, googlePhotoMediaSchema),
   getUsage: (): Promise<UsageReport> => request('GET', '/v1/usage', usageReportSchema),
+  /** M16: real travel times (Google Routes, capped on the server). Never stored. */
+  computeRoutes: (body: RouteLegsRequest, lang: SupportedLocale): Promise<RouteLegsResponse> =>
+    request('POST', `/v1/google/routes?lang=${lang}`, routeLegsResponseSchema, body),
 
   interpret: (body: InterpretRequest): Promise<InterpretResponse> =>
     request('POST', '/v1/discover/interpret', interpretResponseSchema, body),

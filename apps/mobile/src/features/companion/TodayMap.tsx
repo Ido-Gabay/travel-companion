@@ -34,8 +34,9 @@ const PIN = { done: 22, later: 26, next: 36, now: 36 } as const;
  * The map-first Today map. Google map (PROVIDER_GOOGLE, required for Google
  * places content) with a quiet style and our own pins:
  * done = small grey check, next = large accent, now = green "you're here",
- * later = white with its number. Lines are straight and dashed: approximate,
- * never a route (real routes open in the maps app via Directions).
+ * later = white with its number. The next leg is the real route (solid) when
+ * Google Routes answered (M16), else a dashed straight line; the rest of the day
+ * is always straight and dotted. Navigation opens in the maps app (Directions).
  */
 export const TodayMap = forwardRef<TodayMapHandle, TodayMapProps>(function TodayMap(
   { model, hotel, here, selectedId, onSelect, padding },
@@ -113,7 +114,14 @@ export const TodayMap = forwardRef<TodayMapHandle, TodayMapProps>(function Today
         <Polyline coordinates={model.laterPath} strokeColor={colors.borderStrong} strokeWidth={2} lineDashPattern={[2, 6]} />
       ) : null}
       {model.nextLeg ? (
-        <Polyline coordinates={model.nextLeg} strokeColor={colors.accent} strokeWidth={4} lineDashPattern={[10, 7]} zIndex={2} />
+        <Polyline
+          coordinates={model.nextLeg}
+          strokeColor={colors.accent}
+          strokeWidth={4}
+          // A real route (Google, M16) is solid; a straight line stays dashed.
+          lineDashPattern={model.nextLegIsRoute ? undefined : [10, 7]}
+          zIndex={2}
+        />
       ) : null}
 
       {hotel ? (

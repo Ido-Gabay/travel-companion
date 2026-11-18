@@ -45,6 +45,7 @@ import { formatDistance } from './geo';
 import { useCurrentLocation } from './location';
 import { useTodayAction } from './today-actions';
 import { TodayMap, type TodayMapHandle } from './TodayMap';
+import { useRealRoutes, type PlannedLeg } from './real-routes';
 import { buildTodayMap, locationAge } from './today-map';
 import { zonedNow } from './zoned-time';
 import {
@@ -231,7 +232,7 @@ function TodayContent({
   }));
 
   const hotelPoint = hotel.data?.location ?? coordsFor(trip.basePlaceId);
-  const result = computeToday({
+  const baseInput = {
     stops: engineStops,
     nowMinutes,
     here,
@@ -239,16 +240,35 @@ function TodayContent({
     candidates,
     dismissed,
     hasTomorrow: tomorrow !== null,
-  });
+  };
+  // M16: first with on-device estimates, to know which legs matter; then, once
+  // Google's real routes for those legs arrive (online only), again with them.
+  const estimated = computeToday(baseInput);
+  const plannedLegs: PlannedLeg[] = [
+    ...(estimated.next
+      ? [{ from: estimated.next.from, to: estimated.next.stop.location, departMinutes: live ? null : (estimated.current?.projectedEnd ?? nowMinutes) }]
+      : []),
+    ...estimated.timeline
+      .filter((item) => item.status !== 'done' && item.travel)
+      .map((item) => ({
+        from: item.from,
+        to: item.stop.location,
+        departMinutes: item.projectedStart !== null && item.travel ? item.projectedStart - item.travel.minutes : null,
+      })),
+  ];
+  const routeFor = useRealRoutes(plannedLegs, day, hotel.data?.timeZone ?? null);
+  const result = routeFor ? computeToday({ ...baseInput, routeFor }) : estimated;
   const mapModel = buildTodayMap(result, result.hereIgnored ? null : here, hotelPoint);
   // With nothing to draw, or before the trip, the list is more useful than an empty map.
   const sheetIndex: SheetIndex = chosenIndex ?? (mapModel.pins.length === 0 || !live ? 1 : 0);
 
   const clock = (minutes: number) => formatStartTime(toClock(minutes), locale);
-  const travelText = (travel: TravelEstimate) =>
-    travel.mode === 'walk'
-      ? t('today.walk', { min: travel.minutes, dist: formatDistance(travel.meters, locale, distanceUnit) })
-      : t('today.transit', { min: travel.minutes, dist: formatDistance(travel.meters, locale, distanceUnit) });
+  const travelText = (travel: TravelEstimate) => {
+    const vars = { min: travel.minutes, dist: formatDistance(travel.meters, locale, distanceUnit) };
+    // Real routes (Google, M16) are stated plainly; estimates keep their "≈".
+    if (travel.source === 'google') return travel.mode === 'walk' ? t('today.walkRoute', vars) : t('today.transitRoute', vars);
+    return travel.mode === 'walk' ? t('today.walk', vars) : t('today.transit', vars);
+  };
   const nameById = new Map(engineStops.map((stop) => [stop.id, stop.name]));
   const actionLabel = (action: TodayAction): string => {
     switch (action.type) {
@@ -341,7 +361,8 @@ function TodayContent({
             : t('today.noLocation');
 
   const alerts = peekAlerts(result, pending, offline, t, clock);
-  const hasLines = mapModel.nextLeg !== null || mapModel.laterPath.length > 1;
+  // The note is only needed while a straight line is drawn (a real route needs no caveat).
+  const hasLines = (mapModel.nextLeg !== null && !mapModel.nextLegIsRoute) || mapModel.laterPath.length > 1;
   const topPadding = insets.top + TOP_BAR + (hasLines ? 28 : 0);
 
   const peek = (
@@ -398,6 +419,7 @@ function TodayContent({
               ? `${travelText(result.next.travel)} · ${originText(result.next.origin)}`
               : t('today.noTravel')}
           </AppText>
+          {result.next.travel?.source === 'google' ? <GoogleAttribution inline align="start" /> : null}
         </View>
       ) : result.total > 0 && !result.current ? (
         <View style={styles.doneRow}>

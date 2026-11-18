@@ -22,6 +22,8 @@ const envSchema = z.object({
 
   // Optional integrations. Without a key the feature answers NOT_CONFIGURED.
   GOOGLE_PLACES_API_KEY: z.string().min(20).optional(),
+  // M16: Routes API. Optional own key; otherwise the Places key is used (the key must allow "Routes API").
+  GOOGLE_ROUTES_API_KEY: z.string().min(20).optional(),
   ANTHROPIC_API_KEY: z.string().min(20).optional(),
   AI_MODEL: z.string().min(1).default('claude-haiku-5-5'),
 
@@ -38,6 +40,9 @@ const envSchema = z.object({
   GOOGLE_PLACE_PREVIEW_MONTHLY_CAP: z.coerce.number().int().min(0).default(900),
   GOOGLE_PLACE_PHOTO_DAILY_CAP: z.coerce.number().int().min(0).default(60),
   GOOGLE_PLACE_PHOTO_MONTHLY_CAP: z.coerce.number().int().min(0).default(900),
+  // Routes: Compute Routes Essentials, 10,000 free/month. Far below that on purpose.
+  GOOGLE_ROUTES_DAILY_CAP: z.coerce.number().int().min(0).default(150),
+  GOOGLE_ROUTES_MONTHLY_CAP: z.coerce.number().int().min(0).default(2000),
   // Claude is paid per token (no free allowance); caps bound the spend.
   AI_DAILY_CAP: z.coerce.number().int().min(0).default(300),
   AI_MONTHLY_CAP: z.coerce.number().int().min(0).default(3000),
@@ -59,6 +64,8 @@ export interface AppConfig {
   databaseSsl: 'require' | 'disable';
   databasePoolMax: number;
   googlePlacesApiKey: string | null;
+  /** Routes API key (its own, or the Places key). */
+  googleRoutesApiKey: string | null;
   anthropicApiKey: string | null;
   aiModel: string;
   /** Daily and monthly call caps per paid metric. */
@@ -95,6 +102,7 @@ export function parseAppConfig(env: NodeJS.ProcessEnv): AppConfig {
     databaseSsl: e.DATABASE_SSL,
     databasePoolMax: e.DATABASE_POOL_MAX,
     googlePlacesApiKey: e.GOOGLE_PLACES_API_KEY ?? null,
+    googleRoutesApiKey: e.GOOGLE_ROUTES_API_KEY ?? e.GOOGLE_PLACES_API_KEY ?? null,
     anthropicApiKey: e.ANTHROPIC_API_KEY ?? null,
     aiModel: e.AI_MODEL,
     caps: {
@@ -102,6 +110,7 @@ export function parseAppConfig(env: NodeJS.ProcessEnv): AppConfig {
       google_place_details: { daily: e.GOOGLE_PLACE_DETAILS_DAILY_CAP, monthly: e.GOOGLE_PLACE_DETAILS_MONTHLY_CAP },
       google_place_preview: { daily: e.GOOGLE_PLACE_PREVIEW_DAILY_CAP, monthly: e.GOOGLE_PLACE_PREVIEW_MONTHLY_CAP },
       google_place_photo: { daily: e.GOOGLE_PLACE_PHOTO_DAILY_CAP, monthly: e.GOOGLE_PLACE_PHOTO_MONTHLY_CAP },
+      google_routes: { daily: e.GOOGLE_ROUTES_DAILY_CAP, monthly: e.GOOGLE_ROUTES_MONTHLY_CAP },
       ai_interpret: { daily: e.AI_DAILY_CAP, monthly: e.AI_MONTHLY_CAP },
     },
     rateLimit: { perMinute: e.RATE_LIMIT_PER_MINUTE, paidPerMinute: e.RATE_LIMIT_PAID_PER_MINUTE },

@@ -2,6 +2,7 @@ import type { LatLng } from '@travel-companion/shared';
 import { describe, expect, it } from 'vitest';
 import {
   checkDay,
+  leg,
   DEFAULT_DAY_START_MIN,
   optimizeOrder,
   projectDay,
@@ -145,5 +146,23 @@ describe('suggestTimes', () => {
     const times = suggestTimes([stop('moma', MOMA), stop('zoo', ZOO)], HOTEL);
     expect(times.get('moma')).toBe('09:30');
     expect(toMinutes(times.get('zoo') ?? '00:00')).toBeGreaterThan(DEFAULT_DAY_START_MIN + 60);
+  });
+});
+
+describe('real routes (M16)', () => {
+  it('fills in times with a real route where there is one', () => {
+    const A = { latitude: 40.7536, longitude: -73.9832 };
+    const B = { latitude: 40.7794, longitude: -73.9632 };
+    const stops: PlanStop[] = [
+      { id: 'a', startTime: '09:30', durationMinutes: 30, location: A, visited: false },
+      { id: 'b', startTime: null, durationMinutes: 30, location: B, visited: false },
+    ];
+    const estimated = suggestTimes(stops, null);
+    const real = suggestTimes(stops, null, undefined, (from, to) =>
+      from.latitude === A.latitude && to.latitude === B.latitude ? { minutes: 41, meters: 4100, mode: 'transit', source: 'google' } : null,
+    );
+    expect(real.get('b')).toBe('10:45'); // 09:30 + 30 min visit + 41 min, rounded up to 5
+    expect(estimated.get('b')).not.toBe(real.get('b'));
+    expect(leg(A, B, () => ({ minutes: 41, meters: 4100, mode: 'transit', source: 'google' }))).toMatchObject({ source: 'google', known: true });
   });
 });

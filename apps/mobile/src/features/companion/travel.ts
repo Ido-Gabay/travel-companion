@@ -22,10 +22,14 @@ export const TRANSIT_METERS_PER_MIN = 333;
 export type TravelMode = 'walk' | 'transit';
 
 export interface TravelEstimate {
-  /** Estimated route length (straight line × detour). */
+  /** Route length: Google's (source "google"), else straight line × detour. */
   meters: number;
   minutes: number;
   mode: TravelMode;
+  /** "google" = a real route from Google Routes (M16, online only); absent = on-device estimate. */
+  source?: 'google';
+  /** The route's path when it's a real route. */
+  path?: LatLng[];
 }
 
 export function estimateTravel(from: LatLng, to: LatLng): TravelEstimate {

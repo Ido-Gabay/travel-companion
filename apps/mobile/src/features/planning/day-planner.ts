@@ -1,5 +1,8 @@
 import type { LatLng } from '@travel-companion/shared';
-import { reliableTravel, type TravelMode } from '../companion/travel';
+import { isUsableLatLng, reliableTravel, type TravelEstimate, type TravelMode } from '../companion/travel';
+
+/** M16: a real route for a leg (Google, online), or null to use the on-device estimate. */
+export type RouteFn = (from: LatLng, to: LatLng) => TravelEstimate | null;
 import { firstFit, hoursIssue, type HoursIssue, type OpenWindow } from './opening-hours';
 
 /**
@@ -41,9 +44,13 @@ export interface Leg {
   /** False when a location was missing and UNKNOWN_TRAVEL_MIN was used. */
   known: boolean;
   mode: TravelMode | null;
+  /** "google" when this leg is a real route (M16). */
+  source?: 'google';
 }
 
-export function leg(from: LatLng | null, to: LatLng | null): Leg {
+export function leg(from: LatLng | null, to: LatLng | null, routeFor?: RouteFn): Leg {
+  const real = routeFor && isUsableLatLng(from) && isUsableLatLng(to) ? routeFor(from, to) : null;
+  if (real) return { minutes: real.minutes, known: true, mode: real.mode, source: 'google' };
   // Missing or unreliable (invalid coordinates, unrealistic distance) counts as unknown.
   const estimate = reliableTravel(from, to);
   if (!estimate) return { minutes: UNKNOWN_TRAVEL_MIN, known: false, mode: null };
@@ -91,12 +98,17 @@ export interface TimelineEntry {
  * Walks the day in order. Timed stops keep their time; flexible ones start as soon
  * as the previous visit plus travel allows (rounded up to 5 min).
  */
-export function projectDay(stops: readonly PlanStop[], start: LatLng | null, dayStart = DEFAULT_DAY_START_MIN): TimelineEntry[] {
+export function projectDay(
+  stops: readonly PlanStop[],
+  start: LatLng | null,
+  dayStart = DEFAULT_DAY_START_MIN,
+  routeFor?: RouteFn,
+): TimelineEntry[] {
   const entries: TimelineEntry[] = [];
   let previousEnd: number | null = null;
   let previous: LatLng | null = start;
   stops.forEach((stop, index) => {
-    const travel = index > 0 || start ? leg(previous, stop.location) : null;
+    const travel = index > 0 || start ? leg(previous, stop.location, routeFor) : null;
     let begin: number;
     if (stop.startTime) {
       begin = toMinutes(stop.startTime);
@@ -138,8 +150,13 @@ export interface DayCheck {
   warnings: DayWarning[];
 }
 
-export function checkDay(stops: readonly PlanStop[], start: LatLng | null, dayStart = DEFAULT_DAY_START_MIN): DayCheck {
-  const timeline = projectDay(stops, start, dayStart);
+export function checkDay(
+  stops: readonly PlanStop[],
+  start: LatLng | null,
+  dayStart = DEFAULT_DAY_START_MIN,
+  routeFor?: RouteFn,
+): DayCheck {
+  const timeline = projectDay(stops, start, dayStart, routeFor);
   const warnings: DayWarning[] = [];
   let previousTimed: number | null = null;
   let previousEnd: number | null = null;
@@ -276,9 +293,14 @@ export function optimizeOrder(stops: readonly PlanStop[], start: LatLng | null):
  * Start times for flexible stops that aren't done yet, following the order.
  * The user's own times are never changed (and are not in the result).
  */
-export function suggestTimes(stops: readonly PlanStop[], start: LatLng | null, dayStart = DEFAULT_DAY_START_MIN): Map<string, string> {
+export function suggestTimes(
+  stops: readonly PlanStop[],
+  start: LatLng | null,
+  dayStart = DEFAULT_DAY_START_MIN,
+  routeFor?: RouteFn,
+): Map<string, string> {
   const suggestions = new Map<string, string>();
-  projectDay(stops, start, dayStart).forEach((entry, index) => {
+  projectDay(stops, start, dayStart, routeFor).forEach((entry, index) => {
     const stop = stops[index] as PlanStop;
     if (entry.projected && !stop.visited) suggestions.set(stop.id, toTime(entry.start));
   });

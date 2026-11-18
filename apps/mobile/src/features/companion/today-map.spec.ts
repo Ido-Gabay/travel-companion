@@ -102,3 +102,31 @@ describe('location age', () => {
     expect(locationAge(0, 12 * 60_000).minutes).toBe(12);
   });
 });
+
+describe('real routes (M16)', () => {
+  it('uses a real route for a leg when there is one, and the estimate otherwise', () => {
+    const path = [BRYANT, { latitude: 40.765, longitude: -73.975 }, MET];
+    const routeFor = (from: { latitude: number }, to: { latitude: number }) =>
+      from.latitude === BRYANT.latitude && to.latitude === MET.latitude
+        ? { minutes: 31, meters: 3900, mode: 'transit' as const, source: 'google' as const, path }
+        : null;
+    const result = computeToday(
+      input({ stops: [stop('a', { visited: true, location: BRYANT }), stop('b', { location: MET, startTime: '12:00' }), stop('c', { location: MOMA })], routeFor }),
+    );
+    expect(result.next?.travel).toMatchObject({ minutes: 31, source: 'google' });
+    expect(result.next?.from).toEqual(BRYANT);
+    expect(result.next?.leaveBy).toBe(toMinutes('12:00') - 31 - 5);
+    // The leg after it has no real route: on-device estimate.
+    expect(result.timeline[2]?.travel?.source).toBeUndefined();
+    expect(result.timeline[2]?.from).toEqual(MET);
+    const model = buildTodayMap(result, null, HOTEL);
+    expect(model.nextLeg).toEqual(path);
+    expect(model.nextLegIsRoute).toBe(true);
+  });
+
+  it('ignores a lookup for invalid points (falls back to unavailable)', () => {
+    const routeFor = () => ({ minutes: 5, meters: 300, mode: 'walk' as const, source: 'google' as const });
+    const result = computeToday(input({ stops: [stop('a', { location: { latitude: 0, longitude: 0 } })], routeFor }));
+    expect(result.next?.travel).toBeNull();
+  });
+});

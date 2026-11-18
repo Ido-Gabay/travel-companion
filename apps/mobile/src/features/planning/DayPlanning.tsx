@@ -13,12 +13,15 @@ import { useReorderTripDay, useScheduleTripPlace } from '@/features/trips/querie
 import { formatDurationShort } from '@/features/trips/TimeSheet';
 import { useLocale } from '@/i18n/LocaleProvider';
 import { useErrorMessage } from '@/lib/use-error-message';
+import { useRealRoutes, type PlannedLeg } from '@/features/companion/real-routes';
 import { colors, radii, spacing } from '@/theme/tokens';
 import {
   checkDay,
   optimizeOrder,
+  projectDay,
   suggestTimes,
   toTime,
+  type RouteFn,
   type DayWarning,
   type PlanStop,
 } from './day-planner';
@@ -27,6 +30,8 @@ import { dayWindows } from './opening-hours';
 interface DayPlanInput {
   planStops: PlanStop[];
   hotel: LatLng | null;
+  /** The trip's time zone (pinned hotel), for transit timetables. */
+  timeZone: string | null;
   nameOf: (id: string) => string;
   /** Opening hours: off until the user asks; then how many places have them. */
   hours: { requested: boolean; pending: boolean; checked: number; total: number; failed: number };
@@ -48,6 +53,7 @@ function useDayPlanInput(trip: TripDetail, day: string, stops: readonly TripPlac
     const byId = new Map(stops.map((stop) => [stop.id, stop]));
     return {
       hotel: hotelPlace.data?.location ?? coordsFor(trip.basePlaceId),
+      timeZone: hotelPlace.data?.timeZone ?? null,
       planStops: stops.map((stop) => ({
         id: stop.id,
         startTime: stop.startTime,
@@ -80,6 +86,27 @@ function useDayPlanInput(trip: TripDetail, day: string, stops: readonly TripPlac
 }
 
 /**
+ * M16: real routes (Google, online, capped) for the legs of this order, from the
+ * hotel. Undefined offline, past a cap or until they arrive: estimates are used.
+ */
+function usePlanRoutes(stops: readonly PlanStop[], hotel: LatLng | null, day: string, timeZone: string | null): RouteFn | undefined {
+  const legs = useMemo(() => {
+    const timeline = projectDay(stops, hotel);
+    const out: PlannedLeg[] = [];
+    let previous = hotel;
+    stops.forEach((stop, index) => {
+      const entry = timeline[index];
+      if ((index > 0 || hotel) && !stop.visited) {
+        out.push({ from: previous, to: stop.location, departMinutes: entry?.travel ? entry.start - entry.travel.minutes : null });
+      }
+      previous = stop.location;
+    });
+    return out;
+  }, [stops, hotel]);
+  return useRealRoutes(legs, day, timeZone);
+}
+
+/**
  * M13: a quiet summary line for the day, warnings only when something's off, and
  * "Plan this day" (a proposal the user reviews and applies; nothing changes on its own).
  */
@@ -88,7 +115,8 @@ export function DayPlanning({ trip, day, stops }: { trip: TripDetail; day: strin
   const { locale } = useLocale();
   const [checkHours, setCheckHours] = useState(false);
   const input = useDayPlanInput(trip, day, stops, checkHours);
-  const check = useMemo(() => checkDay(input.planStops, input.hotel), [input]);
+  const routeFor = usePlanRoutes(input.planStops, input.hotel, day, input.timeZone);
+  const check = useMemo(() => checkDay(input.planStops, input.hotel, undefined, routeFor), [input, routeFor]);
   const [showWarnings, setShowWarnings] = useState(false);
   const [planning, setPlanning] = useState(false);
 
@@ -211,7 +239,9 @@ function PlanDaySheet({
     const byId = new Map(input.planStops.map((stop) => [stop.id, stop]));
     return proposal.order.flatMap((id) => (byId.has(id) ? [byId.get(id) as PlanStop] : []));
   }, [proposal, useOrder, input.planStops]);
-  const times = useMemo(() => suggestTimes(ordered, input.hotel), [ordered, input.hotel]);
+  // Shorter order is still judged on estimates; the times use real routes when online (M16).
+  const routeFor = usePlanRoutes(ordered, input.hotel, day, input.timeZone);
+  const times = useMemo(() => suggestTimes(ordered, input.hotel, undefined, routeFor), [ordered, input.hotel, routeFor]);
   const orderOn = proposal !== null && useOrder;
   const timesOn = times.size > 0 && fillTimes;
   const nothing = proposal === null && times.size === 0;
@@ -288,7 +318,10 @@ function PlanDaySheet({
                 </View>
               );
             })}
-            {input.hours.total > 0 ? <GoogleAttribution inline align="start" /> : null}
+            <AppText variant="caption" color="tertiary">
+              {routeFor ? t('planning.realRoutes') : t('planning.estimatedRoutes')}
+            </AppText>
+            {input.hours.total > 0 || routeFor ? <GoogleAttribution inline align="start" /> : null}
           </View>
         </>
       )}

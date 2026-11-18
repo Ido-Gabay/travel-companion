@@ -96,6 +96,15 @@ goes hollow after 2 min. Travel is shown only when `reliableTravel` accepts it;
 without it there's no leave-by time ("Be there by …") and no free-time window.
 Home's trip card opens Today (live during the trip, preview before).
 
+## Real travel times (M16)
+
+Online, Today and "Plan this day" ask our API for the legs they show (≤ 10 per
+request); the API calls Google Routes Compute Routes (Essentials only) per leg,
+capped 150/day and 2,000/month. Real legs show without "≈" and with "Google Maps";
+the next leg on the map follows the real route. Everything else (offline, past a
+cap, errors, reminders, "Shorter order") uses the on-device estimate. Route results
+are kept in memory for 20 minutes and never written to the phone.
+
 ## Reminders (M10) as built
 
 - **What:** for itinerary stops with a planned time: "Leave in N min for X"

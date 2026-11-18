@@ -65,6 +65,8 @@ export interface TodayInput {
   dismissed: ReadonlySet<string>;
   /** Whether the trip has a next day (for "move to tomorrow"). */
   hasTomorrow: boolean;
+  /** M16: real routes when online (Google Routes); legs without one use the on-device estimate. */
+  routeFor?: (from: LatLng, to: LatLng) => TravelEstimate | null;
 }
 
 export type StopStatus = 'done' | 'now' | 'next' | 'later';
@@ -78,8 +80,10 @@ export interface TimelineItem {
   projectedStart: number | null;
   projectedEnd: number | null;
   visitMinutes: number;
-  /** Travel from the previous point of the day (estimate). */
+  /** Travel from the previous point of the day (real route or estimate). */
   travel: TravelEstimate | null;
+  /** Where that travel starts (null when there's no travel). */
+  from: LatLng | null;
 }
 
 export type Origin = 'here' | 'current' | 'previous' | 'hotel';
@@ -87,6 +91,8 @@ export type Origin = 'here' | 'current' | 'previous' | 'hotel';
 export interface NextInfo {
   stop: EngineStop;
   travel: TravelEstimate | null;
+  /** Where the user sets off from (null when travel is unknown). */
+  from: LatLng | null;
   origin: Origin | null;
   /** When to leave to arrive on time (only when the stop has a time and travel is known). */
   leaveBy: number | null;
@@ -171,9 +177,10 @@ function visitFor(item: { durationMinutes: number | null; category: PlaceCategor
   return item.durationMinutes ?? DEFAULT_VISIT_MINUTES[item.category];
 }
 
-/** Only trustworthy estimates (see reliableTravel); otherwise "unavailable" (null). */
-function travelBetween(from: LatLng | null, to: LatLng | null): TravelEstimate | null {
-  return reliableTravel(from, to);
+/** A real route when there is one (M16), else a trustworthy estimate (see reliableTravel), else null ("unavailable"). */
+function travelWith(routeFor: TodayInput['routeFor']) {
+  return (from: LatLng | null, to: LatLng | null): TravelEstimate | null =>
+    (routeFor && isUsableLatLng(from) && isUsableLatLng(to) ? routeFor(from, to) : null) ?? reliableTravel(from, to);
 }
 
 /**
@@ -198,6 +205,7 @@ export function toEngineStops(
 
 export function computeToday(input: TodayInput): TodayResult {
   const { stops, nowMinutes: now, hotel, dismissed } = input;
+  const travelBetween = travelWith(input.routeFor);
 
   // Ignore a location far from everything in the trip (e.g. the phone is still at home).
   const known = [hotel, ...stops.map((stop) => stop.location)].filter((point): point is LatLng => point !== null);
@@ -223,16 +231,17 @@ export function computeToday(input: TodayInput): TodayResult {
     const plannedStart = stop.startTime ? toMinutes(stop.startTime) : null;
     const visit = visitFor(stop);
     if (stop.visited) {
-      return { stop, status: 'done', plannedStart, projectedStart: null, projectedEnd: null, visitMinutes: visit, travel: null };
+      return { stop, status: 'done', plannedStart, projectedStart: null, projectedEnd: null, visitMinutes: visit, travel: null, from: null };
     }
     if (index === firstOpenIndex && atFirstOpen) {
       const start = plannedStart !== null ? Math.min(plannedStart, now) : now;
       const end = Math.max(now, start + visit);
       cursor = end;
       position = stop.location ?? position;
-      return { stop, status: 'now', plannedStart, projectedStart: start, projectedEnd: end, visitMinutes: visit, travel: null };
+      return { stop, status: 'now', plannedStart, projectedStart: start, projectedEnd: end, visitMinutes: visit, travel: null, from: null };
     }
-    const travel = travelBetween(position, stop.location);
+    const from = position;
+    const travel = travelBetween(from, stop.location);
     const arrive = cursor + (travel?.minutes ?? 0);
     const start = Math.max(arrive, plannedStart ?? arrive);
     const end = start + visit;
@@ -240,7 +249,7 @@ export function computeToday(input: TodayInput): TodayResult {
     position = stop.location ?? position;
     const status: StopStatus = nextAssigned ? 'later' : 'next';
     nextAssigned = true;
-    return { stop, status, plannedStart, projectedStart: start, projectedEnd: end, visitMinutes: visit, travel };
+    return { stop, status, plannedStart, projectedStart: start, projectedEnd: end, visitMinutes: visit, travel, from: travel ? from : null };
   });
 
   const current = timeline.find((item) => item.status === 'now') ?? null;
@@ -271,7 +280,15 @@ export function computeToday(input: TodayInput): TodayResult {
     // Without a reliable travel estimate there is no honest leave-by time (and so no free-time window).
     const leaveBy = nextItem.plannedStart !== null && travel ? nextItem.plannedStart - travelMin - BUFFER_MIN : null;
     const lateBy = nextItem.plannedStart !== null ? Math.max(0, arriveAt + BUFFER_MIN - nextItem.plannedStart) : 0;
-    next = { stop: nextItem.stop, travel, origin: travel ? originPoint.origin : null, leaveBy, arriveAt, lateBy };
+    next = {
+      stop: nextItem.stop,
+      travel,
+      from: travel ? originPoint.point : null,
+      origin: travel ? originPoint.origin : null,
+      leaveBy,
+      arriveAt,
+      lateBy,
+    };
   }
 
   // 3. What can I do now with the time available?

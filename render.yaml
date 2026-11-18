@@ -53,6 +53,9 @@ services:
       # Google Places + Claude (secrets: entered in the dashboard).
       - key: GOOGLE_PLACES_API_KEY
         sync: false
+      # M16 (optional): own Routes key; otherwise the Places key is used.
+      - key: GOOGLE_ROUTES_API_KEY
+        sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: AI_MODEL
@@ -75,6 +78,10 @@ services:
         value: "60"
       - key: GOOGLE_PLACE_PHOTO_MONTHLY_CAP
         value: "900"
+      - key: GOOGLE_ROUTES_DAILY_CAP
+        value: "150"
+      - key: GOOGLE_ROUTES_MONTHLY_CAP
+        value: "2000"
       - key: AI_DAILY_CAP
         value: "300"
       - key: AI_MONTHLY_CAP

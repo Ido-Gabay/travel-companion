@@ -19,11 +19,23 @@ price list on 2026-11-17 (free usage is per SKU, per month, per billing account)
 | Place preview: rating, count, opening hours (also "Check opening hours" in day planning: one per place, on request) | Places API **Place Details Enterprise** | 1,000 | $20 | 30 / 900 |
 | Photo list in the preview | Place Details **Essentials (IDs Only)** (`photos` field) | Unlimited | — | (part of the preview call) |
 | Each photo image shown | Places API **Place Details Photos** | 1,000 | $7 | 60 / 900 |
+| Real travel times + route line (M16: Today, "Plan this day"; online only) | Routes API **Compute Routes Essentials** (walk/transit; never traffic-aware, no waypoint optimization, no intermediate waypoints) | 10,000 | $5 | 150 / 2,000 |
 | Maps on iPhone | **Maps SDK** (mobile native) | Unlimited | — | — |
 | "Ask AI" | **Claude Haiku 5.5** (tokens) | — | per token | 300 / 3,000 |
 
 Env vars: `GOOGLE_TEXT_SEARCH_DAILY_CAP` / `_MONTHLY_CAP`, `GOOGLE_PLACE_DETAILS_*`,
-`GOOGLE_PLACE_PREVIEW_*`, `GOOGLE_PLACE_PHOTO_*`, `AI_DAILY_CAP` / `AI_MONTHLY_CAP`.
+`GOOGLE_PLACE_PREVIEW_*`, `GOOGLE_PLACE_PHOTO_*`, `GOOGLE_ROUTES_DAILY_CAP` / `_MONTHLY_CAP`,
+`AI_DAILY_CAP` / `AI_MONTHLY_CAP`. Routes uses `GOOGLE_ROUTES_API_KEY` if set, else
+`GOOGLE_PLACES_API_KEY` (that key must then also allow Routes API).
+
+**Routes (M16), checked 2026-11-18:** one Compute Routes request per leg; Pro is
+triggered by 11–25 intermediate waypoints, `optimizeWaypointOrder`, traffic-aware
+routing or location modifiers, none of which we send (tested in
+`google-routes.spec.ts`). Route results are never stored (Routes caching is
+restricted; place IDs excepted): the app keeps them in memory for 20 minutes and
+they are not in the offline copy. Shown on our Google map and with "Google Maps"
+attribution next to the time. Past a cap, or on any error, the app silently uses
+its own estimate. The free allowance is per billing account.
 
 **How the caps work.** Every paid call is counted in our database
 (`app.provider_usage`) **before** it is made. Over the daily cap the API answers
@@ -84,9 +96,10 @@ Server key and iOS key are different keys. The server key never ships in the app
 
 1. Open <https://console.cloud.google.com/> and create a project, e.g. **Travel Companion**.
 2. **Billing** → link a billing account (card required). New accounts may get trial credit.
-3. **APIs & Services → Library** → enable **Places API (New)** and **Maps SDK for iOS**.
+3. **APIs & Services → Library** → enable **Places API (New)**, **Maps SDK for iOS** and
+   (M16) **Routes API**.
 4. **APIs & Services → Credentials → Create credentials → API key**, twice:
-   - **server-places**: *API restrictions* → **Places API (New)** only. *Application
+   - **server-places**: *API restrictions* → **Places API (New)** and (M16) **Routes API**. *Application
      restrictions* → none (Render Free has no fixed IP). It's only used server-side.
      Put it in Render as `GOOGLE_PLACES_API_KEY`, and in `apps/api/.env` for local runs.
    - **ios-maps**: *Application restrictions* → **iOS apps**, bundle ID
