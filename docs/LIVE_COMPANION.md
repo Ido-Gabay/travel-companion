@@ -81,6 +81,21 @@ tests, so it can move to `packages/shared` if the server ever needs it.
   are right even while the phone is on home time; without a pinned hotel, the
   phone's clock is used.
 
+## Today, map first (U2) as built
+
+Same engine and rules as M9; new layout. A full-screen Google map shows the day's
+progress (pins: done / next / now / later, the hotel, the next leg, the rest of the
+day as faint dots; straight lines, labeled). A bottom sheet (`MapSheet`) has three
+heights: collapsed (progress, next stop, leave-by, travel or "unavailable",
+Directions / Done, up to two alerts), half (the day), full (everything: preview
+controls, offline status, hints with choices, free time and suggestions, Discover
+nearby, footnote). Alerts that must be visible collapsed: changes needing a choice,
+running late, a stop that may not fit today, offline (+ waiting changes), free time.
+Location: one reading on open (live), on refresh and on "Show my location"; the dot
+goes hollow after 2 min. Travel is shown only when `reliableTravel` accepts it;
+without it there's no leave-by time ("Be there by …") and no free-time window.
+Home's trip card opens Today (live during the trip, preview before).
+
 ## Reminders (M10) as built
 
 - **What:** for itinerary stops with a planned time: "Leave in N min for X"

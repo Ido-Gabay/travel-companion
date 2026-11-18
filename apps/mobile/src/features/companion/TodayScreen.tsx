@@ -6,12 +6,25 @@ import {
   type TripDetail,
 } from '@travel-companion/shared';
 import { router } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { GoogleAttribution } from '@/components/GoogleAttribution';
-import { AppText, Button, EmptyState, ErrorState, Icon, InlineError, LoadingState, NavHeader } from '@/components/ui';
+import {
+  AppText,
+  Button,
+  EmptyState,
+  ErrorState,
+  Icon,
+  InlineError,
+  LoadingState,
+  MapSheet,
+  NavHeader,
+  useActionMenu,
+  type IconName,
+  type SheetIndex,
+} from '@/components/ui';
 import { useMe } from '@/features/me/queries';
 import { CATEGORY_ICONS } from '@/features/places/categories';
 import { openInMaps } from '@/features/places/open-in-maps';
@@ -21,14 +34,18 @@ import { useTrip } from '@/features/trips/queries';
 import { formatDurationShort, TimeSheet } from '@/features/trips/TimeSheet';
 import { useLocale } from '@/i18n/LocaleProvider';
 import { useErrorMessage } from '@/lib/use-error-message';
-import { colors, radii, spacing } from '@/theme/tokens';
+import { colors, hitSlop, radii, shadows, spacing } from '@/theme/tokens';
 import { OfflineStatus } from '@/features/offline/OfflineStatus';
 import { useOfflineCoords } from '@/features/offline/OfflineProvider';
+import { usePendingState } from '@/features/offline/ops-store';
+import { useConnection } from '@/features/offline/connection';
 import { fallbackName } from '@/features/places/use-place-display';
 import { useDismissals } from './dismissals';
 import { formatDistance } from './geo';
 import { useCurrentLocation } from './location';
 import { useTodayAction } from './today-actions';
+import { TodayMap, type TodayMapHandle } from './TodayMap';
+import { buildTodayMap, locationAge } from './today-map';
 import { zonedNow } from './zoned-time';
 import {
   computeToday,
@@ -42,6 +59,7 @@ import {
   type Suggestion,
   type TimelineItem,
   type TodayAction,
+  type TodayResult,
 } from './today-engine';
 import type { TravelEstimate } from './travel';
 
@@ -50,6 +68,10 @@ const MAX_CANDIDATES = 40;
 const DEFAULT_PREVIEW_TIME = '10:00';
 /** Free-time suggestions shown at once; dismissing one reveals the next. */
 const MAX_SHOWN_SUGGESTIONS = 2;
+/** Alerts shown in the collapsed sheet; the rest are one swipe away. */
+const MAX_PEEK_ALERTS = 2;
+/** Height of the floating top bar under the status bar. */
+const TOP_BAR = 64;
 
 /** The clock, refreshed every 30 seconds so leave-by countdowns stay current. */
 function useNow(): Date {
@@ -62,31 +84,39 @@ function useNow(): Date {
 }
 
 /**
- * Live Today: answers "where am I in my day", "what's next and when do I
- * leave", "what can I do with the time I have" and "should I change my plan".
- * Location is read once when the screen opens (and on refresh), never in the
- * background. Every change is a suggestion the user accepts or dismisses.
- * Outside the trip dates it runs as a clearly labeled preview.
+ * Live Today, map first (U2). The map is the workspace: the day's stops as
+ * pins (done, next, later), the next leg, and the last location reading. A
+ * bottom sheet carries the next action (collapsed), the day (half) and full
+ * control (full).
+ *
+ * Unchanged rules: location is read once when the screen opens, on refresh or
+ * on "Show my location", never continuously or in the background. Every change
+ * is a suggestion the user accepts or dismisses. Travel times are on-device
+ * estimates, shown only when reliable. Outside the trip dates it runs as a
+ * clearly labeled preview.
  */
 export function TodayScreen({ tripId, forcePreview }: { tripId: string; forcePreview: boolean }) {
   const { t } = useTranslation();
   const errorMessage = useErrorMessage();
   const trip = useTrip(tripId);
 
+  // M12a: the saved copy is shown even when refreshing fails (offline).
+  if (trip.data) {
+    return (
+      <TodayContent
+        trip={trip.data}
+        forcePreview={forcePreview}
+        onRefreshTrip={() => void trip.refetch()}
+        refreshing={trip.isRefetching}
+        savedAt={trip.dataUpdatedAt}
+        stale={trip.isError}
+      />
+    );
+  }
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <NavHeader title={t('today.title')} />
-      {/* M12a: the saved copy is shown even when refreshing fails (offline). */}
-      {trip.data ? (
-        <TodayContent
-          trip={trip.data}
-          forcePreview={forcePreview}
-          onRefreshTrip={() => void trip.refetch()}
-          refreshing={trip.isRefetching}
-          savedAt={trip.dataUpdatedAt}
-          stale={trip.isError}
-        />
-      ) : trip.isPending ? (
+      {trip.isPending ? (
         <LoadingState />
       ) : (
         <ErrorState message={errorMessage(trip.error)} onRetry={() => void trip.refetch()} />
@@ -112,13 +142,18 @@ function TodayContent({
 }) {
   const { t } = useTranslation();
   const { locale } = useLocale();
+  const insets = useSafeAreaInsets();
   const errorMessage = useErrorMessage();
+  const openMenu = useActionMenu();
   const distanceUnit = useMe().data?.preferences.distanceUnit ?? 'km';
   const collection = usePlaces();
   const location = useCurrentLocation();
   const setVisited = useSetVisited();
   const now = useNow();
   const coordsFor = useOfflineCoords();
+  const pending = usePendingState();
+  const offline = useConnection() === 'offline' || stale;
+  const mapRef = useRef<TodayMapHandle>(null);
 
   const days = useMemo(() => tripDays(trip.startDate, trip.endDate), [trip.startDate, trip.endDate]);
   // "Today" and "now" in the trip's time zone (pinned hotel), so they're right
@@ -137,14 +172,20 @@ function TodayContent({
   const dayIndex = day ? days.indexOf(day) : -1;
   const tomorrow = dayIndex >= 0 && dayIndex < days.length - 1 ? (days[dayIndex + 1] ?? null) : null;
 
+  // Map-first state: sheet height, selected stop.
+  const [chosenIndex, setChosenIndex] = useState<SheetIndex | null>(null);
+  const [sheetHeight, setSheetHeight] = useState(0);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
   // One location reading when Today opens for real (not in preview).
   const { locate } = location;
   useEffect(() => {
     if (live) void locate();
-    // Only on open; refresh asks again.
+    // Only on open; refresh and "Show my location" ask again.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [live]);
   const here: LatLng | null = location.state.status === 'ready' ? location.state.coords : null;
+  const hereAge = location.state.status === 'ready' ? locationAge(location.state.at, now.getTime()) : null;
 
   const { dismissed, dismiss } = useDismissals(trip.id, day);
   const act = useTodayAction(trip.id, day ?? '', tomorrow);
@@ -189,15 +230,19 @@ function TodayContent({
     source,
   }));
 
+  const hotelPoint = hotel.data?.location ?? coordsFor(trip.basePlaceId);
   const result = computeToday({
     stops: engineStops,
     nowMinutes,
     here,
-    hotel: hotel.data?.location ?? coordsFor(trip.basePlaceId),
+    hotel: hotelPoint,
     candidates,
     dismissed,
     hasTomorrow: tomorrow !== null,
   });
+  const mapModel = buildTodayMap(result, result.hereIgnored ? null : here, hotelPoint);
+  // With nothing to draw, or before the trip, the list is more useful than an empty map.
+  const sheetIndex: SheetIndex = chosenIndex ?? (mapModel.pins.length === 0 || !live ? 1 : 0);
 
   const clock = (minutes: number) => formatStartTime(toClock(minutes), locale);
   const travelText = (travel: TravelEstimate) =>
@@ -224,17 +269,52 @@ function TodayContent({
     onRefreshTrip();
     if (live || here) void location.locate();
   };
+  const showMyLocation = async () => {
+    const reading = await location.locate();
+    if (reading.ok) mapRef.current?.focus(reading.coords);
+  };
+  const selectStop = (id: string | null, from: 'map' | 'list') => {
+    setSelectedId(id);
+    if (!id) return;
+    if (from === 'map') {
+      setChosenIndex(1);
+    } else {
+      const point = result.timeline.find((item) => item.stop.id === id)?.stop.location;
+      if (point) mapRef.current?.focus(point);
+    }
+  };
+  const openDirections = () => {
+    const place = stops.find((stop) => stop.id === result.next?.stop.id);
+    if (!place) return;
+    if (place.googlePlaceId) {
+      const mode = result.next?.travel?.mode === 'transit' ? 'transit' : 'walking';
+      void Linking.openURL(googleMapsDirectionsUrl(place.googlePlaceId, nameOf(place), mode)).catch(() => undefined);
+    } else {
+      openInMaps(place.name ?? '', place.address);
+    }
+  };
+  const openItinerary = () => router.push({ pathname: '/trips/[id]', params: { id: trip.id } });
+  const openDiscover = () => router.push({ pathname: '/trips/[id]/discover', params: { id: trip.id } });
 
   if (days.length === 0 || !day) {
     return (
-      <View style={styles.content}>
-        <EmptyState
-          icon="calendar-outline"
-          title={t('itinerary.noDatesTitle')}
-          body={t('itinerary.noDatesBody')}
-          action={<Button label={t('itinerary.setDates')} variant="secondary" onPress={() => router.push({ pathname: '/trips/[id]/edit', params: { id: trip.id } })} />}
-        />
-      </View>
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        <NavHeader title={t('today.title')} />
+        <View style={styles.emptyWrap}>
+          <EmptyState
+            icon="calendar-outline"
+            title={t('itinerary.noDatesTitle')}
+            body={t('itinerary.noDatesBody')}
+            action={
+              <Button
+                label={t('itinerary.setDates')}
+                variant="secondary"
+                onPress={() => router.push({ pathname: '/trips/[id]/edit', params: { id: trip.id } })}
+              />
+            }
+          />
+        </View>
+      </SafeAreaView>
     );
   }
 
@@ -249,84 +329,34 @@ function TodayContent({
             ? t('today.fromHotel')
             : t('today.fromUnknown');
 
-  return (
-    <ScrollView
-      contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
-    >
-      {/* Day + preview controls */}
-      <View style={styles.dayHead}>
-        <AppText variant="label" color="accent">
-          {live ? t('today.liveLabel', { day: dayIndex + 1, total: days.length }) : t('today.previewLabel')}
-        </AppText>
-        <AppText variant="display">{dayTitle(day, locale)}</AppText>
-        <AppText variant="caption" color="secondary">
-          {t('today.nowAt', { time: clock(nowMinutes) })}
-          {' · '}
-          {location.state.status === 'locating'
-            ? t('today.locating')
-            : result.hereIgnored
-              ? t('today.farAway')
-              : here
-                ? t('today.usingLocation')
-                : t('today.noLocation')}
-        </AppText>
-      </View>
+  const locationStatus =
+    location.state.status === 'locating'
+      ? t('today.locating')
+      : result.hereIgnored
+        ? t('today.farAway')
+        : hereAge?.stale
+          ? t('today.lastKnown', { min: hereAge.minutes })
+          : here
+            ? t('today.usingLocation')
+            : t('today.noLocation');
 
-      {!live ? (
-        <View style={styles.preview}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dayStrip}>
-            {days.map((option) => {
-              const parts = dayChipParts(option, locale);
-              const selected = option === day;
-              return (
-                <Pressable
-                  key={option}
-                  accessibilityRole="tab"
-                  accessibilityState={{ selected }}
-                  onPress={() => setPreviewDay(option)}
-                  style={[styles.dayChip, selected && styles.dayChipOn]}
-                >
-                  <AppText variant="caption" style={selected ? styles.onAccent : styles.muted}>
-                    {parts.weekday}
-                  </AppText>
-                  <AppText variant="bodyStrong" style={selected ? styles.onAccent : undefined}>
-                    {parts.date}
-                  </AppText>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-          <View style={styles.previewRow}>
-            <Button
-              label={t('today.previewTime', { time: clock(nowMinutes) })}
-              icon="time-outline"
-              variant="secondary"
-              size="sm"
-              block={false}
-              onPress={() => setPickingTime(true)}
-            />
-            <Button
-              label={here ? t('today.locationOn') : t('today.useLocation')}
-              icon="navigate-outline"
-              variant="secondary"
-              size="sm"
-              block={false}
-              onPress={() => void location.locate()}
-            />
+  const alerts = peekAlerts(result, pending, offline, t, clock);
+  const hasLines = mapModel.nextLeg !== null || mapModel.laterPath.length > 1;
+  const topPadding = insets.top + TOP_BAR + (hasLines ? 28 : 0);
+
+  const peek = (
+    <View style={styles.peek}>
+      {result.total > 0 ? (
+        <View style={styles.progressRow} accessible accessibilityLabel={t('tripMode.doneOf', { done: result.done, total: result.total })}>
+          <View style={styles.track}>
+            <View style={[styles.fill, { width: `${Math.round((result.done / result.total) * 100)}%` }]} />
           </View>
-          <AppText variant="caption" color="tertiary">
-            {t('today.previewBody')}
+          <AppText variant="caption" color="secondary">
+            {t('tripMode.doneOf', { done: result.done, total: result.total })}
           </AppText>
         </View>
       ) : null}
 
-      <OfflineStatus savedAt={savedAt} stale={stale} />
-
-      {act.isError ? <InlineError message={errorMessage(act.error)} /> : null}
-      {setVisited.isError ? <InlineError message={errorMessage(setVisited.error)} /> : null}
-
-      {/* 2. What's next, and when should I leave? */}
       {result.current ? (
         <View style={styles.currentRow}>
           <Icon name="location" size={18} color={colors.success} />
@@ -348,184 +378,348 @@ function TodayContent({
       ) : null}
 
       {result.next ? (
-        <View style={styles.nextCard}>
-          <AppText variant="label" color="secondary">
-            {t('today.next')}
-          </AppText>
+        <View style={styles.nextBlock}>
           <View style={styles.nextHead}>
-            <View style={styles.nextIcon}>
-              <Icon name={CATEGORY_ICONS[result.next.stop.category]} size={20} color={colors.accent} />
-            </View>
             <View style={styles.flex}>
+              <AppText variant="label" color="secondary">
+                {result.next.stop.startTime
+                  ? `${t('today.next')} · ${t('today.plannedAt', { time: clock(toMinutes(result.next.stop.startTime)) })}`
+                  : `${t('today.next')} · ${t('today.flexible')}`}
+              </AppText>
               <AppText variant="title" numberOfLines={2}>
                 {result.next.stop.name}
               </AppText>
-              <AppText variant="caption" color="secondary">
-                {result.next.stop.startTime
-                  ? t('today.plannedAt', { time: clock(toMinutes(result.next.stop.startTime)) })
-                  : t('today.flexible')}
-              </AppText>
             </View>
+            <Icon name={CATEGORY_ICONS[result.next.stop.category]} size={22} color={colors.accent} />
           </View>
-
           <LeaveLine next={result.next} nowMinutes={nowMinutes} clock={clock} />
-
-          {result.next.travel ? (
-            <AppText variant="body" color="secondary">
-              {travelText(result.next.travel)} · {originText(result.next.origin)}
-            </AppText>
-          ) : (
-            <AppText variant="caption" color="tertiary">
-              {t('today.noTravel')}
-            </AppText>
-          )}
-
-          <View style={styles.buttons}>
-            <View style={styles.flex}>
-              <Button
-                label={t('places.directions')}
-                icon="navigate"
-                onPress={() => {
-                  const place = stops.find((stop) => stop.id === result.next?.stop.id);
-                  if (!place) return;
-                  if (place.googlePlaceId) {
-                    const mode = result.next?.travel?.mode === 'transit' ? 'transit' : 'walking';
-                    void Linking.openURL(googleMapsDirectionsUrl(place.googlePlaceId, nameOf(place), mode)).catch(() => undefined);
-                  } else {
-                    openInMaps(place.name ?? '', place.address);
-                  }
-                }}
-              />
-            </View>
-            <Button
-              label={t('tripMode.done')}
-              icon="checkmark"
-              variant="secondary"
-              block={false}
-              loading={setVisited.isPending}
-              onPress={() => result.next && setVisited.mutate({ id: result.next.stop.id, visited: true })}
-            />
-          </View>
-          {stops.some((stop) => stop.id === result.next?.stop.id && stop.googlePlaceId) ? (
-            <GoogleAttribution inline />
-          ) : null}
+          <AppText variant="caption" color={result.next.travel ? 'secondary' : 'tertiary'} testID="today-travel">
+            {result.next.travel
+              ? `${travelText(result.next.travel)} · ${originText(result.next.origin)}`
+              : t('today.noTravel')}
+          </AppText>
         </View>
-      ) : stops.length > 0 && !result.current ? (
-        <View style={styles.doneCard}>
-          <Icon name="checkmark-done-circle" size={28} color={colors.success} />
+      ) : result.total > 0 && !result.current ? (
+        <View style={styles.doneRow}>
+          <Icon name="checkmark-done-circle" size={26} color={colors.success} />
           <AppText variant="bodyStrong" style={styles.flex}>
             {t('tripMode.allDone')}
           </AppText>
         </View>
-      ) : null}
-
-      {/* 4. Should I consider changing my plan? */}
-      {result.hints.map((hint) => (
-        <HintCard
-          key={hint.id}
-          hint={hint}
-          clock={clock}
-          busy={act.isPending}
-          actionLabel={actionLabel}
-          onAction={(action) => act.mutate(action)}
-          onDismiss={() => dismiss(hint.id)}
-        />
-      ))}
-
-      {/* 3. What can I do now with the time available? */}
-      {result.free || result.suggestions.length > 0 ? (
-      <View style={styles.section}>
-        <AppText variant="label" color="secondary">
-          {t('today.timeAvailable')}
-        </AppText>
-        {result.free ? (
-          <AppText variant="heading">
-            {result.free.untilStopId
-              ? t('today.freeUntil', {
-                  duration: formatDurationShort(result.free.minutes, t),
-                  time: clock(result.free.until),
-                  name: nameById.get(result.free.untilStopId) ?? '',
-                })
-              : t('today.freeRestOfDay', { duration: formatDurationShort(result.free.minutes, t) })}
-          </AppText>
-        ) : null}
-        {/* Two at most: dismissing one brings the next. */}
-        {result.suggestions.slice(0, MAX_SHOWN_SUGGESTIONS).map((suggestion) => (
-          <SuggestionCard
-            key={suggestion.id}
-            suggestion={suggestion}
-            travelText={travelText}
-            busy={act.isPending}
-            actionLabel={actionLabel}
-            onAccept={() => act.mutate(suggestion.action)}
-            onDismiss={() => dismiss(suggestion.id)}
-          />
-        ))}
-        {result.free && result.suggestions.length === 0 ? (
-          <AppText variant="caption" color="secondary">
-            {result.origin ? t('today.nothingFits') : t('today.needLocation')}
-          </AppText>
-        ) : null}
-        {result.suggestions.length > 0 ? <GoogleAttribution inline /> : null}
-      </View>
-      ) : null}
-
-      {/* 1. Where am I in my day? */}
-      <View style={styles.section}>
-        <View style={styles.rowBetween}>
-          <AppText variant="label" color="secondary">
-            {t('today.yourDay')}
-          </AppText>
-          <AppText variant="caption" color="secondary">
-            {t('tripMode.doneOf', { done: result.done, total: result.total })}
+      ) : result.total === 0 ? (
+        <View style={styles.doneRow}>
+          <Icon name="sunny-outline" size={22} color={colors.accent} />
+          <AppText variant="bodyStrong" style={styles.flex}>
+            {t('today.nothingPlanned')}
           </AppText>
         </View>
-        {result.total > 0 ? (
-          <View style={styles.track}>
-            <View style={[styles.fill, { width: `${Math.round((result.done / result.total) * 100)}%` }]} />
-          </View>
-        ) : null}
-        {result.timeline.length === 0 ? (
-          <EmptyState
-            icon="sunny-outline"
-            title={t('today.nothingPlanned')}
-            body={t('today.nothingPlannedBody')}
-            action={<Button label={t('today.openItinerary')} variant="secondary" onPress={() => router.push({ pathname: '/trips/[id]', params: { id: trip.id } })} />}
-          />
-        ) : (
-          <View style={styles.timeline}>
-            {result.timeline.map((item, index) => (
-              <TimelineRow
-                key={item.stop.id}
-                item={item}
-                last={index === result.timeline.length - 1}
-                clock={clock}
-                travelText={travelText}
-                onOpen={() => router.push({ pathname: '/places/[id]', params: { id: item.stop.id } })}
-              />
-            ))}
-          </View>
-        )}
-        {result.dayEndsAt !== null ? (
-          <AppText variant="caption" color="secondary">
-            {t('today.dayEnds', { time: clock(result.dayEndsAt) })}
-          </AppText>
-        ) : null}
-        {stops.some((stop) => stop.googlePlaceId) ? <GoogleAttribution inline /> : null}
-      </View>
+      ) : null}
 
-      <Button
-        label={t('today.discoverNearby')}
-        icon="search"
-        variant="ghost"
-        onPress={() => router.push({ pathname: '/trips/[id]/discover', params: { id: trip.id } })}
+      {alerts.slice(0, MAX_PEEK_ALERTS).map((alert) => (
+        <Pressable
+          key={alert.id}
+          accessibilityRole="button"
+          accessibilityHint={t('today.alertHint')}
+          onPress={() => setChosenIndex(2)}
+          style={({ pressed }) => [styles.alert, alert.tone === 'danger' && styles.alertDanger, pressed && styles.pressed]}
+        >
+          <Icon name={alert.icon} size={16} color={alert.tone === 'danger' ? colors.danger : colors.accent} />
+          <AppText
+            variant="caption"
+            color={alert.tone === 'danger' ? 'danger' : 'accent'}
+            style={[styles.flex, styles.bold]}
+            numberOfLines={2}
+          >
+            {alert.text}
+          </AppText>
+          <Icon name="chevron-up" size={14} color={colors.textTertiary} />
+        </Pressable>
+      ))}
+
+      {result.next ? (
+        <View style={styles.buttons}>
+          <View style={styles.flex}>
+            <Button label={t('places.directions')} icon="navigate" onPress={openDirections} />
+          </View>
+          <Button
+            label={t('tripMode.done')}
+            icon="checkmark"
+            variant="secondary"
+            block={false}
+            loading={setVisited.isPending}
+            onPress={() => result.next && setVisited.mutate({ id: result.next.stop.id, visited: true })}
+          />
+        </View>
+      ) : result.total === 0 ? (
+        <Button label={t('today.openItinerary')} variant="secondary" onPress={openItinerary} />
+      ) : null}
+    </View>
+  );
+
+  return (
+    <View style={styles.screen}>
+      <TodayMap
+        ref={mapRef}
+        model={mapModel}
+        hotel={hotelPoint}
+        here={here && hereAge && !result.hereIgnored ? { coords: here, ...hereAge } : null}
+        selectedId={selectedId}
+        onSelect={(id) => selectStop(id, 'map')}
+        padding={{ top: topPadding, bottom: sheetHeight }}
       />
 
-      <AppText variant="caption" color="tertiary" style={styles.footnote}>
-        {t('today.footnote')}
-      </AppText>
+      {/* Floating top bar: back, the day, more. */}
+      <View style={[styles.topBar, { top: insets.top + spacing.sm }]} pointerEvents="box-none">
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t('common.back')}
+          onPress={() => router.back()}
+          hitSlop={hitSlop}
+          style={styles.roundButton}
+        >
+          <Icon name="arrow-back" size={22} color={colors.text} flipInRtl />
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityHint={t('today.dayChipHint')}
+          onPress={() => setChosenIndex(2)}
+          style={styles.dayChip}
+          testID="today-day-chip"
+        >
+          <AppText variant="label" color="accent" numberOfLines={1}>
+            {live
+              ? t('today.liveLabel', { day: dayIndex + 1, total: days.length })
+              : `${t('today.previewLabel')} · ${clock(nowMinutes)}`}
+            {' · '}
+            <AppText variant="label">{dayTitle(day, locale)}</AppText>
+          </AppText>
+          <AppText variant="caption" color="secondary" numberOfLines={1}>
+            {live ? `${t('today.nowAt', { time: clock(nowMinutes) })} · ${locationStatus}` : locationStatus}
+          </AppText>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t('today.more')}
+          onPress={() =>
+            openMenu({
+              items: [
+                { label: t('today.openItinerary'), icon: 'list-outline', onPress: openItinerary },
+                { label: t('today.discoverNearby'), icon: 'search', onPress: openDiscover },
+                { label: t('today.refresh'), icon: 'refresh', onPress: refresh },
+              ],
+            })
+          }
+          hitSlop={hitSlop}
+          style={styles.roundButton}
+        >
+          <Icon name="ellipsis-horizontal" size={22} color={colors.text} />
+        </Pressable>
+      </View>
+      {hasLines ? (
+        <View style={[styles.linesNote, { top: insets.top + spacing.sm + TOP_BAR - 4 }]} pointerEvents="none">
+          <AppText variant="caption" color="secondary">
+            {t('today.mapLines')}
+          </AppText>
+        </View>
+      ) : null}
 
-      {act.isPending ? <ActivityIndicator color={colors.accent} /> : null}
+      {/* Map controls sit just above the sheet, and step aside when it's fully open. */}
+      {sheetIndex < 2 && mapModel.frame.length > 0 ? (
+        <View style={[styles.controls, { bottom: sheetHeight + spacing.md }]} pointerEvents="box-none">
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('today.fitDay')}
+            onPress={() => mapRef.current?.fitDay()}
+            hitSlop={hitSlop}
+            style={styles.roundButton}
+          >
+            <Icon name="scan-outline" size={20} color={colors.text} />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('today.locateMe')}
+            accessibilityHint={t('today.locateMeHint')}
+            onPress={() => void showMyLocation()}
+            hitSlop={hitSlop}
+            style={styles.roundButton}
+          >
+            {location.state.status === 'locating' ? (
+              <ActivityIndicator color={colors.accent} />
+            ) : (
+              <Icon name="locate-outline" size={20} color={here && !hereAge?.stale ? colors.location : colors.text} />
+            )}
+          </Pressable>
+        </View>
+      ) : null}
+
+      <MapSheet
+        index={sheetIndex}
+        onIndexChange={setChosenIndex}
+        onHeightChange={setSheetHeight}
+        peek={peek}
+        accessibilityLabel={t('today.sheetLabel')}
+        accessibilityHint={t('today.sheetHint')}
+        stateLabels={[t('today.sheetCollapsed'), t('today.sheetHalf'), t('today.sheetFull')]}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
+      >
+        {!live ? (
+          <View style={styles.preview}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dayStrip}>
+              {days.map((option) => {
+                const parts = dayChipParts(option, locale);
+                const selected = option === day;
+                return (
+                  <Pressable
+                    key={option}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected }}
+                    onPress={() => {
+                      setPreviewDay(option);
+                      setSelectedId(null);
+                    }}
+                    style={[styles.dayOption, selected && styles.dayOptionOn]}
+                  >
+                    <AppText variant="caption" style={selected ? styles.onAccent : styles.muted}>
+                      {parts.weekday}
+                    </AppText>
+                    <AppText variant="bodyStrong" style={selected ? styles.onAccent : undefined}>
+                      {parts.date}
+                    </AppText>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+            <View style={styles.previewRow}>
+              <Button
+                label={t('today.previewTime', { time: clock(nowMinutes) })}
+                icon="time-outline"
+                variant="secondary"
+                size="sm"
+                block={false}
+                onPress={() => setPickingTime(true)}
+              />
+              <Button
+                label={here ? t('today.locationOn') : t('today.useLocation')}
+                icon="navigate-outline"
+                variant="secondary"
+                size="sm"
+                block={false}
+                onPress={() => void showMyLocation()}
+              />
+            </View>
+            <AppText variant="caption" color="tertiary">
+              {t('today.previewBody')}
+            </AppText>
+          </View>
+        ) : null}
+
+        <OfflineStatus savedAt={savedAt} stale={stale} />
+        {act.isError ? <InlineError message={errorMessage(act.error)} /> : null}
+        {setVisited.isError ? <InlineError message={errorMessage(setVisited.error)} /> : null}
+
+        {/* Should I consider changing my plan? (Nothing changes until the user picks an action.) */}
+        {result.hints.map((hint) => (
+          <HintRow
+            key={hint.id}
+            hint={hint}
+            clock={clock}
+            busy={act.isPending}
+            actionLabel={actionLabel}
+            onAction={(action) => act.mutate(action)}
+            onDismiss={() => dismiss(hint.id)}
+          />
+        ))}
+
+        {/* Where am I in my day? */}
+        <View style={styles.section}>
+          <View style={styles.rowBetween}>
+            <AppText variant="heading" accessibilityRole="header">
+              {t('today.yourDay')}
+            </AppText>
+            {result.dayEndsAt !== null ? (
+              <AppText variant="caption" color="secondary">
+                {t('today.dayEnds', { time: clock(result.dayEndsAt) })}
+              </AppText>
+            ) : null}
+          </View>
+          {result.timeline.length === 0 ? (
+            <AppText variant="body" color="secondary">
+              {t('today.nothingPlannedBody')}
+            </AppText>
+          ) : (
+            <View>
+              {result.timeline.map((item, index) => (
+                <TimelineRow
+                  key={item.stop.id}
+                  item={item}
+                  number={index + 1}
+                  last={index === result.timeline.length - 1}
+                  selected={item.stop.id === selectedId}
+                  clock={clock}
+                  travelText={travelText}
+                  onPress={() =>
+                    item.stop.id === selectedId
+                      ? router.push({ pathname: '/places/[id]', params: { id: item.stop.id } })
+                      : selectStop(item.stop.id, 'list')
+                  }
+                />
+              ))}
+            </View>
+          )}
+          {mapModel.unmapped > 0 && mapModel.pins.length > 0 ? (
+            <AppText variant="caption" color="tertiary">
+              {t('today.unmapped', { count: mapModel.unmapped })}
+            </AppText>
+          ) : null}
+          {stops.some((stop) => stop.googlePlaceId) ? <GoogleAttribution inline /> : null}
+        </View>
+
+        {/* What can I do now with the time available? */}
+        {result.free || result.suggestions.length > 0 ? (
+          <View style={styles.section}>
+            <AppText variant="heading" accessibilityRole="header">
+              {t('today.timeAvailable')}
+            </AppText>
+            {result.free ? (
+              <AppText variant="body" color="secondary">
+                {result.free.untilStopId
+                  ? t('today.freeUntil', {
+                      duration: formatDurationShort(result.free.minutes, t),
+                      time: clock(result.free.until),
+                      name: nameById.get(result.free.untilStopId) ?? '',
+                    })
+                  : t('today.freeRestOfDay', { duration: formatDurationShort(result.free.minutes, t) })}
+              </AppText>
+            ) : null}
+            {/* Two at most: dismissing one brings the next. */}
+            {result.suggestions.slice(0, MAX_SHOWN_SUGGESTIONS).map((suggestion) => (
+              <SuggestionRow
+                key={suggestion.id}
+                suggestion={suggestion}
+                travelText={travelText}
+                busy={act.isPending}
+                actionLabel={actionLabel}
+                onAccept={() => act.mutate(suggestion.action)}
+                onDismiss={() => dismiss(suggestion.id)}
+              />
+            ))}
+            {result.free && result.suggestions.length === 0 ? (
+              <AppText variant="caption" color="secondary">
+                {result.origin ? t('today.nothingFits') : t('today.needLocation')}
+              </AppText>
+            ) : null}
+            {result.suggestions.length > 0 ? <GoogleAttribution inline /> : null}
+          </View>
+        ) : null}
+
+        <Button label={t('today.discoverNearby')} icon="search" variant="ghost" onPress={openDiscover} />
+
+        <AppText variant="caption" color="tertiary" style={styles.footnote}>
+          {t('today.footnote')}
+        </AppText>
+
+        {act.isPending ? <ActivityIndicator color={colors.accent} /> : null}
+      </MapSheet>
 
       <TimeSheet
         visible={pickingTime}
@@ -540,8 +734,64 @@ function TodayContent({
         }}
         onClose={() => setPickingTime(false)}
       />
-    </ScrollView>
+    </View>
   );
+}
+
+type TFn = ReturnType<typeof useTranslation>['t'];
+
+interface PeekAlert {
+  id: string;
+  tone: 'danger' | 'accent';
+  icon: IconName;
+  text: string;
+}
+
+/**
+ * What must be visible without opening the sheet: changes that need a choice,
+ * running late, a stop that may not fit today, being offline, free time, and
+ * changes waiting to sync. Most urgent first; the peek shows the first two.
+ */
+function peekAlerts(
+  result: TodayResult,
+  pending: { ops: readonly unknown[]; conflicts: readonly unknown[] },
+  offline: boolean,
+  t: TFn,
+  clock: (minutes: number) => string,
+): PeekAlert[] {
+  const alerts: PeekAlert[] = [];
+  if (pending.conflicts.length > 0) {
+    alerts.push({ id: 'conflicts', tone: 'danger', icon: 'alert-circle-outline', text: t('offline.conflicts', { count: pending.conflicts.length }) });
+  }
+  for (const hint of result.hints) {
+    alerts.push(
+      hint.kind === 'late'
+        ? { id: hint.id, tone: 'danger', icon: 'hourglass-outline', text: t('today.hintLate', { min: hint.lateBy, name: hint.stopName }) }
+        : { id: hint.id, tone: 'danger', icon: 'moon-outline', text: t('today.alertMayNotFit', { name: hint.stopName, time: clock(hint.endsAt) }) },
+    );
+  }
+  if (offline) {
+    // Details (when the copy was saved) are in the sheet's offline status.
+    alerts.push({
+      id: 'offline',
+      tone: 'accent',
+      icon: 'cloud-offline-outline',
+      text: pending.ops.length > 0 ? t('today.alertOfflinePending', { count: pending.ops.length }) : t('today.alertOffline'),
+    });
+  }
+  if (result.free) {
+    const duration = formatDurationShort(result.free.minutes, t);
+    alerts.push({
+      id: 'free',
+      tone: 'accent',
+      icon: 'cafe-outline',
+      text: result.suggestions.length > 0 ? t('today.alertFreeIdeas', { duration }) : t('today.alertFree', { duration }),
+    });
+  }
+  if (pending.ops.length > 0 && !offline) {
+    alerts.push({ id: 'pending', tone: 'accent', icon: 'cloud-upload-outline', text: t('offline.pending', { count: pending.ops.length }) });
+  }
+  return alerts;
 }
 
 function LeaveLine({
@@ -549,26 +799,37 @@ function LeaveLine({
   nowMinutes,
   clock,
 }: {
-  next: NonNullable<ReturnType<typeof computeToday>['next']>;
+  next: NonNullable<TodayResult['next']>;
   nowMinutes: number;
   clock: (minutes: number) => string;
 }) {
   const { t } = useTranslation();
   if (next.lateBy > 0) {
     return (
-      <View style={[styles.leave, styles.leaveLate]}>
-        <Icon name="alert-circle" size={18} color={colors.danger} />
-        <AppText variant="bodyStrong" style={styles.lateText}>
+      <View style={styles.leave}>
+        <Icon name="alert-circle" size={20} color={colors.danger} />
+        <AppText variant="heading" color="danger" style={styles.flex}>
           {t('today.leaveNowLate', { min: next.lateBy })}
         </AppText>
       </View>
     );
   }
+  if (next.leaveBy === null && next.stop.startTime !== null) {
+    // Travel unknown: say when to be there, never a made-up leave time.
+    return (
+      <View style={styles.leave} testID="today-be-there">
+        <Icon name="flag-outline" size={20} color={colors.accent} />
+        <AppText variant="heading" color="accent" style={[styles.flex, styles.tabular]}>
+          {t('today.beThereBy', { time: clock(toMinutes(next.stop.startTime)) })}
+        </AppText>
+      </View>
+    );
+  }
   if (next.leaveBy === null) {
-    return next.arriveAt !== null ? (
+    return next.arriveAt !== null && next.travel ? (
       <View style={styles.leave}>
-        <Icon name="walk-outline" size={18} color={colors.accent} />
-        <AppText variant="bodyStrong" color="accent">
+        <Icon name="walk-outline" size={20} color={colors.accent} />
+        <AppText variant="heading" color="accent" style={styles.flex}>
           {t('today.goWhenReady', { time: clock(next.arriveAt) })}
         </AppText>
       </View>
@@ -576,16 +837,17 @@ function LeaveLine({
   }
   const inMinutes = next.leaveBy - nowMinutes;
   return (
-    <View style={styles.leave}>
-      <Icon name="time" size={18} color={colors.accent} />
-      <AppText variant="bodyStrong" color="accent">
+    <View style={styles.leave} testID="today-leave">
+      <Icon name="time" size={20} color={colors.accent} />
+      {/* The one big number on the screen: when to leave. */}
+      <AppText variant="title" color="accent" style={[styles.flex, styles.tabular]}>
         {inMinutes <= 0 ? t('today.leaveNow') : t('today.leaveBy', { time: clock(next.leaveBy), min: inMinutes })}
       </AppText>
     </View>
   );
 }
 
-function HintCard({
+function HintRow({
   hint,
   clock,
   busy,
@@ -604,14 +866,14 @@ function HintCard({
   return (
     <View style={styles.hint}>
       <View style={styles.hintHead}>
-        <Icon name={hint.kind === 'late' ? 'hourglass-outline' : 'moon-outline'} size={20} color={colors.danger} />
+        <Icon name={hint.kind === 'late' ? 'hourglass-outline' : 'moon-outline'} size={18} color={colors.danger} />
         <AppText variant="bodyStrong" style={styles.flex}>
           {hint.kind === 'late'
             ? t('today.hintLate', { min: hint.lateBy, name: hint.stopName })
             : t('today.hintOverbooked', { time: clock(hint.endsAt), name: hint.stopName })}
         </AppText>
       </View>
-      <View style={styles.hintActions}>
+      <View style={styles.actionsRow}>
         {hint.actions.map((action) => (
           <Button
             key={action.type}
@@ -633,7 +895,7 @@ function HintCard({
   );
 }
 
-function SuggestionCard({
+function SuggestionRow({
   suggestion,
   travelText,
   busy,
@@ -653,11 +915,9 @@ function SuggestionCard({
   return (
     <View style={styles.suggestion}>
       <View style={styles.suggestionHead}>
-        <View style={styles.badge}>
-          <Icon name={CATEGORY_ICONS[candidate.category]} size={18} color={colors.accent} />
-        </View>
+        <Icon name={CATEGORY_ICONS[candidate.category]} size={20} color={colors.accent} />
         <View style={styles.flex}>
-          <AppText variant="heading" numberOfLines={1}>
+          <AppText variant="bodyStrong" numberOfLines={1}>
             {candidate.name}
           </AppText>
           <AppText variant="caption" color="secondary">
@@ -669,7 +929,7 @@ function SuggestionCard({
           </AppText>
         </View>
       </View>
-      <View style={styles.hintActions}>
+      <View style={styles.actionsRow}>
         <Button
           label={actionLabel(suggestion.action)}
           icon="add"
@@ -691,16 +951,20 @@ function SuggestionCard({
 
 function TimelineRow({
   item,
+  number,
   last,
+  selected,
   clock,
   travelText,
-  onOpen,
+  onPress,
 }: {
   item: TimelineItem;
+  number: number;
   last: boolean;
+  selected: boolean;
   clock: (minutes: number) => string;
   travelText: (travel: TravelEstimate) => string;
-  onOpen: () => void;
+  onPress: () => void;
 }) {
   const { t } = useTranslation();
   const done = item.status === 'done';
@@ -710,6 +974,7 @@ function TimelineRow({
       : item.projectedStart !== null
         ? `≈ ${clock(item.projectedStart)}`
         : null;
+  const status = item.status === 'now' ? t('today.statusNow') : item.status === 'next' ? t('today.statusNext') : null;
   return (
     <View>
       {item.travel && !done ? (
@@ -717,7 +982,14 @@ function TimelineRow({
           {travelText(item.travel)}
         </AppText>
       ) : null}
-      <Pressable accessibilityRole="button" onPress={onOpen} style={styles.timelineRow}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ selected }}
+        accessibilityHint={selected ? t('today.rowOpenHint') : t('today.rowSelectHint')}
+        onPress={onPress}
+        testID={`today-row-${item.stop.id}`}
+        style={({ pressed }) => [styles.timelineRow, selected && styles.rowSelected, pressed && styles.pressed]}
+      >
         <View style={styles.rail}>
           <View
             style={[
@@ -727,7 +999,17 @@ function TimelineRow({
               item.status === 'next' && styles.dotNext,
             ]}
           >
-            {done ? <Icon name="checkmark" size={12} color={colors.textOnAccent} /> : null}
+            {done ? (
+              <Icon name="checkmark" size={12} color={colors.textTertiary} />
+            ) : (
+              <AppText
+                variant="caption"
+                style={item.status === 'next' || item.status === 'now' ? styles.dotNumberOn : styles.dotNumber}
+                allowFontScaling={false}
+              >
+                {number}
+              </AppText>
+            )}
           </View>
           {!last ? <View style={styles.railLine} /> : null}
         </View>
@@ -740,16 +1022,18 @@ function TimelineRow({
           >
             {item.stop.name}
           </AppText>
-          <AppText variant="caption" color="secondary">
-            {[
-              time,
-              formatDurationShort(item.visitMinutes, t),
-              item.status === 'now' ? t('today.statusNow') : item.status === 'next' ? t('today.statusNext') : null,
-            ]
-              .filter(Boolean)
-              .join(' · ')}
+          <AppText variant="caption" color="secondary" style={styles.tabular}>
+            {[time, formatDurationShort(item.visitMinutes, t), status].filter(Boolean).join(' · ')}
           </AppText>
         </View>
+        {selected ? (
+          <View style={styles.detailsLink}>
+            <AppText variant="caption" color="accent" style={styles.bold}>
+              {t('today.details')}
+            </AppText>
+            <Icon name="chevron-forward" size={14} color={colors.accent} flipInRtl />
+          </View>
+        ) : null}
       </Pressable>
     </View>
   );
@@ -757,107 +1041,124 @@ function TimelineRow({
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.xl, paddingBottom: spacing.huge, gap: spacing.lg },
+  screen: { flex: 1, backgroundColor: colors.surfaceMuted },
+  emptyWrap: { padding: spacing.xl },
   flex: { flex: 1 },
   bold: { fontWeight: '600' },
+  tabular: { fontVariant: ['tabular-nums'] },
   muted: { color: colors.textSecondary },
   onAccent: { color: colors.textOnAccent },
-  dayHead: { gap: spacing.xxs },
-  dayStrip: { gap: spacing.sm, paddingVertical: spacing.sm },
+  pressed: { opacity: 0.7 },
+
+  topBar: {
+    position: 'absolute',
+    left: spacing.lg,
+    right: spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  roundButton: {
+    width: 44,
+    height: 44,
+    borderRadius: radii.pill,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...shadows.floating,
+  },
   dayChip: {
+    flex: 1,
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xs,
+    borderRadius: radii.xl,
+    backgroundColor: colors.surface,
+    ...shadows.floating,
+  },
+  linesNote: {
+    position: 'absolute',
+    alignSelf: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xxs,
+    borderRadius: radii.pill,
+    backgroundColor: 'rgba(255,255,255,0.88)',
+  },
+  controls: { position: 'absolute', end: spacing.lg, gap: spacing.sm },
+
+  peek: { paddingHorizontal: spacing.xl, paddingBottom: spacing.lg, gap: spacing.md },
+  progressRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  track: { flex: 1, height: 4, borderRadius: radii.pill, backgroundColor: colors.surfaceMuted, overflow: 'hidden' },
+  fill: { height: 4, borderRadius: radii.pill, backgroundColor: colors.success },
+  currentRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  nextBlock: { gap: spacing.xs },
+  nextHead: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
+  leave: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs },
+  doneRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  alert: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.md,
+    backgroundColor: colors.accentSoft,
+  },
+  alertDanger: { backgroundColor: colors.dangerSoft },
+  buttons: { flexDirection: 'row', gap: spacing.md },
+
+  preview: { gap: spacing.sm },
+  dayStrip: { gap: spacing.sm, paddingVertical: spacing.xs },
+  dayOption: {
     width: 52,
     alignItems: 'center',
     paddingVertical: spacing.xs,
     borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.surface,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.surfaceMuted,
   },
-  dayChipOn: { backgroundColor: colors.accent, borderColor: colors.accent },
-  preview: { gap: spacing.sm },
+  dayOptionOn: { backgroundColor: colors.accent },
   previewRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  currentRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    padding: spacing.md,
-    borderRadius: radii.lg,
-    backgroundColor: '#E6F2E9',
-  },
-  nextCard: {
-    gap: spacing.md,
-    padding: spacing.xl,
-    borderRadius: radii.card,
-    backgroundColor: colors.surface,
-  },
-  nextHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  nextIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: radii.md,
-    backgroundColor: colors.accentSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  leave: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    padding: spacing.md,
-    borderRadius: radii.md,
-    backgroundColor: colors.accentSoft,
-  },
-  leaveLate: { backgroundColor: colors.dangerSoft },
-  lateText: { color: colors.danger, flex: 1 },
-  buttons: { flexDirection: 'row', gap: spacing.md },
-  doneCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.lg },
-  hint: {
-    gap: spacing.sm,
-    padding: spacing.lg,
-    borderRadius: radii.card,
-    backgroundColor: colors.dangerSoft,
-  },
-  hintHead: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
-  hintActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },
-  dismiss: { paddingHorizontal: spacing.sm, paddingVertical: spacing.sm },
+
   section: { gap: spacing.md },
-  suggestion: {
-    gap: spacing.sm,
-    padding: spacing.lg,
-    borderRadius: radii.card,
-    backgroundColor: colors.surface,
-  },
+  rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
+  hint: { gap: spacing.sm, padding: spacing.md, borderRadius: radii.md, backgroundColor: colors.dangerSoft },
+  hintHead: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
+  actionsRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },
+  dismiss: { paddingHorizontal: spacing.sm, paddingVertical: spacing.sm },
+  suggestion: { gap: spacing.sm, paddingVertical: spacing.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
   suggestionHead: { flexDirection: 'row', gap: spacing.md },
-  badge: {
-    width: 36,
-    height: 36,
+
+  travelLine: { paddingStart: 36, paddingVertical: spacing.xxs },
+  timelineRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    minHeight: 52,
+    paddingVertical: spacing.xxs,
+    paddingHorizontal: spacing.xs,
+    marginHorizontal: -spacing.xs,
     borderRadius: radii.md,
-    backgroundColor: colors.accentSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
-  rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  track: { height: 6, borderRadius: radii.pill, backgroundColor: colors.surfaceMuted, overflow: 'hidden' },
-  fill: { height: 6, borderRadius: radii.pill, backgroundColor: colors.success },
-  timeline: { padding: spacing.lg, borderRadius: radii.card, backgroundColor: colors.surface },
-  travelLine: { paddingStart: 32, paddingVertical: spacing.xxs },
-  timelineRow: { flexDirection: 'row', gap: spacing.md, minHeight: 48 },
-  rail: { width: 20, alignItems: 'center' },
+  rowSelected: { backgroundColor: colors.accentSoft },
+  rail: { width: 24, alignItems: 'center' },
   dot: {
-    width: 18,
-    height: 18,
+    width: 22,
+    height: 22,
     borderRadius: radii.pill,
     borderWidth: 2,
-    borderColor: colors.borderStrong,
+    borderColor: colors.accent,
     backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 2,
+    marginTop: 1,
   },
-  dotDone: { backgroundColor: colors.success, borderColor: colors.success },
+  dotDone: { backgroundColor: colors.surfaceMuted, borderColor: colors.borderStrong },
   dotNow: { backgroundColor: colors.success, borderColor: colors.success },
-  dotNext: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
+  dotNext: { backgroundColor: colors.accent, borderColor: colors.accent },
+  dotNumber: { color: colors.accent, fontWeight: '700', fontSize: 11, lineHeight: 14 },
+  dotNumberOn: { color: colors.textOnAccent, fontWeight: '700', fontSize: 11, lineHeight: 14 },
   railLine: { flex: 1, width: 2, backgroundColor: colors.border, marginTop: 2 },
   struck: { textDecorationLine: 'line-through' },
+  detailsLink: { flexDirection: 'row', alignItems: 'center', gap: spacing.xxs, alignSelf: 'center' },
   footnote: { textAlign: 'center' },
 });

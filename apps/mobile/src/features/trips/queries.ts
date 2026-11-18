@@ -114,7 +114,7 @@ export function useScheduleTripPlace(tripId: string) {
       // The server's copy (not the screen's) is each change's starting point.
       const server = queryClient.getQueryData<TripDetail>(tripKey(tripId))?.places.find((place) => place.id === placeId);
       const now = Date.now();
-      const ops: PendingOp[] = (['day', 'startTime', 'durationMinutes'] as const)
+      const ops: PendingOp[] = (['day', 'startTime', 'durationMinutes', 'highlight'] as const)
         .filter((field): field is ScheduleField => body[field] !== undefined)
         .map((field, index) => ({
           id: newOpId(now + index),
@@ -123,7 +123,17 @@ export function useScheduleTripPlace(tripId: string) {
           placeId,
           field,
           value: body[field] ?? null,
-          base: server ? (field === 'day' ? server.day : field === 'startTime' ? server.startTime : server.durationMinutes) : null,
+          base: server
+            ? field === 'day'
+              ? server.day
+              : field === 'startTime'
+                ? server.startTime
+                : field === 'highlight'
+                  ? server.highlight
+                  : server.durationMinutes
+            : field === 'highlight'
+              ? false
+              : null,
           createdAt: now + index,
         }));
       await addOps(ops);

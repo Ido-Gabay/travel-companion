@@ -28,6 +28,8 @@ and [AGENTS.md](AGENTS.md).**
 - **Today**: timeline, next stop with leave-by and travel estimate, free time
   with suggestions that fit, running-late hints (accept or dismiss), preview mode.
 - **Local reminders**: leave soon, time to leave, heads-up, morning summary.
+- **Trip journal**: a note and rating per day, what you did, highlights, and a
+  shareable trip recap. Works offline.
 - **Offline-tolerant trip mode**: trips, itinerary and Today open without a
   connection (saved copy per user); Done, reorder, time, length and day work
   offline and sync later with conflict checks; reminders keep working.

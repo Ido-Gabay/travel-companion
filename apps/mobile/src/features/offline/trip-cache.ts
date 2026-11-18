@@ -1,9 +1,11 @@
 import {
   meSchema,
   tripDetailSchema,
+  tripJournalSchema,
   tripListSchema,
   type Me,
   type TripDetail,
+  type TripJournal,
   type TripList,
 } from '@travel-companion/shared';
 import type { z } from 'zod';
@@ -22,6 +24,7 @@ const TRIPS = 'trips';
 const TRIP = 'trip.';
 const ME = 'me';
 const COORDS = 'coords';
+const JOURNAL = 'journal.';
 
 export interface Cached<T> {
   /** When this copy came from the server (ms since epoch). */
@@ -34,6 +37,8 @@ export interface OfflineSnapshot {
   details: Cached<TripDetail>[];
   me: Cached<Me> | null;
   coords: CachedCoord[];
+  /** M15: trip journals (the user's notes and ratings), by trip id. */
+  journals: { tripId: string; journal: Cached<TripJournal> }[];
 }
 
 /**
@@ -83,7 +88,9 @@ export class TripCache {
     // Drop saved details of trips that no longer exist.
     const ids = new Set(list.items.map((trip) => trip.id));
     const stale = (await this.store.getAllKeys()).filter(
-      (key) => key.startsWith(this.key(TRIP)) && !ids.has(key.slice(this.key(TRIP).length)),
+      (key) =>
+        (key.startsWith(this.key(TRIP)) && !ids.has(key.slice(this.key(TRIP).length))) ||
+        (key.startsWith(this.key(JOURNAL)) && !ids.has(key.slice(this.key(JOURNAL).length))),
     );
     if (stale.length > 0) await this.store.multiRemove(stale);
   }
@@ -97,6 +104,11 @@ export class TripCache {
 
   async removeTrip(tripId: string): Promise<void> {
     await this.store.removeItem(this.key(`${TRIP}${tripId}`));
+    await this.store.removeItem(this.key(`${JOURNAL}${tripId}`));
+  }
+
+  async saveJournal(tripId: string, journal: TripJournal, nowMs: number): Promise<void> {
+    await this.store.setItem(this.key(`${JOURNAL}${tripId}`), JSON.stringify({ savedAt: nowMs, data: journal }));
   }
 
   async saveMe(me: Me, nowMs: number): Promise<void> {
@@ -119,6 +131,13 @@ export class TripCache {
       else await this.store.removeItem(key);
     }
 
+    const journals: OfflineSnapshot['journals'] = [];
+    for (const key of keys.filter((item) => item.startsWith(this.key(JOURNAL)))) {
+      const journal = parse(await this.store.getItem(key), tripJournalSchema);
+      if (journal) journals.push({ tripId: key.slice(this.key(JOURNAL).length), journal });
+      else await this.store.removeItem(key);
+    }
+
     let coords: CachedCoord[] = [];
     if (keys.includes(this.key(COORDS))) {
       let raw: unknown = null;
@@ -133,7 +152,7 @@ export class TripCache {
       const rawLength = Array.isArray(raw) ? raw.length : 0;
       if (coords.length !== rawLength) await this.saveCoords(coords);
     }
-    return { trips, details, me, coords };
+    return { trips, details, me, coords, journals };
   }
 }
 

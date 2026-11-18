@@ -1,4 +1,4 @@
-import type { Place, TripDetail, TripPlace } from '@travel-companion/shared';
+import type { JournalDay, Place, TripDetail, TripJournal, TripPlace } from '@travel-companion/shared';
 
 /**
  * M12a pending changes: the user's itinerary edits, recorded on the phone first and
@@ -7,7 +7,9 @@ import type { Place, TripDetail, TripPlace } from '@travel-companion/shared';
  * can tell whether the server changed in the meantime (see sync.ts).
  * Shaped like a PowerSync upload queue (one CRUD-like entry per change).
  */
-export type ScheduleField = 'day' | 'startTime' | 'durationMinutes';
+export type ScheduleField = 'day' | 'startTime' | 'durationMinutes' | 'highlight';
+export type ScheduleValue = string | number | boolean | null;
+export type JournalField = 'note' | 'rating';
 
 interface OpBase {
   /** Unique per change (kept when later edits to the same thing are merged into it). */
@@ -28,6 +30,16 @@ export interface ScheduleOp extends OpBase {
   tripId: string;
   placeId: string;
   field: ScheduleField;
+  value: ScheduleValue;
+  base: ScheduleValue;
+}
+
+/** M15: a trip day's journal note or rating. */
+export interface JournalOp extends OpBase {
+  kind: 'journal';
+  tripId: string;
+  day: string;
+  field: JournalField;
   value: string | number | null;
   base: string | number | null;
 }
@@ -42,7 +54,7 @@ export interface ReorderOp extends OpBase {
   base: string[];
 }
 
-export type PendingOp = VisitedOp | ScheduleOp | ReorderOp;
+export type PendingOp = VisitedOp | ScheduleOp | ReorderOp | JournalOp;
 
 /** Two ops change the same thing (and so are merged). */
 function sameTarget(a: PendingOp, b: PendingOp): boolean {
@@ -52,6 +64,7 @@ function sameTarget(a: PendingOp, b: PendingOp): boolean {
     return a.tripId === b.tripId && a.placeId === b.placeId && a.field === b.field;
   }
   if (a.kind === 'reorder' && b.kind === 'reorder') return a.tripId === b.tripId && a.day === b.day;
+  if (a.kind === 'journal' && b.kind === 'journal') return a.tripId === b.tripId && a.day === b.day && a.field === b.field;
   return false;
 }
 
@@ -101,7 +114,7 @@ function applyOne(detail: TripDetail, op: PendingOp): TripDetail {
       ),
     };
   }
-  if (op.tripId !== detail.id) return detail;
+  if (op.tripId !== detail.id || op.kind === 'journal') return detail;
   if (op.kind === 'reorder') {
     const order = new Map(op.value.map((id, index) => [id, index]));
     const places = detail.places.map((place) =>
@@ -124,6 +137,8 @@ function applyOne(detail: TripDetail, op: PendingOp): TripDetail {
         : place,
     );
     if (target.day !== null) places = renumber(places, target.day);
+  } else if (op.field === 'highlight') {
+    places = places.map((place) => (place.id === op.placeId ? { ...place, highlight: op.value === true } : place));
   } else if (op.field === 'startTime') {
     places = places.map((place) =>
       place.id === op.placeId && place.day !== null ? { ...place, startTime: op.value as string | null } : place,
@@ -151,7 +166,30 @@ export function applyVisitedOps<P extends Pick<Place, 'id' | 'visitedAt'>>(place
 
 /** Places with a change waiting to sync (for a small marker on the stop). */
 export function pendingPlaceIds(ops: readonly PendingOp[]): Set<string> {
-  return new Set(ops.flatMap((op) => (op.kind === 'reorder' ? [] : [op.placeId])));
+  return new Set(ops.flatMap((op) => (op.kind === 'reorder' || op.kind === 'journal' ? [] : [op.placeId])));
+}
+
+/** The journal the user sees: the server copy with pending notes/ratings on top. */
+export function applyJournalOps(journal: TripJournal, tripId: string, ops: readonly PendingOp[]): TripJournal {
+  const mine = ops
+    .filter((op): op is JournalOp => op.kind === 'journal' && op.tripId === tripId)
+    .sort((a, b) => a.createdAt - b.createdAt);
+  if (mine.length === 0) return journal;
+  const days = new Map(journal.days.map((entry) => [entry.day, entry]));
+  for (const op of mine) {
+    const entry: JournalDay = days.get(op.day) ?? {
+      day: op.day,
+      note: null,
+      rating: null,
+      updatedAt: new Date(op.createdAt).toISOString(),
+    };
+    days.set(op.day, { ...entry, [op.field]: op.value });
+  }
+  return {
+    days: [...days.values()]
+      .filter((entry) => entry.note !== null || entry.rating !== null)
+      .sort((a, b) => a.day.localeCompare(b.day)),
+  };
 }
 
 export function newOpId(nowMs: number): string {

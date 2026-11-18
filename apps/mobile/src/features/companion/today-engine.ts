@@ -1,7 +1,7 @@
 import type { LatLng, PlaceCategory, TripPlace } from '@travel-companion/shared';
 import { DEFAULT_VISIT_MINUTES } from '@travel-companion/shared';
 import { distanceMeters } from './geo';
-import { estimateTravel, type TravelEstimate } from './travel';
+import { isUsableLatLng, reliableTravel, type TravelEstimate } from './travel';
 
 /**
  * Live Today engine: deterministic, pure and unit-tested. It reads the day's
@@ -88,7 +88,7 @@ export interface NextInfo {
   stop: EngineStop;
   travel: TravelEstimate | null;
   origin: Origin | null;
-  /** When to leave to arrive on time (only when the stop has a time). */
+  /** When to leave to arrive on time (only when the stop has a time and travel is known). */
   leaveBy: number | null;
   /** Expected arrival. */
   arriveAt: number | null;
@@ -171,8 +171,9 @@ function visitFor(item: { durationMinutes: number | null; category: PlaceCategor
   return item.durationMinutes ?? DEFAULT_VISIT_MINUTES[item.category];
 }
 
+/** Only trustworthy estimates (see reliableTravel); otherwise "unavailable" (null). */
 function travelBetween(from: LatLng | null, to: LatLng | null): TravelEstimate | null {
-  return from && to ? estimateTravel(from, to) : null;
+  return reliableTravel(from, to);
 }
 
 /**
@@ -202,7 +203,7 @@ export function computeToday(input: TodayInput): TodayResult {
   const known = [hotel, ...stops.map((stop) => stop.location)].filter((point): point is LatLng => point !== null);
   const hereIgnored =
     input.here !== null && known.length > 0 && known.every((point) => distanceMeters(input.here as LatLng, point) > FAR_AWAY_METERS);
-  const here = hereIgnored ? null : input.here;
+  const here = hereIgnored || !isUsableLatLng(input.here) ? null : input.here;
 
   // 1. Where am I in my day? Walk the plan and project it from now.
   const lastDone = [...stops].reverse().find((stop) => stop.visited && stop.location) ?? null;
@@ -267,7 +268,8 @@ export function computeToday(input: TodayInput): TodayResult {
     const travel = travelBetween(originPoint.point, nextItem.stop.location);
     const travelMin = travel?.minutes ?? 0;
     const arriveAt = freeFrom + travelMin;
-    const leaveBy = nextItem.plannedStart !== null ? nextItem.plannedStart - travelMin - BUFFER_MIN : null;
+    // Without a reliable travel estimate there is no honest leave-by time (and so no free-time window).
+    const leaveBy = nextItem.plannedStart !== null && travel ? nextItem.plannedStart - travelMin - BUFFER_MIN : null;
     const lateBy = nextItem.plannedStart !== null ? Math.max(0, arriveAt + BUFFER_MIN - nextItem.plannedStart) : 0;
     next = { stop: nextItem.stop, travel, origin: travel ? originPoint.origin : null, leaveBy, arriveAt, lateBy };
   }
@@ -287,8 +289,8 @@ export function computeToday(input: TodayInput): TodayResult {
   const scored = input.candidates
     .filter((candidate) => !planIds.has(candidate.id) && !dismissed.has(`sug:${candidate.id}`))
     .flatMap((candidate) => {
-      if (!originPoint.point || !candidate.location) return [];
-      const travel = estimateTravel(originPoint.point, candidate.location);
+      const travel = travelBetween(originPoint.point, candidate.location);
+      if (!travel) return [];
       const visit = visitFor(candidate);
       const onward = next ? travelBetween(candidate.location, next.stop.location) : null;
       const totalMinutes = travel.minutes + visit + (onward?.minutes ?? 0);

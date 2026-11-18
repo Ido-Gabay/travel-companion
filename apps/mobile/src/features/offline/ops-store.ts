@@ -1,4 +1,4 @@
-import type { Place, ScheduleTripPlaceInput, TripDetail } from '@travel-companion/shared';
+import type { Place, ScheduleTripPlaceInput, TripDetail, TripJournal, UpdateJournalDayInput } from '@travel-companion/shared';
 import type { QueryClient } from '@tanstack/react-query';
 import { useSyncExternalStore } from 'react';
 import { api } from '@/lib/api';
@@ -109,6 +109,8 @@ const liveApi: SyncApi = {
   // The queue stores each field with its own type (day/startTime: string, length: number).
   schedule: (tripId, placeId, body) => api.scheduleTripPlace(tripId, placeId, body as ScheduleTripPlaceInput),
   reorder: (tripId, day, placeIds) => api.reorderTripDay(tripId, day, { placeIds }),
+  getJournal: (tripId) => api.getJournal(tripId),
+  updateJournal: (tripId, day, body) => api.updateJournalDay(tripId, day, body as UpdateJournalDayInput),
 };
 
 /**
@@ -131,7 +133,7 @@ export function syncPending(queryClient: QueryClient, syncApi: SyncApi = liveApi
       again = !result.stoppedOffline && result.remaining.length === 0 && ops.length > 0;
       set({ ops, conflicts: [...state.conflicts, ...result.conflicts], syncing: false });
       await persist();
-      applyServerCopies(queryClient, result.trips, result.places);
+      applyServerCopies(queryClient, result.trips, result.places, result.journals);
     } catch {
       set({ ...state, syncing: false });
     } finally {
@@ -142,8 +144,14 @@ export function syncPending(queryClient: QueryClient, syncApi: SyncApi = liveApi
   return running;
 }
 
-function applyServerCopies(queryClient: QueryClient, trips: readonly TripDetail[], places: readonly Place[]): void {
+function applyServerCopies(
+  queryClient: QueryClient,
+  trips: readonly TripDetail[],
+  places: readonly Place[],
+  journals: readonly { tripId: string; journal: TripJournal }[],
+): void {
   for (const trip of trips) queryClient.setQueryData(['trips', 'detail', trip.id], trip);
+  for (const { tripId, journal } of journals) queryClient.setQueryData(['trips', 'journal', tripId], journal);
   for (const place of places) queryClient.setQueryData(['places', 'detail', place.id], place);
   if (places.length > 0) {
     // Done is per place: every trip showing it needs the server's copy.

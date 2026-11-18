@@ -34,7 +34,7 @@ describe('offline trip cache', () => {
     const store = memoryStore();
     await new TripCache(store, ALICE).saveTrip(tripDetail([tripPlace(1)]), NOW);
     const bob = await new TripCache(store, BOB).load(NOW);
-    expect(bob).toEqual({ trips: null, details: [], me: null, coords: [] });
+    expect(bob).toEqual({ trips: null, details: [], me: null, coords: [], journals: [] });
   });
 
   it('sign-out wipes every saved copy; a new sign-in removes other users leftovers', async () => {
@@ -57,6 +57,19 @@ describe('offline trip cache', () => {
     expect(raw).not.toContain('Should not be here');
     expect(raw).toContain('Aunt Ruth');
     expect(sanitizeTripDetail(tripDetail([leaked])).places[0]).toMatchObject({ name: null, address: null });
+  });
+
+  it('saves the trip journal per user and drops it with its trip', async () => {
+    const store = memoryStore();
+    const cache = new TripCache(store, ALICE);
+    const trip = tripDetail([]);
+    const journal = { days: [{ day: '2026-11-23', note: 'Rainy but great', rating: 4, updatedAt: '2026-11-23T22:00:00.000Z' }] };
+    await cache.saveTrips({ items: [trip] }, NOW);
+    await cache.saveJournal(trip.id, journal, NOW);
+    expect((await cache.load(NOW)).journals).toEqual([{ tripId: trip.id, journal: { savedAt: NOW, data: journal } }]);
+    expect((await new TripCache(store, BOB).load(NOW)).journals).toEqual([]);
+    await cache.saveTrips({ items: [] }, NOW);
+    expect((await cache.load(NOW)).journals).toEqual([]);
   });
 
   it('drops corrupted entries instead of failing', async () => {

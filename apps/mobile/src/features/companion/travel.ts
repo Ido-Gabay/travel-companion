@@ -35,3 +35,40 @@ export function estimateTravel(from: LatLng, to: LatLng): TravelEstimate {
   const transit = Math.round(TRANSIT_OVERHEAD_MIN + meters / TRANSIT_METERS_PER_MIN);
   return { meters, minutes: Math.min(walk, transit), mode: 'transit' };
 }
+
+/** Beyond this, a door-to-door city estimate isn't believable (wrong coordinates, another city). */
+export const MAX_ESTIMATE_METERS = 60_000;
+/** Longer than this isn't a realistic hop between two stops of one day. */
+export const MAX_ESTIMATE_MIN = 180;
+
+/** Finite, in range and not the "null island" (0, 0) that bad data often produces. */
+export function isUsableLatLng(point: LatLng | null | undefined): point is LatLng {
+  return (
+    point !== null &&
+    point !== undefined &&
+    Number.isFinite(point.latitude) &&
+    Number.isFinite(point.longitude) &&
+    Math.abs(point.latitude) <= 90 &&
+    Math.abs(point.longitude) <= 180 &&
+    !(point.latitude === 0 && point.longitude === 0)
+  );
+}
+
+/**
+ * The estimate, or null when it can't be trusted: a missing or invalid
+ * coordinate, or a result too long to be a real hop within the day. Callers
+ * show "travel time unavailable" instead of a misleading number.
+ */
+export function reliableTravel(from: LatLng | null, to: LatLng | null): TravelEstimate | null {
+  if (!isUsableLatLng(from) || !isUsableLatLng(to)) return null;
+  const estimate = estimateTravel(from, to);
+  if (
+    !Number.isFinite(estimate.meters) ||
+    !Number.isFinite(estimate.minutes) ||
+    estimate.meters > MAX_ESTIMATE_METERS ||
+    estimate.minutes > MAX_ESTIMATE_MIN
+  ) {
+    return null;
+  }
+  return estimate;
+}

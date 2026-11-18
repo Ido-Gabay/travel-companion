@@ -1,6 +1,6 @@
 import type { LatLng, PlaceCategory } from '@travel-companion/shared';
 import { BUFFER_MIN } from './today-engine';
-import { estimateTravel } from './travel';
+import { reliableTravel } from './travel';
 import { zonedDateTimeToUtc } from './zoned-time';
 
 /**
@@ -147,7 +147,8 @@ export function planReminders(input: ReminderInput, options: { raw?: boolean } =
       const start = minutesOf(stop.startTime);
       // Travel from the previous stop of the day (its location), else from the hotel.
       const previous = [...stops.slice(0, index)].reverse().find((item) => item.location !== null)?.location ?? input.hotel;
-      const travel = previous && stop.location ? estimateTravel(previous, stop.location) : null;
+      // Unreliable estimates (bad coordinates) fall back to the "unknown travel" timing.
+      const travel = reliableTravel(previous, stop.location);
       const travelMinutes = travel?.minutes ?? UNKNOWN_TRAVEL_MIN;
       const leaveAt = start - travelMinutes - BUFFER_MIN;
       const travelVars = { travelMinutes, travelMode: travel?.mode ?? ('unknown' as const), google: stop.google };

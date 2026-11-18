@@ -1,4 +1,4 @@
-import type { Place, TripDetail } from '@travel-companion/shared';
+import type { Place, TripDetail, TripJournal } from '@travel-companion/shared';
 import { describe, expect, it } from 'vitest';
 import { applyOps, enqueue, type PendingOp } from './pending-ops';
 import { dayOrder, keepMine, settleQueue, syncOps, type FailureKind, type SyncApi } from './sync';
@@ -20,6 +20,7 @@ const classify = (error: unknown): FailureKind =>
 /** A tiny stand-in for the API with the same rules as the real one. */
 function fakeServer(initial: TripDetail) {
   let trip = initial;
+  let journal: TripJournal = { days: [] };
   let online = true;
   let failWith: Error | null = null;
   const writes: string[] = [];
@@ -53,6 +54,18 @@ function fakeServer(initial: TripDetail) {
       trip = applyOps(trip, ops);
       return structuredClone(trip);
     },
+    getJournal: async () => {
+      guard();
+      return structuredClone(journal);
+    },
+    updateJournal: async (_tripId, day, body) => {
+      guard();
+      writes.push(`journal:${day}:${JSON.stringify(body)}`);
+      const entry = journal.days.find((item) => item.day === day) ?? { day, note: null, rating: null, updatedAt: '2026-11-23T00:00:00.000Z' };
+      const next = { ...entry, ...body } as TripJournal['days'][number];
+      journal = { days: [...journal.days.filter((item) => item.day !== day), next] };
+      return structuredClone(next);
+    },
     reorder: async (tripId, day, ids) => {
       guard();
       const current = dayOrder(trip.places, day);
@@ -76,6 +89,12 @@ function fakeServer(initial: TripDetail) {
     },
     edit(change: (detail: TripDetail) => TripDetail) {
       trip = change(trip);
+    },
+    get journal() {
+      return journal;
+    },
+    setJournal(next: TripJournal) {
+      journal = next;
     },
   };
 }
@@ -182,6 +201,31 @@ describe('sync after offline changes', () => {
     expect(result.remaining).toEqual(ops);
     expect(result.stoppedOffline).toBe(false);
     expect(result.conflicts).toEqual([]);
+  });
+});
+
+describe('sync: highlights and the journal (M15)', () => {
+  it('sends a highlight star, a note and a rating written offline', async () => {
+    const server = fakeServer(start());
+    const ops: PendingOp[] = [
+      { id: 'h', kind: 'schedule', tripId: TRIP, placeId: B, field: 'highlight', value: true, base: false, createdAt: 1 },
+      { id: 'n', kind: 'journal', tripId: TRIP, day: D1, field: 'note', value: 'Best bagel ever', base: null, createdAt: 2 },
+      { id: 'r', kind: 'journal', tripId: TRIP, day: D1, field: 'rating', value: 5, base: null, createdAt: 3 },
+    ];
+    const result = await syncOps(ops, server.api, classify, NOW);
+    expect(result.done).toEqual(['h', 'n', 'r']);
+    expect(place(server.trip, B)?.highlight).toBe(true);
+    expect(server.journal.days[0]).toMatchObject({ day: D1, note: 'Best bagel ever', rating: 5 });
+    expect(result.journals[0]?.journal.days[0]).toMatchObject({ note: 'Best bagel ever', rating: 5 });
+  });
+
+  it('a note changed elsewhere meanwhile is a conflict, never overwritten', async () => {
+    const server = fakeServer(start());
+    server.setJournal({ days: [{ day: D1, note: 'Written on the laptop', rating: null, updatedAt: '2026-11-23T20:00:00.000Z' }] });
+    const op: PendingOp = { id: 'n', kind: 'journal', tripId: TRIP, day: D1, field: 'note', value: 'Written on the phone', base: null, createdAt: 1 };
+    const result = await syncOps([op], server.api, classify, NOW);
+    expect(result.conflicts).toEqual([{ op, reason: 'changed', serverValue: 'Written on the laptop', detectedAt: NOW }]);
+    expect(server.journal.days[0]?.note).toBe('Written on the laptop');
   });
 });
 

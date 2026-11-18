@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { placesForDay } from '../trips/itinerary';
-import { applyOps, applyVisitedOps, enqueue, pendingPlaceIds, type PendingOp } from './pending-ops';
+import { applyJournalOps, applyOps, applyVisitedOps, enqueue, pendingPlaceIds, type PendingOp } from './pending-ops';
 import { tripDetail, tripPlace, uuid } from './test-fixtures';
 
 const TRIP = uuid(1);
@@ -73,6 +73,27 @@ describe('applying pending changes to the saved copy (what the user sees offline
     ]);
     expect(placesForDay(result.places, D2).map((place) => place.id)).toEqual([uuid(104), A]);
     expect(placesForDay(result.places, D1).map((place) => place.position)).toEqual([0, 1]);
+  });
+
+  it('stars a stop as a highlight', () => {
+    const result = applyOps(trip(), [
+      { id: 'h', kind: 'schedule', tripId: TRIP, placeId: B, field: 'highlight', value: true, base: false, createdAt: 1 },
+    ]);
+    expect(result.places.find((place) => place.id === B)?.highlight).toBe(true);
+  });
+
+  it('shows journal notes and ratings written offline, and merges repeated edits', () => {
+    let ops = enqueue([], { id: 'n1', kind: 'journal', tripId: TRIP, day: D1, field: 'note', value: 'Rain', base: null, createdAt: 1 });
+    ops = enqueue(ops, { id: 'n2', kind: 'journal', tripId: TRIP, day: D1, field: 'note', value: 'Rain, then sun', base: 'Rain', createdAt: 2 });
+    ops = enqueue(ops, { id: 'r1', kind: 'journal', tripId: TRIP, day: D2, field: 'rating', value: 5, base: null, createdAt: 3 });
+    expect(ops).toHaveLength(2);
+    expect(ops[0]).toMatchObject({ value: 'Rain, then sun', base: null });
+    const journal = applyJournalOps({ days: [{ day: D2, note: 'Museums', rating: null, updatedAt: '2026-11-24T20:00:00.000Z' }] }, TRIP, ops);
+    expect(journal.days.map((entry) => [entry.day, entry.note, entry.rating])).toEqual([
+      [D1, 'Rain, then sun', null],
+      [D2, 'Museums', 5],
+    ]);
+    expect(pendingPlaceIds(ops).size).toBe(0);
   });
 
   it('moving back to the wishlist clears the time, like the server', () => {

@@ -1,8 +1,8 @@
-import { meSchema, placeSchema, tripDetailSchema, tripSchema } from '@travel-companion/shared';
+import { journalDaySchema, meSchema, placeSchema, tripDetailSchema, tripSchema } from '@travel-companion/shared';
 import { describe, expect, it } from 'vitest';
 import { toMe } from './me/me.mapper.js';
 import { toPlace } from './places/places.mapper.js';
-import { toTrip, toTripDetail } from './trips/trips.mapper.js';
+import { toJournalDay, toTrip, toTripDetail } from './trips/trips.mapper.js';
 
 const created = new Date('2026-11-16T10:00:00.000Z');
 const updated = new Date('2026-11-16T11:30:00.000Z');
@@ -81,7 +81,7 @@ describe('toTripDetail', () => {
         updated_at: created,
         version: 1,
       },
-      [{ ...placeRow, added_at: updated, day: '2026-11-24', start_time: '09:30', position: 0, duration_minutes: 45 }],
+      [{ ...placeRow, added_at: updated, day: '2026-11-24', start_time: '09:30', position: 0, duration_minutes: 45, highlight: true }],
     );
     expect(tripDetailSchema.parse(detail)).toEqual(detail);
     expect(detail.places[0]?.addedAt).toBe('2026-11-16T11:30:00.000Z');
@@ -89,6 +89,15 @@ describe('toTripDetail', () => {
     expect(detail.places[0]?.day).toBe('2026-11-24');
     expect(detail.places[0]?.startTime).toBe('09:30');
     expect(detail.places[0]?.durationMinutes).toBe(45);
+    expect(detail.places[0]?.highlight).toBe(true);
+  });
+});
+
+describe('toJournalDay', () => {
+  it('returns a day entry that matches the shared schema', () => {
+    const entry = toJournalDay({ day: '2026-11-24', note: 'Best pastrami', rating: 5, updated_at: updated });
+    expect(journalDaySchema.parse(entry)).toEqual(entry);
+    expect(entry).toEqual({ day: '2026-11-24', note: 'Best pastrami', rating: 5, updatedAt: '2026-11-16T11:30:00.000Z' });
   });
 });
 

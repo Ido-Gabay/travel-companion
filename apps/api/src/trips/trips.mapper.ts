@@ -1,4 +1,4 @@
-import type { Trip, TripDetail } from '@travel-companion/shared';
+import type { JournalDay, Trip, TripDetail } from '@travel-companion/shared';
 import { toTripPlace, type TripPlaceRow } from '../places/places.mapper.js';
 
 export interface TripRow {
@@ -35,4 +35,16 @@ export function toTrip(row: TripRow): Trip {
 
 export function toTripDetail(row: TripRow, places: TripPlaceRow[]): TripDetail {
   return { ...toTrip(row), places: places.map(toTripPlace) };
+}
+
+export interface JournalDayRow {
+  /** Selected as ::text so the calendar day never shifts with server time zones. */
+  day: string;
+  note: string | null;
+  rating: number | null;
+  updated_at: Date;
+}
+
+export function toJournalDay(row: JournalDayRow): JournalDay {
+  return { day: row.day, note: row.note, rating: row.rating, updatedAt: row.updated_at.toISOString() };
 }

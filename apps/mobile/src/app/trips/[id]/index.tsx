@@ -115,6 +115,11 @@ export default function TripScreen() {
                     },
                     { label: t('tripDetail.searchPlaces'), icon: 'search', onPress: openDiscover },
                     { label: t('tripDetail.fromSaved'), icon: 'bookmark-outline', onPress: openAddPlaces },
+                    {
+                      label: t('journal.recap'),
+                      icon: 'book-outline',
+                      onPress: () => router.push({ pathname: '/trips/[id]/recap', params: { id } }),
+                    },
                     { label: t('tripDetail.deleteTrip'), icon: 'trash-outline', destructive: true, onPress: confirmDelete },
                   ],
                 })

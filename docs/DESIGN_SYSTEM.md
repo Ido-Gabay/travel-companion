@@ -47,6 +47,7 @@ Airbnb and Linear, not copied.
 | `Section` | Sentence-case label above content, with an optional trailing action (e.g. "New trip"). |
 | `Sheet` | Native page sheet for focused tasks (pick a day, time and length, search settings, edit name). |
 | `EmptyState`, `LoadingState`, `ErrorState`, `InlineError` | Empty and error states are borderless and centered; empty states invite with one action. |
+| `MapSheet` | Bottom sheet over a full-screen map (U2): collapsed (the `peek`), half, full. Tap the handle to cycle, drag or flick; VoiceOver adjustable; Reduce Motion snaps. Full height still leaves the top of the map visible. Reports its height so the map can pad (`mapPadding`) and controls can sit above it. No native modules. |
 | `PlaceCard` (features/places) | A saved place as a list row (inside a `ListGroup`); `standalone` wraps it in a `Card` (map overlays). |
 
 ## Patterns
@@ -61,6 +62,18 @@ Airbnb and Linear, not copied.
 - **Choices:** a row showing the current value; tapping opens the action menu or a
   sheet with a check on the current option (language, distance unit, Discover context).
 - **Chips:** white pills without a border; the selected chip is filled teal.
+
+## Map-first screens (U2, Today)
+
+- The map is the workspace; floating UI is limited to a top bar (back, day chip,
+  "…"), two round controls above the sheet (fit day, show my location) that hide
+  when the sheet is fully open, and the sheet.
+- Pins carry progress without colour alone: done = small grey check, next = large
+  accent filled with its number, now = green with a location icon, later = white
+  with an accent number, hotel = bed icon. One emphasized line: the next leg.
+- `colors.location` (#2F6FDE) is only for the user's own dot; stale = hollow grey.
+- Map style: `theme/map-style.ts` (quiet, business POIs hidden).
+- The one large number on Today is the leave-by time (title size, tabular figures).
 
 ## Navigation
 

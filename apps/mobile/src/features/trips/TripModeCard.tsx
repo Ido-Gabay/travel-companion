@@ -17,9 +17,10 @@ import { countByDay, formatStartTime, nextStop, placesForDay, wishlistPlaces, ty
 import { useTrip } from './queries';
 
 /**
- * Home's focus card. Before the trip: a countdown, a one-line summary of the plan and
+ * Home's focus card. Tapping the card opens Today: live during the trip, as a
+ * preview before it. Before the trip: a countdown, a one-line summary of the plan and
  * one primary action (keep planning). During the trip: the next stop with Directions
- * and Done, and one primary action (Open Today). The full day lives on Today.
+ * and Done, Open Today, and a link to the itinerary. The full day lives on Today.
  */
 export function TripModeCard({ mode, today }: { mode: TripMode; today: string }) {
   const { t } = useTranslation();
@@ -47,7 +48,9 @@ export function TripModeCard({ mode, today }: { mode: TripMode; today: string })
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${mode.trip.title}, ${eyebrow}`}
-        onPress={openTrip}
+        accessibilityHint={t('tripMode.openTodayHint')}
+        // U2: the card opens Today (live during the trip, preview before it).
+        onPress={openToday}
         style={({ pressed }) => [styles.header, pressed && styles.pressed]}
       >
         <View style={styles.flex}>
@@ -184,6 +187,7 @@ function Today({
       {setVisited.isError ? <InlineError message={errorMessage(setVisited.error)} /> : null}
       <View style={styles.actions}>
         <Button label={t('tripMode.openToday')} onPress={onToday} />
+        <Button label={t('tripMode.viewItinerary')} variant="ghost" size="sm" onPress={onOpen} />
         <AppText variant="caption" color="tertiary" align="center">
           {t('tripMode.doneOf', { done, total: stops.length })}
         </AppText>

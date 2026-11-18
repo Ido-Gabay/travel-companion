@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { jest } from '@jest/globals';
-import type { Me, TripDetail } from '@travel-companion/shared';
+import type { Me, TripDetail, TripJournal } from '@travel-companion/shared';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render } from '@testing-library/react-native';
 import type { ReactElement } from 'react';
@@ -55,6 +55,7 @@ export function serverHas(trips: TripDetail[]): void {
     const trip = trips.find((item) => item.id === id);
     return trip ? Promise.resolve(structuredClone(trip)) : Promise.reject(new ApiClientError('NOT_FOUND', 404, 'nope'));
   });
+  mockApi.getJournal.mockImplementation(() => Promise.resolve({ days: [] }));
   for (const name of ['getGooglePlace', 'getGooglePlacePreview'] as const) {
     mockApi[name].mockImplementation(() => Promise.reject(new ApiClientError('NOT_FOUND', 404, 'no google in tests')));
   }
@@ -69,7 +70,17 @@ export function goOffline(): void {
 }
 
 /** What a previous online session left on the phone (the M12a saved copy). */
-export async function seedSavedCopy(trips: TripDetail[], savedAt: number, extra?: { ops?: PendingOp[]; conflicts?: Conflict[] }) {
+export async function seedSavedCopy(
+  trips: TripDetail[],
+  savedAt: number,
+  extra?: {
+    ops?: PendingOp[];
+    conflicts?: Conflict[];
+    journals?: Record<string, TripJournal>;
+    /** Cached Google coordinates (≤ 30 days): place id → point, cached at `savedAt`. */
+    coords?: Record<string, { latitude: number; longitude: number }>;
+  },
+) {
   const pairs: [string, string][] = [
     [`${prefix}trips`, JSON.stringify({ savedAt, data: { items: trips.map(({ places: _p, ...trip }) => trip) } })],
     [`${prefix}me`, JSON.stringify({ savedAt, data: me })],
@@ -77,6 +88,18 @@ export async function seedSavedCopy(trips: TripDetail[], savedAt: number, extra?
   ];
   if (extra?.ops) pairs.push([`${prefix}ops`, JSON.stringify(extra.ops)]);
   if (extra?.conflicts) pairs.push([`${prefix}conflicts`, JSON.stringify(extra.conflicts)]);
+  if (extra?.coords) {
+    const entries = Object.entries(extra.coords).map(([placeId, point]) => ({
+      placeId,
+      ...point,
+      source: 'google-places-api',
+      cachedAt: savedAt,
+    }));
+    pairs.push([`${prefix}coords`, JSON.stringify(entries)]);
+  }
+  for (const [tripId, journal] of Object.entries(extra?.journals ?? {})) {
+    pairs.push([`${prefix}journal.${tripId}`, JSON.stringify({ savedAt, data: journal })]);
+  }
   await AsyncStorage.multiSet(pairs);
 }
 

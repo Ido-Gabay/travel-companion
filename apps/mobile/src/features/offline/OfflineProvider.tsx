@@ -1,4 +1,4 @@
-import type { GooglePlace, LatLng, Me, TripDetail, TripList } from '@travel-companion/shared';
+import type { GooglePlace, LatLng, Me, TripDetail, TripJournal, TripList } from '@travel-companion/shared';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import {
   createContext,
@@ -68,6 +68,9 @@ export function OfflineProvider({ userId, children }: { userId: string; children
           queryClient.setQueryData(['trips', 'detail', detail.data.id], detail.data, { updatedAt: detail.savedAt });
         }
         if (snapshot.me) queryClient.setQueryData(['me'], snapshot.me.data, { updatedAt: snapshot.me.savedAt });
+        for (const { tripId, journal } of snapshot.journals) {
+          queryClient.setQueryData(['trips', 'journal', tripId], journal.data, { updatedAt: journal.savedAt });
+        }
         coordsRef.current = snapshot.coords;
         setCoords(snapshot.coords);
         await loadPending(userId);
@@ -105,6 +108,8 @@ export function OfflineProvider({ userId, children }: { userId: string; children
         if (!event.action.manual) prefetchUpcoming(queryClient, data as TripList);
       } else if (isKey(key, 'trips', 'detail') && data) {
         void cache.saveTrip(data as TripDetail, now).catch(() => undefined);
+      } else if (isKey(key, 'trips', 'journal') && data && typeof key[2] === 'string') {
+        void cache.saveJournal(key[2], data as TripJournal, now).catch(() => undefined);
       } else if (isKey(key, 'me') && data) {
         void cache.saveMe(data as Me, now).catch(() => undefined);
       } else if (isKey(key, 'google-place') && data && !event.action.manual) {

@@ -245,6 +245,20 @@ day's places exactly (the day changed elsewhere; refresh and retry).
 Changing a trip's dates moves places whose day falls outside the new dates back
 to the wishlist. Removing a place from a trip also drops its plan.
 
+`PATCH /v1/trips/:id/places/:placeId` also accepts `highlight` (boolean, M15): star
+the stop as a trip highlight. Trip places carry `highlight` (default `false`).
+
+#### `GET /v1/trips/:id/journal` (M15)
+
+`{ "days": [{ "day": "2026-11-23", "note": "…" | null, "rating": 1-5 | null, "updatedAt": "…" }] }`:
+the trip days that have a note or a rating, by date. User content only.
+
+#### `PUT /v1/trips/:id/journal/:day` (M15)
+
+Body: any of `note` (≤ 4000 chars, trimmed; blank or `null` clears) and `rating`
+(1–5 or `null`). Fields not sent are kept. Creates the day's entry on first write.
+`400` if the day is outside the trip dates. Returns the day entry.
+
 ## Places (the global collection)
 
 A place is either:

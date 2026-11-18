@@ -22,6 +22,9 @@ export const colors = {
   danger: '#B3261E',
   dangerSoft: '#FBEAE8',
   success: '#2E6B3F',
+
+  /** The user's own location on maps (the platform's familiar blue). */
+  location: '#2F6FDE',
 } as const;
 
 export const spacing = {

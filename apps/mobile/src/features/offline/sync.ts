@@ -1,5 +1,5 @@
-import type { Place, TripDetail, TripPlace } from '@travel-companion/shared';
-import { sameValue, type PendingOp, type ScheduleField } from './pending-ops';
+import type { JournalDay, Place, TripDetail, TripJournal, TripPlace } from '@travel-companion/shared';
+import { sameValue, type JournalField, type PendingOp, type ScheduleField, type ScheduleValue } from './pending-ops';
 
 /**
  * M12a sync: replays pending changes against the server, safely.
@@ -24,7 +24,9 @@ export interface SyncApi {
   getTrip(tripId: string): Promise<TripDetail>;
   getPlace(placeId: string): Promise<Place>;
   setVisited(placeId: string, visited: boolean): Promise<Place>;
-  schedule(tripId: string, placeId: string, body: Partial<Record<ScheduleField, string | number | null>>): Promise<TripDetail>;
+  schedule(tripId: string, placeId: string, body: Partial<Record<ScheduleField, ScheduleValue>>): Promise<TripDetail>;
+  getJournal(tripId: string): Promise<TripJournal>;
+  updateJournal(tripId: string, day: string, body: Partial<Record<JournalField, string | number | null>>): Promise<JournalDay>;
   reorder(tripId: string, day: string, placeIds: string[]): Promise<TripDetail>;
 }
 
@@ -40,6 +42,7 @@ export interface SyncResult {
   done: string[];
   /** Latest server copies seen, to refresh the screens and the saved copy. */
   trips: TripDetail[];
+  journals: { tripId: string; journal: TripJournal }[];
   places: Place[];
   /** The run stopped early because the server couldn't be reached. */
   stoppedOffline: boolean;
@@ -63,8 +66,14 @@ export function alignOrder(order: readonly string[], serverIds: readonly string[
   return [...kept, ...serverIds.filter((id) => !kept.includes(id))];
 }
 
-const fieldValue = (place: TripPlace, field: ScheduleField) =>
-  field === 'day' ? place.day : field === 'startTime' ? place.startTime : place.durationMinutes;
+const fieldValue = (place: TripPlace, field: ScheduleField): ScheduleValue =>
+  field === 'day'
+    ? place.day
+    : field === 'startTime'
+      ? place.startTime
+      : field === 'highlight'
+        ? place.highlight
+        : place.durationMinutes;
 
 export async function syncOps(
   ops: readonly PendingOp[],
@@ -73,8 +82,9 @@ export async function syncOps(
   nowMs: number,
 ): Promise<SyncResult> {
   const queue = [...ops].sort((a, b) => a.createdAt - b.createdAt);
-  const result: SyncResult = { remaining: [], conflicts: [], done: [], trips: [], places: [], stoppedOffline: false };
+  const result: SyncResult = { remaining: [], conflicts: [], done: [], trips: [], journals: [], places: [], stoppedOffline: false };
   const trips = new Map<string, TripDetail>();
+  const journals = new Map<string, TripJournal>();
   const conflict = (op: PendingOp, reason: ConflictReason, serverValue: unknown) =>
     result.conflicts.push({ op, reason, serverValue, detectedAt: nowMs });
 
@@ -88,6 +98,28 @@ export async function syncOps(
           result.done.push(op.id);
         } else if (server === op.base) {
           result.places.push(await api.setVisited(op.placeId, op.value));
+          result.done.push(op.id);
+        } else {
+          conflict(op, 'changed', server);
+        }
+        continue;
+      }
+
+      if (op.kind === 'journal') {
+        let journal = journals.get(op.tripId);
+        if (!journal) {
+          journal = await api.getJournal(op.tripId);
+          journals.set(op.tripId, journal);
+        }
+        const entry = journal.days.find((item) => item.day === op.day);
+        const server = entry ? entry[op.field] : null;
+        if (sameValue(server, op.value)) {
+          result.done.push(op.id);
+        } else if (sameValue(server, op.base)) {
+          const saved = await api.updateJournal(op.tripId, op.day, { [op.field]: op.value });
+          journals.set(op.tripId, {
+            days: [...journal.days.filter((item) => item.day !== op.day), saved].sort((a, b) => a.day.localeCompare(b.day)),
+          });
           result.done.push(op.id);
         } else {
           conflict(op, 'changed', server);
@@ -145,6 +177,7 @@ export async function syncOps(
     }
   }
   result.trips = [...trips.values()];
+  result.journals = [...journals.entries()].map(([tripId, journal]) => ({ tripId, journal }));
   return result;
 }
 
@@ -161,7 +194,8 @@ export function keepMine(item: Conflict): PendingOp | null {
     return { ...item.op, base: server, value: alignOrder(item.op.value, server) };
   }
   if (item.op.kind === 'visited') return { ...item.op, base: item.serverValue as boolean };
-  return { ...item.op, base: item.serverValue as string | number | null };
+  if (item.op.kind === 'journal') return { ...item.op, base: item.serverValue as string | number | null };
+  return { ...item.op, base: item.serverValue as ScheduleValue };
 }
 
 /**

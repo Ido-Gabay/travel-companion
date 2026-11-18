@@ -13,3 +13,4 @@ export { TextField, type TextFieldHandle } from './TextField';
 export { Sheet } from './Sheet';
 export { ListGroup, ListRow } from './List';
 export { ActionMenuProvider, useActionMenu, type ActionMenuItem } from './ActionMenu';
+export { MapSheet, type SheetIndex } from './MapSheet';

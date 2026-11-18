@@ -1,5 +1,5 @@
 import type { LatLng } from '@travel-companion/shared';
-import { estimateTravel, type TravelMode } from '../companion/travel';
+import { reliableTravel, type TravelMode } from '../companion/travel';
 import { firstFit, hoursIssue, type HoursIssue, type OpenWindow } from './opening-hours';
 
 /**
@@ -44,8 +44,9 @@ export interface Leg {
 }
 
 export function leg(from: LatLng | null, to: LatLng | null): Leg {
-  if (!from || !to) return { minutes: UNKNOWN_TRAVEL_MIN, known: false, mode: null };
-  const estimate = estimateTravel(from, to);
+  // Missing or unreliable (invalid coordinates, unrealistic distance) counts as unknown.
+  const estimate = reliableTravel(from, to);
+  if (!estimate) return { minutes: UNKNOWN_TRAVEL_MIN, known: false, mode: null };
   return { minutes: estimate.minutes, known: true, mode: estimate.mode };
 }
 

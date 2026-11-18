@@ -16,12 +16,16 @@ import {
   createTripSchema,
   reorderTripDaySchema,
   scheduleTripPlaceSchema,
+  updateJournalDaySchema,
   updateTripSchema,
   type AddTripPlaceInput,
   type CreateTripData,
   type ReorderTripDayInput,
+  type JournalDay,
   type ScheduleTripPlaceData,
   type Trip,
+  type TripJournal,
+  type UpdateJournalDayData,
   type TripDetail,
   type TripList,
   type UpdateTripData,
@@ -109,5 +113,22 @@ export class TripsController {
     @Body(new ZodValidationPipe(reorderTripDaySchema)) body: ReorderTripDayInput,
   ): Promise<TripDetail> {
     return this.trips.reorderDay(user, id, day, body.placeIds);
+  }
+
+  /** M15: the trip journal (days with a note or rating). */
+  @Get(':id/journal')
+  getJournal(@CurrentUser() user: AuthUser, @Param('id', uuid) id: string): Promise<TripJournal> {
+    return this.trips.getJournal(user, id);
+  }
+
+  /** M15: set a day's note and/or rating. */
+  @Put(':id/journal/:day')
+  updateJournalDay(
+    @CurrentUser() user: AuthUser,
+    @Param('id', uuid) id: string,
+    @Param('day', new ZodValidationPipe(calendarDateSchema)) day: string,
+    @Body(new ZodValidationPipe(updateJournalDaySchema)) body: UpdateJournalDayData,
+  ): Promise<JournalDay> {
+    return this.trips.updateJournalDay(user, id, day, body);
   }
 }

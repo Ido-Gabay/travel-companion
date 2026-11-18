@@ -34,6 +34,7 @@ import {
 } from './itinerary';
 import { muteKey, useMutedStops, useToggleMuted } from '@/features/companion/reminder-settings';
 import { usePendingState } from '@/features/offline/ops-store';
+import { DayJournal } from '@/features/journal/DayJournal';
 import { DayPlanning } from '@/features/planning/DayPlanning';
 import { pendingPlaceIds } from '@/features/offline/pending-ops';
 import { useReorderTripDay, useScheduleTripPlace } from './queries';
@@ -137,6 +138,11 @@ export function ItineraryView({ trip, onOpenPlace, onDiscover, onEditTrip }: Iti
         { label: t('itinerary.moveUp'), icon: 'arrow-up', onPress: () => move(place, -1), hidden: index === 0 },
         { label: t('itinerary.moveDown'), icon: 'arrow-down', onPress: () => move(place, 1), hidden: index === stops.length - 1 },
         { label: t('itinerary.changeDay'), icon: 'calendar-outline', onPress: () => setMoving({ place, name }) },
+        {
+          label: place.highlight ? t('journal.removeHighlight') : t('journal.markHighlight'),
+          icon: place.highlight ? 'star' : 'star-outline',
+          onPress: () => schedule.mutate({ placeId: place.id, highlight: !place.highlight }),
+        },
         {
           label: isMuted ? t('reminders.unmuteStop') : t('reminders.muteStop'),
           icon: isMuted ? 'notifications-outline' : 'notifications-off-outline',
@@ -244,6 +250,8 @@ export function ItineraryView({ trip, onOpenPlace, onDiscover, onEditTrip }: Iti
               </View>
             </>
           )}
+
+          {selectedDay ? <DayJournal tripId={trip.id} day={selectedDay} stops={stops} /> : null}
 
           {wishlist.length > 0 && stops.length > 0 ? (
             <Pressable
@@ -412,6 +420,11 @@ function StopRow({ place, number, first, last, onTime, onToggleVisited, onMenu }
             {formatDurationShort(visitMinutes(place), t)}
             {place.durationMinutes === null ? ' ' + t('itinerary.approx') : ''}
           </AppText>
+          {place.highlight ? (
+            <View accessible accessibilityLabel={t('journal.highlight')}>
+              <Icon name="star" size={16} color={colors.accent} />
+            </View>
+          ) : null}
           {pending ? (
             <View accessible accessibilityLabel={t('offline.waiting')}>
               <Icon name="cloud-upload-outline" size={16} color={colors.accent} />

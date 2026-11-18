@@ -26,6 +26,7 @@ export function tripPlace(n: number, extra: Partial<TripPlace> = {}): TripPlace 
     startTime: null,
     position: n,
     durationMinutes: null,
+    highlight: false,
     ...extra,
   };
 }

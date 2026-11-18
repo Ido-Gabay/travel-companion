@@ -53,6 +53,18 @@ conflict ("Keep mine" re-queues against the server value), Profile (sign-out war
 about unsynced changes), reminder sync (not cancelled when trips can't load; control:
 cancelled when the server has no trip).
 
+M15 added: journal (rate the day, write a note, star a highlight offline → pending
+changes), recap (numbers, highlights, day note; Share sends the text).
+
+U2 added: map-first Today — the collapsed sheet (next action, leave-by, travel,
+progress, alerts, distinct done/next/later pins), all three sheet states by tap and
+VoiceOver, running late visible collapsed → full sheet with choices (nothing
+queued), travel unavailable instead of a guess, Done offline from the collapsed
+sheet, list ↔ pin selection, preview; Home card opens Today (live / preview). The map
+is mocked (`react-native-maps` → plain views; markers are pressable) and tests
+enable it by mocking `expo-constants` (`googleMapsEnabled`). Collapsed, the sheet
+body is hidden from accessibility, so tests open the sheet before using the list.
+
 Bugs these found when first run (fixed in M14): Profile showed an error instead of
 the saved copy offline, and its error-screen "Sign out" skipped the unsynced-changes
 warning; the action menu relied only on iOS `Modal.onDismiss` (now has a fallback).

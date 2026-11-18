@@ -215,6 +215,16 @@ place belong to the caller. Migration list and status: DEVELOPMENT_STATUS.md.
   (`enableRemoteNotifications: false`, so no push entitlement; decision T10).
 - No control is shown unless it works.
 
+## Trip journal (M15)
+
+Server: `app.trip_journal_days` (one row per trip day: note, rating; RLS: owner and
+own trip) and `trip_places.highlight`; `GET/PUT /v1/trips/:id/journal[/:day]`.
+App: `features/journal/` — `queries.ts` (journal query with pending changes on top;
+writes go to the M12a change queue as `journal` ops), `DayJournal.tsx` (under each
+day's stops: rating, note sheet, what you did), `recap.ts` (pure recap + share text),
+route `trips/[id]/recap`. Highlights are a `schedule` op field. The journal is part
+of the offline saved copy (`journal.<tripId>`).
+
 ## Smart day planning (M13)
 
 `apps/mobile/src/features/planning/`: `day-planner.ts` (pure: `projectDay`,

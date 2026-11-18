@@ -1,12 +1,12 @@
 # Development status
 
-**Last updated: 2026-11-18 (M14 screen tests + CI written on main, on top of M13).**
+**Last updated: 2026-11-18 (U2 map-first Today written on main, on top of M15 stage 1 and M14).**
 Update this file at the end of every milestone or meaningful change.
 
 ## Snapshot
 
-- **Last commit seen on the Mac:** `0e538ae` "M13: smart day planning"; tag `trip-safe` = `37dbf49` (M12a).
-- **Uncommitted when this was written:** M14 (test tooling, 11 screen tests, two Profile fixes, an action-menu fallback, updated `pnpm-lock.yaml`) and these doc updates.
+- **Last commit seen on the Mac:** `9560555` "M14: screen tests + CI"; tag `trip-safe` = `37dbf49` (M12a).
+- **Uncommitted when this was written:** M15 stage 1 (shared, API, app, migration `20261118120000_trip_journal`), U2 (map-first Today, app only) and these doc updates. Commit them together (see Exact next steps, step 0).
 - **Native build:** the iOS project was regenerated after M10 (contains
   `expo-notifications`, entitlements empty = no push). M11 needs no native rebuild.
 - **Current milestone:** M13 written. Still open: owner verification of M12a (migration
@@ -34,6 +34,72 @@ Update this file at the end of every milestone or meaningful change.
 | Trip time zone (`googlePlace.timeZone`) | Deployed with the M10 push if Render deployed it; not checked against the live API. Older servers omit it and the app falls back to the phone's zone. |
 | M11 | Everything: vitest on the Mac, deploy, Simulator check of Today with a pinned hotel, attribution labels, photo links, rate limits against the live API. |
 | U1 redesign | Everything visual: no screen was rendered. Typecheck and logic tests only. See the U1 checklist in "Exact next steps". |
+
+## U2 – Live Companion redesign: map-first Today (written; device checks pending)
+
+Today is now a full-screen Google map with a three-height bottom sheet (approved
+Nov 18; decisions P18). Same engine, same actions, same rules (no auto changes,
+one-shot location, no paid APIs, offline via the M12a saved copy).
+
+- **Map** (`features/companion/TodayMap.tsx`, model `today-map.ts`): pins show the
+  day's progress (done = small grey check, next = large accent number, now = green,
+  later = white number), the hotel, the next leg (dashed accent) and the rest of
+  the day (faint dots). Lines are straight and labeled "Lines are direct, not
+  routes"; Directions opens the real route. Quiet map style (`theme/map-style.ts`,
+  free). `mapPadding` follows the sheet so Google's logo stays visible.
+- **Location:** "Show my location" reads once (no tracking). The dot turns hollow
+  grey after 2 minutes ("Last known location, N min ago").
+- **Sheet** (`components/ui/MapSheet.tsx`, RN Animated + PanResponder, no native
+  module): collapsed = progress, next stop, the leave-by time, travel (or
+  "unavailable"), Directions / Done, and up to two alerts (needs a choice, running
+  late, may not fit today, offline + waiting changes, free time); half = the day;
+  full = preview controls, offline status, hints with their choices, the day,
+  free time + suggestions, Discover nearby, footnote. Handle: tap to cycle, drag or
+  flick, VoiceOver adjustable; Reduce Motion snaps. Opens at half when nothing can
+  be drawn or in preview.
+- **Lists ↔ map:** tap a pin → half sheet, row highlighted; tap a row → map centers
+  on it; tap the selected row again → place details.
+- **Home:** tapping the trip card opens Today (live during the trip, preview
+  before); "View itinerary" keeps a path to the plan.
+- **Data accuracy:** `reliableTravel` rejects invalid coordinates (NaN, out of
+  range, 0,0) and hops over 60 km or 180 min. Today shows "Travel time unavailable"
+  and "Be there by HH:MM" instead of a leave time that assumed zero travel (the
+  engine no longer computes leave-by or free time without a reliable estimate).
+  The day planner and reminders use the same guard, so bad coordinates fall into
+  their existing "unknown travel" paths.
+
+Tests (real `pnpm test` in the scratch copy): shared 47, API 52, app logic 146 (+8:
+`today-map.spec`), app screens 23 (+10: Today 9 incl. all three sheet states, alerts,
+travel unavailable, Done offline, list/pin selection, preview; Home +2 card opens
+Today live/preview); `pnpm typecheck` clean; en/he parity clean. No native rebuild.
+
+**U2 checks (Simulator, then iPhone):** open Today on a trip day → map fits the day,
+next pin stands out, Google logo visible above the sheet; drag the sheet through
+three heights, flick, tap the handle; VoiceOver: swipe up/down on the handle; Reduce
+Motion on → snaps; tap a pin ↔ row; "Show my location" → dot, wait 2+ min → hollow
+"last known"; airplane mode → "Offline" alert in the collapsed sheet, Done →
+"1 change will sync"; Hebrew → top bar, controls and sheet mirror, map does not;
+largest text size → collapsed sheet grows (never above half); Home card → Today.
+
+## M15 – Trip journal + recap, stage 1 (written; device checks pending)
+
+Day journal under each day's stops (from the day itself, or earlier if written):
+1–5 rating, note (sheet), what you did (stops marked Done, in order, with times).
+Stop menu: "Mark as a highlight" (star on the row). Trip "…" → "Trip recap": days,
+places visited of planned, ≈ distance between places, highlights, each day's
+rating/route/note, "Share recap" (system share sheet, plain text). All edits work
+offline (change queue: `journal` ops; highlight is a `schedule` field) and the
+journal is in the offline saved copy.
+
+Tests (real `pnpm test` in the scratch copy): shared 47 (+2), API 52 (+1), app logic
+138 (+9: `recap` 4, `pending-ops` +2, `sync` +2, `trip-cache` +1), app screens 13 (+2:
+journal offline, recap + share); `pnpm typecheck` clean; en/he parity clean.
+A screen test caught a real bug, fixed: offline, a note written before the journal had
+ever loaded wasn't shown (the journal query now starts empty).
+**M15 checks (Simulator):** a trip day in the past/today → rate, add a note, see
+"What you did"; star a stop (star on the row); trip "…" → Trip recap → Share
+(share sheet opens with the text). Offline: same, then reconnect → synced.
+Stage 2 (photos) waits for the owner's choice (see DECISIONS P17).
 
 ## M14 – Screen tests + CI (written)
 
@@ -182,6 +248,7 @@ spec files, real code:
 | `20261117200000_trip_base_place_and_usage` | `trips.base_google_place_id`, usage index | Applied (M8 verified) |
 | `20261117220000_visit_duration` | `trip_places.duration_minutes` | **Confirm**: M9 committed; push not confirmed in writing. Check with `npx supabase migration list --linked`. |
 | `20261118090000_place_my_label` | `places.my_label` (user-typed, 1–60 chars, trimmed) | **Not applied** (M12a). Push before deploying the API. |
+| `20261118120000_trip_journal` | `trip_places.highlight`, `app.trip_journal_days` (+ RLS) | **Not applied** (M15). Push before deploying the API. |
 
 M10 adds no migration.
 
@@ -209,7 +276,8 @@ M10 adds no migration.
 
 - **Time zones:** everything uses the trip's zone from the pinned hotel; without
   a pinned hotel, the phone's zone (so pin the hotel before the trip).
-- **Travel times are estimates** (no Routes API); subway/taxi estimate is coarse.
+- **Travel times are estimates** (no Routes API); subway/taxi estimate is coarse. Unreliable estimates (bad coordinates, > 60 km or > 180 min) are shown as unavailable.
+- **U2 map-first Today:** map lines are straight (no route geometry: that would need the paid Routes/Directions API); offline, the map may show no tiles (pins and the sheet still work); the sheet's drag runs on the JS thread (RN Animated + PanResponder, no Reanimated), so it can feel less smooth while the JS thread is busy; the map isn't rendered in tests (mocked), so map visuals are device checks only.
 - **Reminders follow the plan only** (no location); they refresh when the app
   opens or the itinerary changes. A plan edited on another device won't update
   this phone's reminders until the app opens here.
@@ -235,6 +303,18 @@ M10 adds no migration.
   offline-first (PowerSync/SQLite) is still later (D5a/D11/D15/D17).
 
 ## Exact next steps
+
+0. **Owner: commit M15 + U2 (Nov 18)** — one commit: both touch the same files
+   (en/he strings, test helpers), so splitting them isn't clean. `trip-safe` stays the fallback.
+   ```sh
+   cd ~/Programing/travel-companion
+   pnpm test && pnpm typecheck
+   npx supabase db push --remote            # trip_journal (and my_label if not yet pushed) BEFORE the API deploy
+   git add -A && git commit -m "M15 journal + recap, U2 map-first Today" && git push
+   # check the GitHub CI run is green; Render deploys the API (M15 endpoints)
+   pnpm ios                                  # no native rebuild (U2 adds no native module)
+   ```
+   Then the M15 and U2 checks (sections above).
 
 1. **Owner: test, migrate, commit, deploy**
    ```sh

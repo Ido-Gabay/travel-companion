@@ -3,7 +3,7 @@
 Give this file to any AI coding assistant (Claude Code, GitHub Copilot with
 Claude, …) that picks up this repository. Keep it current.
 
-**Last updated: 2026-11-18, after M14 (screen tests + CI) was written on main.**
+**Last updated: 2026-11-18, after U2 (map-first Today) was written on main, on top of M15 stage 1.**
 
 ## 1. What this project is
 
@@ -30,13 +30,18 @@ Google rules), `docs/LIVE_COMPANION.md` (Today + reminders design),
 
 ## 3. Current state
 
-- `main` on the Mac: M13 committed (`0e538ae`); tag `trip-safe` = M12a (`37dbf49`).
-  **M14 is written but uncommitted** (test tooling, screen tests, two Profile
-  fixes, action-menu fallback, updated lockfile). The `my_label` migration may still
-  need `npx supabase db push --remote`.
-- M14 session ran the **real** `pnpm test` / `pnpm typecheck` (scratch copy on the
-  Mac's Linux shell): shared 45, API 51, app logic 129, app screens 11 — all passed;
+- `main` on the Mac: M14 committed (`9560555`); tag `trip-safe` = M12a (`37dbf49`).
+  **M15 stage 1 is written but uncommitted** (journal + recap; migration
+  `20261118120000_trip_journal`). Migrations `my_label` and `trip_journal` may still
+  need `npx supabase db push --remote` before the API deploy.
+- M15 session ran the real `pnpm test` / `pnpm typecheck` (scratch copy on the Mac's
+  Linux shell): shared 47, API 52, app logic 138, app screens 13 — all passed;
   typecheck clean. How to test: docs/TESTING.md.
+- **U2 written (uncommitted): Today is map-first** (full-screen Google map + three-height
+  bottom sheet, `MapSheet` on RN Animated/PanResponder, one-shot "Show my location",
+  travel shown only when reliable). Decisions P18. Real run: shared 47, API 52, app
+  logic 146, app screens 23; typecheck clean. Not seen on a screen yet.
+- Open owner decision: M15 stage 2 (photos) now / after the trip / never (P17).
 - **Nothing from U1 or M12a has been looked at on a screen yet.** Device behavior
   of M9–M11 (Today, reminders) is also unconfirmed in writing.
 - Offline design: docs/ARCHITECTURE.md → "Offline-tolerant trip mode (M12a)".
@@ -67,7 +72,8 @@ M6 itinerary; M7 Home trip mode; M8 Google-first Discover + preview + hotel pin
 + cost caps/usage (owner verified); M9 Today v1 (committed); M10 reminders (committed, rebuilt);
 M11 trip readiness and U1 UX/UI redesign (committed by the owner, not verified on
 screen); M12a offline-tolerant trip mode (committed: reminders, offline viewing,
-offline edits + sync, `myLabel`); M13 smart day planning (committed); M14 screen tests + CI (written).
+offline edits + sync, `myLabel`); M13 smart day planning and M14 screen tests + CI (committed); M15 trip journal +
+recap stage 1 and U2 map-first Today (written).
 
 ## 6. Remaining
 
@@ -80,8 +86,12 @@ offline edits + sync, `myLabel`); M13 smart day planning (committed); M14 screen
 
 ## 7. Exact next task
 
-First: `pnpm install` (M14 added test packages), `pnpm test && pnpm typecheck`,
-commit M14, push, and confirm the GitHub CI run is green.
+First: `pnpm test && pnpm typecheck`, `npx supabase db push --remote` (journal
+migration) before pushing the API, commit M15 + U2 together, push, confirm
+GitHub CI is green, then the M15 and U2 checks in DEVELOPMENT_STATUS.md.
+When touching Today: keep the map the workspace, the next action in the collapsed
+sheet, alerts visible collapsed, and never show a travel time `reliableTravel`
+rejects.
 
 Help the owner verify M13 (checks in DEVELOPMENT_STATUS.md → "M13 checks") and
 M12a (plus U1, M11 and the M10 reminder checks). If time before Nov 21–22 runs out,

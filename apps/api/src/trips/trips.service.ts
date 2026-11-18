@@ -3,7 +3,10 @@ import type { PendingQuery, Row } from 'postgres';
 import {
   TRIP_DAY_MAX_PLACES,
   type CreateTripData,
+  type JournalDay,
   type ScheduleTripPlaceData,
+  type TripJournal,
+  type UpdateJournalDayData,
   type Trip,
   type TripDetail,
   type TripList,
@@ -14,7 +17,7 @@ import { ApiException, notFound } from '../common/api-exception.js';
 import { DatabaseService, type Tx } from '../database/database.service.js';
 import { placeColumns } from '../places/place-columns.js';
 import type { TripPlaceRow } from '../places/places.mapper.js';
-import { toTrip, toTripDetail, type TripRow } from './trips.mapper.js';
+import { toJournalDay, toTrip, toTripDetail, type JournalDayRow, type TripRow } from './trips.mapper.js';
 
 /** Upper bound until the list is paginated. Far above any personal trip count. */
 export const TRIP_LIST_LIMIT = 200;
@@ -240,6 +243,9 @@ export class TripsService {
       if (input.durationMinutes !== undefined) {
         await tx`update app.trip_places set duration_minutes = ${input.durationMinutes} where id = ${link.id}`;
       }
+      if (input.highlight !== undefined) {
+        await tx`update app.trip_places set highlight = ${input.highlight} where id = ${link.id}`;
+      }
       return this.getInTx(tx, user, tripId);
     });
   }
@@ -278,6 +284,38 @@ export class TripsService {
     });
   }
 
+  /** M15: the trip's journal (days with a note or rating). */
+  getJournal(user: AuthUser, tripId: string): Promise<TripJournal> {
+    return this.db.asUser(user, async (tx) => {
+      await findTrip(tx, user, tripId);
+      return { days: (await journalRows(tx, user, tripId)).map(toJournalDay) };
+    });
+  }
+
+  /** M15: sets a day's note and/or rating (creates the entry on first write). */
+  updateJournalDay(user: AuthUser, tripId: string, day: string, input: UpdateJournalDayData): Promise<JournalDay> {
+    return this.db.asUser(user, async (tx) => {
+      const trip = await findTrip(tx, user, tripId);
+      if (!trip.start_date || !trip.end_date || day < trip.start_date || day > trip.end_date) {
+        throw invalid('day', 'The day must be within the trip dates.');
+      }
+      const note = input.note === undefined ? null : input.note;
+      const rating = input.rating === undefined ? null : input.rating;
+      // Insert, or update only the fields that were sent.
+      const [row] = await tx<JournalDayRow[]>`
+        insert into app.trip_journal_days (owner_id, trip_id, day, note, rating)
+        values (${user.id}, ${tripId}, ${day}::date, ${note}, ${rating})
+        on conflict (trip_id, day) do update set
+          note = case when ${input.note !== undefined} then excluded.note else app.trip_journal_days.note end,
+          rating = case when ${input.rating !== undefined} then excluded.rating else app.trip_journal_days.rating end,
+          version = app.trip_journal_days.version + 1
+        returning day::text as day, note, rating, updated_at
+      `;
+      if (!row) throw invalid('day', 'Could not save the journal entry.');
+      return toJournalDay(row);
+    });
+  }
+
   private async getInTx(tx: Tx, user: AuthUser, tripId: string): Promise<TripDetail> {
     const trip = await findTrip(tx, user, tripId);
     const places = await tx<TripPlaceRow[]>`
@@ -286,7 +324,8 @@ export class TripsService {
         tp.day::text as day,
         to_char(tp.start_time, 'HH24:MI') as start_time,
         tp.position,
-        tp.duration_minutes
+        tp.duration_minutes,
+        tp.highlight
       from app.trip_places tp
       join app.places p on p.id = tp.place_id and p.deleted_at is null
       where tp.trip_id = ${tripId} and tp.owner_id = ${user.id} and tp.deleted_at is null
@@ -294,6 +333,16 @@ export class TripsService {
     `;
     return toTripDetail(trip, places);
   }
+}
+
+async function journalRows(tx: Tx, user: AuthUser, tripId: string): Promise<JournalDayRow[]> {
+  return tx<JournalDayRow[]>`
+    select day::text as day, note, rating, updated_at
+    from app.trip_journal_days
+    where trip_id = ${tripId} and owner_id = ${user.id}
+      and (note is not null or rating is not null)
+    order by day
+  `;
 }
 
 async function findTrip(tx: Tx, user: AuthUser, tripId: string): Promise<TripRow> {

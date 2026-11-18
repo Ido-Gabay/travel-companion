@@ -7,3 +7,4 @@ export * from './google.js';
 export * from './discover.js';
 export * from './api-error.js';
 export * from './usage.js';
+export * from './journal.js';

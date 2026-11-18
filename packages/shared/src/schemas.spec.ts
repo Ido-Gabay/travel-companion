@@ -22,6 +22,7 @@ import {
   tripSchema,
   updatePreferencesSchema,
   updateProfileSchema,
+  updateJournalDaySchema,
 } from './index.js';
 
 describe('updateProfileSchema', () => {
@@ -145,6 +146,19 @@ describe('updatePlaceSchema', () => {
   it('keeps undefined (unchanged) apart from null (clear)', () => {
     expect(updatePlaceSchema.parse({ notes: null })).toEqual({ notes: null });
     expect(updatePlaceSchema.parse({ address: '' })).toEqual({ address: null });
+  });
+
+  it('journal day: note trimmed (blank clears, max 4000), rating 1–5 or null, needs one field', () => {
+    expect(updateJournalDaySchema.parse({ note: '  Great day ' })).toEqual({ note: 'Great day' });
+    expect(updateJournalDaySchema.parse({ note: ' ', rating: null })).toEqual({ note: null, rating: null });
+    expect(updateJournalDaySchema.safeParse({ rating: 6 }).success).toBe(false);
+    expect(updateJournalDaySchema.safeParse({ note: 'a'.repeat(4001) }).success).toBe(false);
+    expect(updateJournalDaySchema.safeParse({}).success).toBe(false);
+    expect(updateJournalDaySchema.safeParse({ note: 'x', mood: 1 }).success).toBe(false);
+  });
+
+  it('schedule accepts highlight on its own', () => {
+    expect(scheduleTripPlaceSchema.parse({ highlight: true })).toEqual({ highlight: true });
   });
 
   it('accepts the user label (trimmed, blank clears, max 60)', () => {

@@ -30,7 +30,7 @@ jest.mock('@/lib/api', () => {
     'getMe', 'updateMe', 'updatePreferences', 'listTrips', 'createTrip', 'getTrip', 'updateTrip', 'deleteTrip',
     'addTripPlace', 'removeTripPlace', 'scheduleTripPlace', 'reorderTripDay', 'listPlaces', 'getPlace',
     'createPlace', 'updatePlace', 'deletePlace', 'saveGooglePlaces', 'getGooglePlace', 'getGooglePlacePreview',
-    'getGooglePhoto', 'getUsage', 'interpret', 'discoverSearch',
+    'getGooglePhoto', 'getUsage', 'interpret', 'discoverSearch', 'getJournal', 'updateJournalDay',
   ];
   const api: Record<string, unknown> = {};
   for (const name of methods) api[name] = jest.fn(() => Promise.reject(new Error(`api.${name} not mocked`)));
@@ -52,9 +52,16 @@ jest.mock('expo-notifications', () => ({
 }));
 
 jest.mock('react-native-maps', () => {
-  const { View } = require('react-native');
+  const { Pressable, View } = require('react-native');
   const Mock = ({ children }: { children?: unknown }) => children ?? null;
-  return { __esModule: true, default: View, Marker: Mock, Polyline: Mock, Callout: Mock, PROVIDER_GOOGLE: 'google' };
+  // A marker is a pressable box around its custom view, so tests can tap pins.
+  const Marker = ({ children, onPress, identifier }: { children?: unknown; onPress?: (e: unknown) => void; identifier?: string }) =>
+    require('react').createElement(
+      Pressable,
+      { testID: identifier ? `marker-${identifier}` : undefined, onPress: () => onPress?.({ stopPropagation: () => undefined }) },
+      children,
+    );
+  return { __esModule: true, default: View, Marker, Polyline: Mock, Callout: Mock, PROVIDER_GOOGLE: 'google' };
 });
 
 jest.mock('expo-location', () => ({

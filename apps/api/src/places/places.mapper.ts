@@ -26,6 +26,7 @@ export interface TripPlaceRow extends PlaceRow {
   start_time: string | null;
   position: number;
   duration_minutes: number | null;
+  highlight: boolean;
 }
 
 export function toPlace(row: PlaceRow): Place {
@@ -55,5 +56,6 @@ export function toTripPlace(row: TripPlaceRow): TripPlace {
     startTime: row.start_time,
     position: row.position,
     durationMinutes: row.duration_minutes,
+    highlight: row.highlight,
   };
 }

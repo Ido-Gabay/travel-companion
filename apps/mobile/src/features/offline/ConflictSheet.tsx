@@ -45,10 +45,17 @@ function ConflictRow({ conflict }: { conflict: Conflict }) {
   const queryClient = useQueryClient();
   const { op } = conflict;
   const details = queryClient.getQueriesData<TripDetail>({ queryKey: ['trips', 'detail'] }).map(([, detail]) => detail);
-  const place = op.kind === 'reorder' ? null : findPlace(details, op.placeId);
+  const place = op.kind === 'reorder' || op.kind === 'journal' ? null : findPlace(details, op.placeId);
 
   const show = (value: unknown): string => {
     if (op.kind === 'visited') return value ? t('offline.valueDone') : t('offline.valueNotDone');
+    if (op.kind === 'journal') {
+      if (value === null || value === undefined) return t('offline.valueEmpty');
+      return op.field === 'rating' ? '★'.repeat(Number(value)) : `“${String(value).slice(0, 80)}”`;
+    }
+    if (op.kind === 'schedule' && op.field === 'highlight') {
+      return value ? t('offline.valueHighlight') : t('offline.valueNoHighlight');
+    }
     if (op.kind === 'schedule') {
       if (value === null || value === undefined) {
         return op.field === 'day' ? t('itinerary.wishlist') : op.field === 'startTime' ? t('itinerary.flexible') : t('offline.valueTypical');
@@ -73,7 +80,11 @@ function ConflictRow({ conflict }: { conflict: Conflict }) {
     <View style={styles.row}>
       {place ? <PlaceTitle place={place} /> : (
         <AppText variant="bodyStrong">
-          {op.kind === 'reorder' ? t('offline.dayOrder', { day: dayTitle(op.day, locale) }) : t('offline.unknownPlace')}
+          {op.kind === 'reorder'
+            ? t('offline.dayOrder', { day: dayTitle(op.day, locale) })
+            : op.kind === 'journal'
+              ? t('offline.journalDay', { day: dayTitle(op.day, locale) })
+              : t('offline.unknownPlace')}
         </AppText>
       )}
       <AppText variant="body" color="secondary">

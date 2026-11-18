@@ -39,6 +39,11 @@ import {
   type TripList,
   type UpdatePreferencesInput,
   type UpdateProfileInput,
+  journalDaySchema,
+  tripJournalSchema,
+  type JournalDay,
+  type TripJournal,
+  type UpdateJournalDayInput,
 } from '@travel-companion/shared';
 import type { z } from 'zod';
 import { reportReachable, reportUnreachable } from '@/features/offline/connection';
@@ -163,6 +168,10 @@ export const api = {
     request('PATCH', `/v1/trips/${tripId}/places/${placeId}`, tripDetailSchema, body),
   reorderTripDay: (tripId: string, day: string, body: ReorderTripDayInput): Promise<TripDetail> =>
     request('PUT', `/v1/trips/${tripId}/days/${day}/order`, tripDetailSchema, body),
+  getJournal: (tripId: string): Promise<TripJournal> =>
+    request('GET', `/v1/trips/${tripId}/journal`, tripJournalSchema),
+  updateJournalDay: (tripId: string, day: string, body: UpdateJournalDayInput): Promise<JournalDay> =>
+    request('PUT', `/v1/trips/${tripId}/journal/${day}`, journalDaySchema, body),
 
   listPlaces: (): Promise<PlaceList> => request('GET', '/v1/places', placeListSchema),
   getPlace: (id: string): Promise<Place> => request('GET', `/v1/places/${id}`, placeSchema),

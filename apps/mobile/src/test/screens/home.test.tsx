@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { screen } from '@testing-library/react-native';
+import { fireEvent, screen } from '@testing-library/react-native';
+import { router } from 'expo-router';
 import HomeScreen from '@/app/(tabs)/index';
 import { tripDetail, tripPlace } from '@/features/offline/test-fixtures';
 import i18n from '@/i18n/i18n';
@@ -22,6 +23,22 @@ describe('Home', () => {
     expect(await screen.findByText('New York')).toBeTruthy();
     expect(await screen.findByText(i18n.t('tripMode.openToday'))).toBeTruthy();
     expect(screen.queryByText(/Offline/)).toBeNull();
+  });
+
+  it('the trip card opens live Today during the trip', async () => {
+    serverHas([trip]);
+    await renderApp(<HomeScreen />);
+    await fireEvent.press(await screen.findByText('New York'));
+    expect(router.push).toHaveBeenCalledWith({ pathname: '/today', params: { tripId: trip.id } });
+    expect(screen.getByText(i18n.t('tripMode.viewItinerary'))).toBeTruthy();
+  });
+
+  it('the trip card opens Today as a preview before the trip', async () => {
+    jest.setSystemTime(new Date('2026-11-10T10:00:00Z'));
+    serverHas([trip]);
+    await renderApp(<HomeScreen />);
+    await fireEvent.press(await screen.findByText('New York'));
+    expect(router.push).toHaveBeenCalledWith({ pathname: '/today', params: { tripId: trip.id, preview: '1' } });
   });
 
   it('opens offline from the saved copy and says so (cold launch, airplane mode)', async () => {

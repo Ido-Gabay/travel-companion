@@ -109,6 +109,8 @@ export const tripPlaceSchema = placeSchema.extend({
   position: z.number().int().nonnegative(),
   /** Planned visit length; null means the category default (see defaultVisitMinutes). */
   durationMinutes: z.number().int().min(5).max(720).nullable(),
+  /** M15: the user starred this stop as a highlight of the trip (default false for older servers). */
+  highlight: z.boolean().default(false),
 });
 export type TripPlace = z.infer<typeof tripPlaceSchema>;
 
@@ -138,10 +140,17 @@ export const scheduleTripPlaceSchema = z
     startTime: startTimeSchema.nullable().optional(),
     /** Planned visit length in minutes, or null for the category default. */
     durationMinutes: z.number().int().min(5).max(720).nullable().optional(),
+    /** M15: star (or unstar) the stop as a trip highlight. */
+    highlight: z.boolean().optional(),
   })
-  .refine((body) => body.day !== undefined || body.startTime !== undefined || body.durationMinutes !== undefined, {
-    error: 'Provide day, startTime or durationMinutes.',
-  })
+  .refine(
+    (body) =>
+      body.day !== undefined ||
+      body.startTime !== undefined ||
+      body.durationMinutes !== undefined ||
+      body.highlight !== undefined,
+    { error: 'Provide day, startTime, durationMinutes or highlight.' },
+  )
   .refine((body) => !(body.day === null && typeof body.startTime === 'string'), {
     error: 'A time needs a day.',
     path: ['startTime'],
