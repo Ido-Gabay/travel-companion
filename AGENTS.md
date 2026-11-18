@@ -53,7 +53,7 @@ Code, GitHub Copilot, others). Start with [docs/AI_HANDOFF.md](docs/AI_HANDOFF.m
 
 ```sh
 pnpm install            # also builds packages/shared
-pnpm test               # all unit tests (shared, api, mobile)
+pnpm test               # all tests: shared, api, app logic (Vitest) + app screens (Jest); see docs/TESTING.md
 pnpm typecheck          # strict TypeScript everywhere
 pnpm dev:api            # local API
 pnpm smoke:api          # end-to-end checks against the running/deployed API

@@ -1,13 +1,12 @@
 # Development status
 
-**Last updated: 2026-11-17 (M13 smart day planning written on main, on top of M12a).**
+**Last updated: 2026-11-18 (M14 screen tests + CI written on main, on top of M13).**
 Update this file at the end of every milestone or meaningful change.
 
 ## Snapshot
 
-- **Last commit seen on the Mac:** `37dbf49` "M12a: offline-tolerant trip mode" (committed by the owner).
-  Suggested safety tag before M13: `git tag trip-safe 37dbf49`.
-- **Uncommitted when this was written:** M13 smart day planning (app, shared, API field mask; no migration) and these doc updates. Owner chose to build it on `main`.
+- **Last commit seen on the Mac:** `0e538ae` "M13: smart day planning"; tag `trip-safe` = `37dbf49` (M12a).
+- **Uncommitted when this was written:** M14 (test tooling, 11 screen tests, two Profile fixes, an action-menu fallback, updated `pnpm-lock.yaml`) and these doc updates.
 - **Native build:** the iOS project was regenerated after M10 (contains
   `expo-notifications`, entitlements empty = no push). M11 needs no native rebuild.
 - **Current milestone:** M13 written. Still open: owner verification of M12a (migration
@@ -35,6 +34,15 @@ Update this file at the end of every milestone or meaningful change.
 | Trip time zone (`googlePlace.timeZone`) | Deployed with the M10 push if Render deployed it; not checked against the live API. Older servers omit it and the app falls back to the phone's zone. |
 | M11 | Everything: vitest on the Mac, deploy, Simulator check of Today with a pinned hotel, attribution labels, photo links, rate limits against the live API. |
 | U1 redesign | Everything visual: no screen was rendered. Typecheck and logic tests only. See the U1 checklist in "Exact next steps". |
+
+## M14 – Screen tests + CI (written)
+
+`jest-expo` + React Native Testing Library for screens (`src/test/screens`), shared
+fakes and helpers (`src/test/setup.ts`, `src/test/render.tsx`); `pnpm test` runs
+logic (Vitest) and screens (Jest); CI runs both on every push. Owner steps: `pnpm
+install` (new dev packages, lockfile updated), `pnpm test`, commit, push; check the
+GitHub CI run is green. No app runtime change except the two Profile fixes and the
+menu fallback (no native change, no rebuild).
 
 ## M13 – Smart day planning (written; device checks pending)
 
@@ -65,6 +73,29 @@ Stages (owner's priority order) and their state. Design: docs/ARCHITECTURE.md �
 | 4 | `myLabel`: user-typed label on places (migration `20261118090000_place_my_label`, shared schema with default null, API select/update, place screen "Your label" sheet, never prefilled from Google); shown offline instead of the category | ✅ written | shared `schemas.spec` 45/45 (+1), API `mappers` 6/6 (+1) and other API specs 32/32; shared build + `tsc` clean for shared, API, app | Migration push; deploy; label round trip on a device |
 
 ## Tests
+
+How tests are organized and written: docs/TESTING.md.
+
+### Executed in the M14 session (2026-11-18): first real run
+
+For the first time the suites ran on the **real tools**, in a separate copy of the
+repo on the Mac's Linux shell (Node 24.22, pnpm 10.28, its own `node_modules`), with
+the committed lockfile and then the updated one:
+
+| Command | Result |
+| --- | --- |
+| `pnpm install --frozen-lockfile` (updated lockfile) | OK |
+| `pnpm test` → shared (Vitest) | 45 passed |
+| `pnpm test` → API (Vitest) | 51 passed (incl. `auth.spec`, which the earlier stand-in could not run) |
+| `pnpm test` → app logic (Vitest) | 129 passed (16 files) |
+| `pnpm test` → app screens (Jest, jest-expo 58.0.15, RNTL 14.1.0) | 11 passed (6 files) |
+| `pnpm typecheck` (shared, API, app incl. test files) | clean |
+
+Earlier sessions' numbers (below) came from a stand-in runner; these supersede them.
+Screen tests found two real bugs, fixed: Profile showed an error offline instead of
+the saved copy, and its error-screen "Sign out" skipped the unsynced-changes warning.
+Also hardened: the action menu ran the chosen item only from iOS `Modal.onDismiss`;
+it now has a 600 ms fallback (never runs twice). Not run: anything on a real device.
 
 ### Executed in the M13 session (2026-11-17)
 

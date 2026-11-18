@@ -56,7 +56,26 @@ export default function ProfileScreen() {
   const savedName = me.data?.displayName ?? '';
   useEffect(() => setName(savedName), [savedName]);
 
-  if (me.isPending) {
+  /** M12a: never drop unsynced changes without the user knowing (every sign-out button). */
+  const confirmSignOut = () => {
+    if (signingOut) return;
+    const doSignOut = () => {
+      setSigningOut(true);
+      void signOut().finally(() => setSigningOut(false));
+    };
+    const { ops, conflicts } = getPendingState();
+    const unsynced = ops.length + conflicts.length;
+    if (unsynced === 0) {
+      doSignOut();
+      return;
+    }
+    Alert.alert(t('offline.signOutTitle'), t('offline.signOutBody', { count: unsynced }), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('offline.signOutAnyway'), style: 'destructive', onPress: doSignOut },
+    ]);
+  };
+
+  if (!me.data && me.isPending) {
     return (
       <Screen>
         <ScreenHeader title={t('profile.title')} />
@@ -64,12 +83,13 @@ export default function ProfileScreen() {
       </Screen>
     );
   }
-  if (me.isError) {
+  // M12a: with a saved copy, show it even when refreshing fails (offline).
+  if (!me.data) {
     return (
       <Screen>
         <ScreenHeader title={t('profile.title')} />
         <ErrorState message={errorMessage(me.error)} onRetry={() => void me.refetch()} />
-        <Button label={t('profile.signOut')} variant="danger" onPress={() => void signOut()} />
+        <Button label={t('profile.signOut')} variant="danger" onPress={confirmSignOut} />
       </Screen>
     );
   }
@@ -178,24 +198,7 @@ export default function ProfileScreen() {
           leading="log-out-outline"
           destructive
           chevron={false}
-          onPress={() => {
-            if (signingOut) return;
-            const doSignOut = () => {
-              setSigningOut(true);
-              void signOut().finally(() => setSigningOut(false));
-            };
-            // M12a: never drop unsynced changes without the user knowing.
-            const { ops, conflicts } = getPendingState();
-            const unsynced = ops.length + conflicts.length;
-            if (unsynced === 0) {
-              doSignOut();
-              return;
-            }
-            Alert.alert(t('offline.signOutTitle'), t('offline.signOutBody', { count: unsynced }), [
-              { text: t('common.cancel'), style: 'cancel' },
-              { text: t('offline.signOutAnyway'), style: 'destructive', onPress: doSignOut },
-            ]);
-          }}
+          onPress={confirmSignOut}
         />
       </ListGroup>
 

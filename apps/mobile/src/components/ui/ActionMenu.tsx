@@ -33,6 +33,8 @@ export interface ActionMenuConfig {
 type Open = (config: ActionMenuConfig) => void;
 
 const ActionMenuContext = createContext<Open | null>(null);
+/** Longer than the Modal fade-out, so onDismiss normally wins. */
+const DISMISS_FALLBACK_MS = 600;
 
 /**
  * One bottom action sheet for the whole app. Rows stay clean; every secondary action
@@ -64,7 +66,9 @@ export function ActionMenuProvider({ children }: { children: ReactNode }) {
       setVisible(false);
       // iOS can't present another modal (sheet, alert) while this one is dismissing:
       // run the action from onDismiss there. Android has no onDismiss; run it now.
-      if (Platform.OS !== 'ios') setTimeout(runPending, 0);
+      // Fallback: if onDismiss doesn't arrive (it isn't always delivered), run it after
+      // the close animation anyway. runPending clears the action, so it never runs twice.
+      setTimeout(runPending, Platform.OS === 'ios' ? DISMISS_FALLBACK_MS : 0);
     },
     [runPending],
   );

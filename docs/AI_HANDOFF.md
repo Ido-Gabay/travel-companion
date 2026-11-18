@@ -3,7 +3,7 @@
 Give this file to any AI coding assistant (Claude Code, GitHub Copilot with
 Claude, …) that picks up this repository. Keep it current.
 
-**Last updated: 2026-11-17, after M13 (smart day planning) was written on main.**
+**Last updated: 2026-11-18, after M14 (screen tests + CI) was written on main.**
 
 ## 1. What this project is
 
@@ -30,12 +30,13 @@ Google rules), `docs/LIVE_COMPANION.md` (Today + reminders design),
 
 ## 3. Current state
 
-- `main` on the Mac: M12a committed (`37dbf49`, suggested tag `trip-safe`). **M13
-  smart day planning is written on main but uncommitted** (app, shared preview
-  schema, API preview field mask; no migration). The `my_label` migration from
-  M12a may still need `npx supabase db push --remote`.
-- M13 session: app 129, shared 45, API 39 tests passed (Node TypeScript mode +
-  vitest stand-in, not real vitest); `tsc` clean for shared, API, app; en/he parity clean.
+- `main` on the Mac: M13 committed (`0e538ae`); tag `trip-safe` = M12a (`37dbf49`).
+  **M14 is written but uncommitted** (test tooling, screen tests, two Profile
+  fixes, action-menu fallback, updated lockfile). The `my_label` migration may still
+  need `npx supabase db push --remote`.
+- M14 session ran the **real** `pnpm test` / `pnpm typecheck` (scratch copy on the
+  Mac's Linux shell): shared 45, API 51, app logic 129, app screens 11 — all passed;
+  typecheck clean. How to test: docs/TESTING.md.
 - **Nothing from U1 or M12a has been looked at on a screen yet.** Device behavior
   of M9–M11 (Today, reminders) is also unconfirmed in writing.
 - Offline design: docs/ARCHITECTURE.md → "Offline-tolerant trip mode (M12a)".
@@ -66,8 +67,7 @@ M6 itinerary; M7 Home trip mode; M8 Google-first Discover + preview + hotel pin
 + cost caps/usage (owner verified); M9 Today v1 (committed); M10 reminders (committed, rebuilt);
 M11 trip readiness and U1 UX/UI redesign (committed by the owner, not verified on
 screen); M12a offline-tolerant trip mode (committed: reminders, offline viewing,
-offline edits + sync, `myLabel`); M13 smart day planning (written: summary,
-warnings, "Plan this day", opening hours on request, approved as C7).
+offline edits + sync, `myLabel`); M13 smart day planning (committed); M14 screen tests + CI (written).
 
 ## 6. Remaining
 
@@ -79,6 +79,9 @@ warnings, "Plan this day", opening hours on request, approved as C7).
 - Later: offline (PowerSync POCs), sharing, background location (opt-in), Android.
 
 ## 7. Exact next task
+
+First: `pnpm install` (M14 added test packages), `pnpm test && pnpm typecheck`,
+commit M14, push, and confirm the GitHub CI run is green.
 
 Help the owner verify M13 (checks in DEVELOPMENT_STATUS.md → "M13 checks") and
 M12a (plus U1, M11 and the M10 reminder checks). If time before Nov 21–22 runs out,
