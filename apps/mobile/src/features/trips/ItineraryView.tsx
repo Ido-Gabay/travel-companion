@@ -4,23 +4,23 @@ import {
   googleMapsDirectionsUrl,
   googleMapsRouteUrl,
   tripDays,
-  type TripDetail,
   type TripPlace,
 } from '@travel-companion/shared';
 import { useEffect, useMemo, useState } from 'react';
-import { Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { googleMapsEnabled, PlacesMap } from '@/components/maps/PlacesMap';
 import { GoogleAttribution } from '@/components/GoogleAttribution';
 import { AppText, Button, EmptyState, Icon, InlineError, useActionMenu } from '@/components/ui';
 import { openInMaps } from '@/features/places/open-in-maps';
-import { useGooglePlace, useGooglePlaces, useSetVisited } from '@/features/places/queries';
+import { useGooglePlace, useGooglePlaces } from '@/features/places/queries';
 import { zonedNow } from '@/features/companion/zoned-time';
 import { usePlaceDisplay } from '@/features/places/use-place-display';
 import { useLocale } from '@/i18n/LocaleProvider';
 import { useErrorMessage } from '@/lib/use-error-message';
-import { colors, radii, spacing } from '@/theme/tokens';
+import { colors, radii, spacing, weights } from '@/theme/tokens';
 import { AddToDaySheet } from './AddToDaySheet';
+import { groupVisitMarkers, markerLabel } from './map-markers';
 import { DayPickerSheet } from './DayPickerSheet';
 import {
   countByDay,
@@ -36,19 +36,21 @@ import { muteKey, useMutedStops, useToggleMuted } from '@/features/companion/rem
 import { usePendingState } from '@/features/offline/ops-store';
 import { DayJournal } from '@/features/journal/DayJournal';
 import { DayPlanning } from '@/features/planning/DayPlanning';
+import { TripPlanning } from '@/features/planning/TripPlanning';
 import { pendingPlaceIds } from '@/features/offline/pending-ops';
-import { useReorderTripDay, useScheduleTripPlace } from './queries';
+import { storedZoneFor, type TripItem, type TripView } from './model';
+import { usePlanVisit, useReorderTripDay, useRemoveVisit, useScheduleTripPlace, useSetVisitStatus } from './queries';
 import { formatDurationShort, TimeSheet } from './TimeSheet';
 
-/** A place plus the name to show for it (Google names aren't stored in the trip). */
+/** A visit plus the name to show for it (Google names aren't stored in the trip). */
 interface Named {
-  place: TripPlace;
+  place: TripItem;
   name: string;
 }
 
 interface ItineraryViewProps {
-  trip: TripDetail;
-  onOpenPlace: (place: TripPlace) => void;
+  trip: TripView;
+  onOpenPlace: (place: TripItem) => void;
   onDiscover: () => void;
   onEditTrip: () => void;
 }
@@ -60,7 +62,9 @@ export function ItineraryView({ trip, onOpenPlace, onDiscover, onEditTrip }: Iti
   const errorMessage = useErrorMessage();
   const schedule = useScheduleTripPlace(trip.id);
   const reorder = useReorderTripDay(trip.id);
-  const setVisited = useSetVisited();
+  const setStatus = useSetVisitStatus(trip.id);
+  const planVisit = usePlanVisit(trip.id);
+  const removeVisit = useRemoveVisit(trip.id);
   const muted = useMutedStops();
   const toggleMuted = useToggleMuted();
   const showMenu = useActionMenu();
@@ -68,11 +72,14 @@ export function ItineraryView({ trip, onOpenPlace, onDiscover, onEditTrip }: Iti
   const days = useMemo(() => tripDays(trip.startDate, trip.endDate), [trip.startDate, trip.endDate]);
   // Open on the trip's today (pinned hotel's time zone), else the phone's.
   const hotel = useGooglePlace(trip.basePlaceId);
-  const today = zonedNow(Date.now(), hotel.data?.timeZone ?? null).day;
+  const phoneToday = new Date().toISOString().slice(0, 10);
+  const now = zonedNow(Date.now(), storedZoneFor(trip, phoneToday) ?? hotel.data?.timeZone ?? null);
+  const today = now.day;
   const [selectedDay, setSelectedDay] = useState<string | null>(() => initialDay(days, today));
   const [adding, setAdding] = useState(false);
   const [timeFor, setTimeFor] = useState<Named | null>(null);
   const [moving, setMoving] = useState<Named | null>(null);
+  const [again, setAgain] = useState<Named | null>(null);
 
   // Keep a valid selection when the trip dates change.
   useEffect(() => {
@@ -81,6 +88,11 @@ export function ItineraryView({ trip, onOpenPlace, onDiscover, onEditTrip }: Iti
 
   const counts = useMemo(() => countByDay(trip.places), [trip.places]);
   const wishlist = useMemo(() => wishlistPlaces(trip.places), [trip.places]);
+  // Saved places that already have a visit: adding one of them plans another visit.
+  const plannedBefore = useMemo(
+    () => trip.places.filter((item, index, all) => item.stopId !== null && all.findIndex((other) => other.placeId === item.placeId) === index),
+    [trip.places],
+  );
   const stops = useMemo(
     () => (selectedDay ? placesForDay(trip.places, selectedDay) : []),
     [trip.places, selectedDay],
@@ -99,14 +111,30 @@ export function ItineraryView({ trip, onOpenPlace, onDiscover, onEditTrip }: Iti
 
   const dayIndex = selectedDay ? days.indexOf(selectedDay) : -1;
   const stopIds = stops.map((stop) => stop.id);
-  const move = (place: TripPlace, delta: -1 | 1) => {
+  const move = (place: TripItem, delta: -1 | 1) => {
     if (!selectedDay) return;
     const next = moveId(stopIds, place.id, delta);
     if (next) reorder.mutate({ day: selectedDay, placeIds: next });
   };
-  const pickDay = (place: TripPlace, day: string | null) => {
+  const pickDay = (place: TripItem, day: string | null) => {
     setMoving(null);
     if (day !== place.day) schedule.mutate({ placeId: place.id, day });
+  };
+  const toggleDone = (place: TripItem) => {
+    if (place.stopId) setStatus.mutate({ stopId: place.stopId, status: place.status === 'completed' ? 'planned' : 'completed' });
+  };
+  /** Off the plan. A done visit is history: confirm first (it leaves the place's history). */
+  const removeFromPlan = (place: TripItem, name: string) => {
+    if (!place.stopId) return;
+    const stopId = place.stopId;
+    if (place.status !== 'completed') {
+      removeVisit.mutate({ stopId, confirm: false });
+      return;
+    }
+    Alert.alert(t('visits.removeDoneTitle'), t('visits.removeDoneBody', { name }), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('visits.remove'), style: 'destructive', onPress: () => removeVisit.mutate({ stopId, confirm: true }) },
+    ]);
   };
   const directionsTo = (place: TripPlace, name: string) => {
     if (place.googlePlaceId) {
@@ -116,9 +144,12 @@ export function ItineraryView({ trip, onOpenPlace, onDiscover, onEditTrip }: Iti
     }
   };
   /** Every action for a stop lives here, so the row itself stays clean. */
-  const openMenu = (place: TripPlace, name: string, index: number) => {
+  const openMenu = (place: TripItem, name: string, index: number) => {
     const isMuted = muted.data?.includes(muteKey(trip.id, place.id)) ?? false;
-    const visited = place.visitedAt !== null;
+    const visited = place.status === 'completed';
+    const skipped = place.status === 'skipped';
+    // Done or skipped visits keep their day, time and length (what happened).
+    const settled = visited || skipped;
     showMenu({
       title: name,
       subtitle: place.startTime ? formatStartTime(place.startTime, locale) : undefined,
@@ -128,16 +159,25 @@ export function ItineraryView({ trip, onOpenPlace, onDiscover, onEditTrip }: Iti
           label: place.startTime ? t('itinerary.changeTime') : t('itinerary.addTime'),
           icon: 'time-outline',
           onPress: () => setTimeFor({ place, name }),
+          hidden: settled,
         },
         { label: t('places.directions'), icon: 'navigate-outline', onPress: () => directionsTo(place, name) },
         {
           label: visited ? t('itinerary.markNotDone') : t('tripMode.done'),
           icon: visited ? 'arrow-undo-outline' : 'checkmark-circle-outline',
-          onPress: () => setVisited.mutate({ id: place.id, visited: !visited }),
+          onPress: () => toggleDone(place),
+          hidden: skipped,
         },
+        {
+          label: skipped ? t('visits.unskip') : t('visits.skip'),
+          icon: skipped ? 'arrow-undo-outline' : 'play-skip-forward-outline',
+          onPress: () => place.stopId && setStatus.mutate({ stopId: place.stopId, status: skipped ? 'planned' : 'skipped' }),
+          hidden: visited,
+        },
+        { label: t('visits.again'), icon: 'repeat-outline', onPress: () => setAgain({ place, name }) },
         { label: t('itinerary.moveUp'), icon: 'arrow-up', onPress: () => move(place, -1), hidden: index === 0 },
         { label: t('itinerary.moveDown'), icon: 'arrow-down', onPress: () => move(place, 1), hidden: index === stops.length - 1 },
-        { label: t('itinerary.changeDay'), icon: 'calendar-outline', onPress: () => setMoving({ place, name }) },
+        { label: t('itinerary.changeDay'), icon: 'calendar-outline', onPress: () => setMoving({ place, name }), hidden: settled },
         {
           label: place.highlight ? t('journal.removeHighlight') : t('journal.markHighlight'),
           icon: place.highlight ? 'star' : 'star-outline',
@@ -153,13 +193,13 @@ export function ItineraryView({ trip, onOpenPlace, onDiscover, onEditTrip }: Iti
           label: t('itinerary.clearTime'),
           icon: 'close-circle-outline',
           onPress: () => schedule.mutate({ placeId: place.id, startTime: null }),
-          hidden: !place.startTime,
+          hidden: !place.startTime || settled,
         },
         {
-          label: t('itinerary.backToWishlist'),
+          label: t('visits.removeFromPlan'),
           icon: 'remove-circle-outline',
           destructive: true,
-          onPress: () => schedule.mutate({ placeId: place.id, day: null }),
+          onPress: () => removeFromPlan(place, name),
         },
       ],
     });
@@ -167,6 +207,7 @@ export function ItineraryView({ trip, onOpenPlace, onDiscover, onEditTrip }: Iti
 
   return (
     <View style={styles.root}>
+      <TripPlanning trip={trip} today={today} nowMinutes={now.minutes} />
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -243,7 +284,7 @@ export function ItineraryView({ trip, onOpenPlace, onDiscover, onEditTrip }: Iti
                     first={index === 0}
                     last={index === stops.length - 1}
                     onTime={(name) => setTimeFor({ place: stop, name })}
-                    onToggleVisited={() => setVisited.mutate({ id: stop.id, visited: stop.visitedAt === null })}
+                    onToggleVisited={() => toggleDone(stop)}
                     onMenu={(name) => openMenu(stop, name, index)}
                   />
                 ))}
@@ -271,9 +312,15 @@ export function ItineraryView({ trip, onOpenPlace, onDiscover, onEditTrip }: Iti
             visible={adding}
             dayLabel={dayTitle(selectedDay, locale)}
             wishlist={wishlist}
+            again={plannedBefore}
+            onDay={new Set(stops.filter((stop) => stop.status !== 'skipped').map((stop) => stop.placeId))}
             addingId={schedule.isPending ? (schedule.variables?.placeId ?? null) : null}
             error={schedule.isError ? errorMessage(schedule.error) : null}
-            onAdd={(place) => schedule.mutate({ placeId: place.id, day: selectedDay })}
+            onAdd={(place) =>
+              place.stopId
+                ? planVisit.mutate({ tripPlaceId: place.tripPlaceId, day: selectedDay })
+                : schedule.mutate({ placeId: place.id, day: selectedDay })
+            }
             onDiscover={() => {
               setAdding(false);
               onDiscover();
@@ -295,11 +342,26 @@ export function ItineraryView({ trip, onOpenPlace, onDiscover, onEditTrip }: Iti
         onClose={() => setTimeFor(null)}
       />
       <DayPickerSheet
+        visible={again !== null}
+        title={t('visits.againTitle')}
+        placeName={again?.name ?? ''}
+        days={days}
+        current={null}
+        counts={counts}
+        allowWishlist={false}
+        onPick={(day) => {
+          if (again && day) planVisit.mutate({ tripPlaceId: again.place.tripPlaceId, day });
+          setAgain(null);
+        }}
+        onClose={() => setAgain(null)}
+      />
+      <DayPickerSheet
         visible={moving !== null}
         placeName={moving?.name ?? ''}
         days={days}
         current={moving?.place.day ?? null}
         counts={counts}
+        allowWishlist={false}
         onPick={(day) => moving && pickDay(moving.place, day)}
         onClose={() => setMoving(null)}
       />
@@ -308,7 +370,7 @@ export function ItineraryView({ trip, onOpenPlace, onDiscover, onEditTrip }: Iti
 }
 
 /** The day's stops on a Google map, numbered in order, with a link to the whole route in Google Maps. */
-function DayMap({ stops }: { stops: readonly TripPlace[] }) {
+function DayMap({ stops }: { stops: readonly TripItem[] }) {
   const { t } = useTranslation();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const googleIds = useMemo(
@@ -317,18 +379,20 @@ function DayMap({ stops }: { stops: readonly TripPlace[] }) {
   );
   const details = useGooglePlaces(googleIds);
 
-  const points = stops.flatMap((stop, index) => {
+  const located = stops.map((stop) => {
     const google = stop.googlePlaceId ? details.get(stop.googlePlaceId) : undefined;
-    return google?.location
-      ? [{
-          id: stop.id,
-          latitude: google.location.latitude,
-          longitude: google.location.longitude,
-          title: google.name,
-          label: String(index + 1),
-        }]
-      : [];
+    return { id: stop.id, placeKey: stop.placeId, location: google?.location ?? null, title: google?.name ?? '' };
   });
+  const { markers } = groupVisitMarkers(located);
+  const points = markers.map((marker) => ({
+    id: marker.id,
+    latitude: marker.location.latitude,
+    longitude: marker.location.longitude,
+    title: marker.visits[0]?.title ?? '',
+    label: markerLabel(marker.numbers),
+  }));
+  // The line follows the visits in order, so a return to a place is drawn too.
+  const path = located.flatMap((visit) => (visit.location ? [visit.location] : []));
   const route = stops.flatMap((stop) => {
     const google = stop.googlePlaceId ? details.get(stop.googlePlaceId) : undefined;
     return stop.googlePlaceId && google ? [{ placeId: stop.googlePlaceId, name: google.name }] : [];
@@ -338,7 +402,7 @@ function DayMap({ stops }: { stops: readonly TripPlace[] }) {
   return (
     <View style={styles.map}>
       {googleMapsEnabled && points.length > 0 ? (
-        <PlacesMap points={points} selectedId={selectedId} onSelect={setSelectedId} height={240} connect />
+        <PlacesMap points={points} path={path} selectedId={selectedId} onSelect={setSelectedId} height={240} connect />
       ) : null}
       {routeUrl ? (
         <Button
@@ -354,7 +418,7 @@ function DayMap({ stops }: { stops: readonly TripPlace[] }) {
 }
 
 interface StopRowProps {
-  place: TripPlace;
+  place: TripItem;
   number: number;
   first: boolean;
   last: boolean;
@@ -371,7 +435,8 @@ function StopRow({ place, number, first, last, onTime, onToggleVisited, onMenu }
   const { t } = useTranslation();
   const { locale } = useLocale();
   const display = usePlaceDisplay(place);
-  const visited = place.visitedAt !== null;
+  const visited = place.status === 'completed';
+  const skipped = place.status === 'skipped';
   const pending = pendingPlaceIds(usePendingState().ops).has(place.id);
 
   return (
@@ -384,10 +449,13 @@ function StopRow({ place, number, first, last, onTime, onToggleVisited, onMenu }
           accessibilityLabel={t('tripMode.markDone', { name: display.name })}
           hitSlop={8}
           onPress={onToggleVisited}
-          style={[styles.number, visited && styles.numberVisited]}
+          disabled={skipped}
+          style={[styles.number, visited && styles.numberVisited, skipped && styles.numberSkipped]}
         >
           {visited ? (
             <Icon name="checkmark" size={16} color={colors.textOnAccent} />
+          ) : skipped ? (
+            <Icon name="play-skip-forward" size={14} color={colors.textOnAccent} />
           ) : (
             <AppText variant="caption" color="onAccent" style={styles.numberText}>
               {number}
@@ -408,7 +476,8 @@ function StopRow({ place, number, first, last, onTime, onToggleVisited, onMenu }
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={place.startTime ? t('itinerary.changeTime') : t('itinerary.addTime')}
-            hitSlop={6}
+            // The chip is ~22pt tall; the row's padding leaves room for a 44pt target.
+            hitSlop={{ top: 11, bottom: 11, left: 6, right: 6 }}
             onPress={() => onTime(display.name)}
             style={({ pressed }) => [styles.time, place.startTime ? styles.timeSet : null, pressed && styles.pressed]}
           >
@@ -420,6 +489,11 @@ function StopRow({ place, number, first, last, onTime, onToggleVisited, onMenu }
             {formatDurationShort(visitMinutes(place), t)}
             {place.durationMinutes === null ? ' ' + t('itinerary.approx') : ''}
           </AppText>
+          {skipped || place.status === 'in_progress' ? (
+            <AppText variant="caption" color={skipped ? 'tertiary' : 'accent'} style={styles.statusText}>
+              {t(`visits.status.${place.status ?? 'planned'}`)}
+            </AppText>
+          ) : null}
           {place.highlight ? (
             <View accessible accessibilityLabel={t('journal.highlight')}>
               <Icon name="star" size={16} color={colors.accent} />
@@ -435,7 +509,7 @@ function StopRow({ place, number, first, last, onTime, onToggleVisited, onMenu }
         <AppText
           variant="bodyStrong"
           numberOfLines={2}
-          color={visited ? 'tertiary' : 'primary'}
+          color={visited || skipped ? 'tertiary' : 'primary'}
           style={visited ? styles.struck : undefined}
         >
           {display.name}
@@ -474,7 +548,7 @@ const styles = StyleSheet.create({
     gap: spacing.xxs,
   },
   chipSelected: { backgroundColor: colors.accent, borderColor: colors.accent },
-  chipWeekday: { color: colors.textSecondary, fontWeight: '600' },
+  chipWeekday: { color: colors.textSecondary, fontWeight: weights.semibold },
   dots: { flexDirection: 'row', gap: 3, height: 5 },
   dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: colors.accent },
   dotSelected: { backgroundColor: colors.textOnAccent },
@@ -495,7 +569,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   numberVisited: { backgroundColor: colors.success },
-  numberText: { fontWeight: '700' },
+  numberSkipped: { backgroundColor: colors.textTertiary },
+  statusText: { fontWeight: weights.semibold },
+  numberText: { fontWeight: weights.bold },
   stopBody: { flex: 1, gap: spacing.xxs, paddingVertical: spacing.md },
   stopDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   struck: { textDecorationLine: 'line-through' },
@@ -510,7 +586,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accentSoft,
   },
   timeSet: { backgroundColor: colors.accent },
-  timeText: { fontWeight: '600' },
+  timeText: { fontWeight: weights.semibold },
   wishlistHint: {
     flexDirection: 'row',
     alignItems: 'center',

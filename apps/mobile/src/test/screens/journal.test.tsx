@@ -46,7 +46,7 @@ describe('Trip journal (offline)', () => {
         expect.arrayContaining([
           expect.objectContaining({ kind: 'journal', day: DAY, field: 'rating', value: 4 }),
           expect.objectContaining({ kind: 'journal', day: DAY, field: 'note', value: 'Best bagel of my life' }),
-          expect.objectContaining({ kind: 'schedule', placeId: uuid(102), field: 'highlight', value: true }),
+          expect.objectContaining({ kind: 'stop', stopId: uuid(102), field: 'highlight', value: true }),
         ]),
       );
     });

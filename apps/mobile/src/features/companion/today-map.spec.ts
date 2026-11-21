@@ -74,6 +74,20 @@ describe('today map model', () => {
     expect(model.unmapped).toBe(0);
   });
 
+  it('two visits at the same spot: one pin for the visit that matters now, listing the other number; the path still returns there', () => {
+    const result = computeToday(
+      input({ stops: [stop('a', { visited: true, location: MOMA }), stop('b', { location: MET }), stop('c', { location: MOMA })] }),
+    );
+    const model = buildTodayMap(result, null, HOTEL);
+    expect(model.pins.map((pin) => [pin.id, pin.number, pin.also, pin.kind])).toEqual([
+      ['c', 3, [1], 'later'],
+      ['b', 2, [], 'next'],
+    ]);
+    expect(model.laterPath).toEqual([MET, MOMA]);
+    // Same input, same pins (no render-to-render drift).
+    expect(buildTodayMap(result, null, HOTEL).pins).toEqual(model.pins);
+  });
+
   it('leaves stops without a usable location off the map and draws no next leg to them', () => {
     const result = computeToday(input({ stops: [stop('a', { location: null }), stop('b', { location: MET })] }));
     const model = buildTodayMap(result, null, HOTEL);

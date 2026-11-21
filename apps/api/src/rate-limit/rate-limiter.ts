@@ -46,5 +46,5 @@ export class RateLimiter {
 
 /** Routes that cost money per call (Google, Claude) get a tighter limit. */
 export function rateLimitClass(path: string): 'paid' | 'default' {
-  return /^\/v1\/(discover|google)(\/|$|\?)/.test(path) ? 'paid' : 'default';
+  return /^\/v1\/(discover|google|assistant)(\/|$|\?)/.test(path) ? 'paid' : 'default';
 }

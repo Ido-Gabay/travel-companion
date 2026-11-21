@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { existsSync } from 'node:fs';
-import { Logger, RequestMethod } from '@nestjs/common';
+import { Logger, VersioningType } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
 import { APP_CONFIG, type AppConfig } from './config/app-config.js';
@@ -15,12 +15,9 @@ async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
   const config = app.get<AppConfig>(APP_CONFIG);
 
-  app.setGlobalPrefix('v1', {
-    exclude: [
-      { path: 'health', method: RequestMethod.GET },
-      { path: 'health/ready', method: RequestMethod.GET },
-    ],
-  });
+  // Every route is /v1/... unless its controller says otherwise: D1 adds /v2
+  // trip routes beside the unchanged /v1 ones; /health has no version.
+  app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
   app.enableShutdownHooks();
 
   await app.listen(config.port, config.host);

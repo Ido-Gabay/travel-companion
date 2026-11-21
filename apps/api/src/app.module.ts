@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { AuthGuard } from './auth/auth.guard.js';
+import { AssistantModule } from './assistant/assistant.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { AllExceptionsFilter } from './common/all-exceptions.filter.js';
 import { ConfigModule } from './config/config.module.js';
@@ -11,6 +12,7 @@ import { HealthController } from './health/health.controller.js';
 import { MeModule } from './me/me.module.js';
 import { PlacesModule } from './places/places.module.js';
 import { RateLimitGuard } from './rate-limit/rate-limit.guard.js';
+import { TimeZonesModule } from './timezones/timezones.module.js';
 import { TripsModule } from './trips/trips.module.js';
 import { UsageModule } from './usage/usage.module.js';
 
@@ -25,6 +27,8 @@ import { UsageModule } from './usage/usage.module.js';
     PlacesModule,
     GoogleModule,
     DiscoverModule,
+    AssistantModule,
+    TimeZonesModule,
   ],
   controllers: [HealthController],
   providers: [

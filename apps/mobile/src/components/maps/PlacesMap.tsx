@@ -23,6 +23,8 @@ interface PlacesMapProps {
   height?: number;
   /** Draw a line through the points in order (a day's route, as the crow flies). */
   connect?: boolean;
+  /** The line to draw when it isn't simply the points in order (e.g. a day that returns to a place). */
+  path?: readonly { latitude: number; longitude: number }[];
   /** Called after the user moves or zooms the map by hand (not when it fits the points). */
   onUserMove?: (bounds: Bounds) => void;
   /** Show the blue "you are here" dot (only after location permission was granted). */
@@ -47,6 +49,7 @@ export function PlacesMap({
   onSelect,
   height,
   connect = false,
+  path,
   onUserMove,
   showsUserLocation = false,
 }: PlacesMapProps) {
@@ -105,20 +108,22 @@ export function PlacesMap({
           if (byHand) onUserMove(regionToBounds(region));
         }}
       >
-        {connect && coordinates.length > 1 ? (
+        {connect && (path ?? coordinates).length > 1 ? (
           <Polyline
-            coordinates={coordinates}
+            coordinates={[...(path ?? coordinates)]}
             strokeColor={colors.accent}
             strokeWidth={3}
             lineDashPattern={[8, 6]}
           />
         ) : null}
-        {points.map((point) => (
+        {points.map((point, index) => (
           <Marker
             key={`${point.id}:${point.label ?? ''}:${point.id === selectedId ? 1 : 0}`}
             identifier={point.id}
             coordinate={{ latitude: point.latitude, longitude: point.longitude }}
             title={point.title}
+            // Overlap is drawn by the points' order (earlier on top), not by when a marker last mounted.
+            zIndex={point.id === selectedId ? points.length + 1 : points.length - index}
             pinColor={point.label ? undefined : point.id === selectedId ? colors.danger : colors.accent}
             onPress={(event) => {
               event.stopPropagation();

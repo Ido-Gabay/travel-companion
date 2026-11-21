@@ -24,6 +24,14 @@ export interface PlanStop {
   visited: boolean;
   /** Opening windows that day, when the user asked to check them (null/absent = unknown). */
   hours?: OpenWindow[] | null;
+  /** D1: happening now (arrived): stays where it is. */
+  pinned?: boolean;
+  /** D1: starred by the user (a must-do): never suggested to move to another day. */
+  priority?: boolean;
+  /** Re-timed because the user is running late: stays on its day. */
+  keepDay?: boolean;
+  /** The length is the category default, not the user's own. */
+  typicalDuration?: boolean;
 }
 
 /** When a leg can't be estimated (a place without a known location). */
@@ -38,6 +46,8 @@ export const OVERLOADED_MIN = 11 * 60;
 export const LONG_LEG_MIN = 45;
 /** Only suggest a new order if it saves at least this much travel. */
 export const MIN_SAVING_MIN = 5;
+/** Time to get going between two visits (finding the exit, the right line, a coffee): added to each leg. */
+export const TRANSFER_BUFFER_MIN = 5;
 
 export interface Leg {
   minutes: number;
@@ -116,7 +126,9 @@ export function projectDay(
       // Before the first timed stop: start the day early enough, but not before dayStart.
       begin = dayStart;
     } else {
-      begin = roundUp5(previousEnd + (travel?.minutes ?? 0));
+      begin = roundUp5(previousEnd + (travel?.minutes ?? 0) + TRANSFER_BUFFER_MIN);
+      // A start the day was given (today: now; or the user asked) is a floor even after earlier visits.
+      if (dayStart !== DEFAULT_DAY_START_MIN) begin = Math.max(begin, dayStart);
     }
     // A flexible stop waits for opening time (when hours were checked).
     if (!stop.startTime && stop.hours && stop.hours.length > 0) {
@@ -219,7 +231,7 @@ export interface OrderProposal {
  * Returns null when no order saves at least MIN_SAVING_MIN.
  */
 export function optimizeOrder(stops: readonly PlanStop[], start: LatLng | null): OrderProposal | null {
-  const movable = (stop: PlanStop) => !stop.startTime && !stop.visited && stop.location !== null;
+  const movable = (stop: PlanStop) => !stop.startTime && !stop.visited && !stop.pinned && stop.location !== null;
   const fixed = stops.filter((stop) => !movable(stop));
   const free = stops.filter(movable);
   if (free.length === 0 || stops.length < 3) return null;

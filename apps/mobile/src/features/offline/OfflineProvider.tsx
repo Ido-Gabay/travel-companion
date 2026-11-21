@@ -1,4 +1,4 @@
-import type { GooglePlace, LatLng, Me, TripDetail, TripJournal, TripList } from '@travel-companion/shared';
+import type { GooglePlace, LatLng, Me, TripDetailV2, TripJournal, TripList } from '@travel-companion/shared';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import {
   createContext,
@@ -65,7 +65,7 @@ export function OfflineProvider({ userId, children }: { userId: string; children
           queryClient.setQueryData(['trips', 'list'], snapshot.trips.data, { updatedAt: snapshot.trips.savedAt });
         }
         for (const detail of snapshot.details) {
-          queryClient.setQueryData(['trips', 'detail', detail.data.id], detail.data, { updatedAt: detail.savedAt });
+          queryClient.setQueryData(['trips', 'detail', detail.data.trip.id], detail.data, { updatedAt: detail.savedAt });
         }
         if (snapshot.me) queryClient.setQueryData(['me'], snapshot.me.data, { updatedAt: snapshot.me.savedAt });
         for (const { tripId, journal } of snapshot.journals) {
@@ -95,7 +95,7 @@ export function OfflineProvider({ userId, children }: { userId: string; children
     const knownGoogleIds = () =>
       new Set(
         queryClient
-          .getQueriesData<TripDetail>({ queryKey: ['trips', 'detail'] })
+          .getQueriesData<TripDetailV2>({ queryKey: ['trips', 'detail'] })
           .flatMap(([, detail]) => (detail ? tripGoogleIds(detail) : [])),
       );
     return queryClient.getQueryCache().subscribe((event) => {
@@ -107,7 +107,7 @@ export function OfflineProvider({ userId, children }: { userId: string; children
         void cache.saveTrips(data as TripList, now).catch(() => undefined);
         if (!event.action.manual) prefetchUpcoming(queryClient, data as TripList);
       } else if (isKey(key, 'trips', 'detail') && data) {
-        void cache.saveTrip(data as TripDetail, now).catch(() => undefined);
+        void cache.saveTrip(data as TripDetailV2, now).catch(() => undefined);
       } else if (isKey(key, 'trips', 'journal') && data && typeof key[2] === 'string') {
         void cache.saveJournal(key[2], data as TripJournal, now).catch(() => undefined);
       } else if (isKey(key, 'me') && data) {
@@ -187,7 +187,7 @@ export function OfflineProvider({ userId, children }: { userId: string; children
 
 function prefetchUpcoming(queryClient: QueryClient, list: TripList): void {
   for (const trip of upcomingTrips(list.items, toIsoDate(new Date())).slice(0, PREFETCH_TRIPS)) {
-    void queryClient.prefetchQuery({ queryKey: ['trips', 'detail', trip.id], queryFn: () => api.getTrip(trip.id) });
+    void queryClient.prefetchQuery({ queryKey: ['trips', 'detail', trip.id], queryFn: () => api.getTripV2(trip.id) });
   }
 }
 

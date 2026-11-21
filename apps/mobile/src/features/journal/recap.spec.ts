@@ -1,16 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { tripDetail, tripPlace } from '../offline/test-fixtures';
+import { buildTripView } from '../trips/model';
 import { buildRecap, recapText } from './recap';
 
 const D1 = '2026-11-23';
 const D2 = '2026-11-24';
 const DAYS = [D1, D2, '2026-11-25'];
-const trip = tripDetail([
+const trip = buildTripView(tripDetail([
   tripPlace(1, { day: D1, visitedAt: '2026-11-23T17:00:00.000Z', myLabel: 'Met' }),
   tripPlace(2, { day: D1, visitedAt: '2026-11-23T15:00:00.000Z', myLabel: 'Zoo', highlight: true }),
   tripPlace(3, { day: D2, myLabel: 'Bridge' }),
   tripPlace(4, { day: null, position: 0, myLabel: 'Wish', highlight: true }),
-]);
+]));
 const LOCATIONS: Record<string, { latitude: number; longitude: number }> = {
   Met: { latitude: 40.7794, longitude: -73.9632 },
   Zoo: { latitude: 40.7678, longitude: -73.9718 },
@@ -21,7 +22,8 @@ describe('trip recap', () => {
   it('counts days, visited and planned stops, and lists highlights in itinerary order', () => {
     const recap = buildRecap(trip, { days: [] }, DAYS, locationOf);
     expect(recap).toMatchObject({ days: 3, visited: 2, planned: 3 });
-    expect(recap.highlights.map((place) => place.myLabel)).toEqual(['Zoo', 'Wish']);
+    // D1: a highlight is a starred VISIT (a saved place that wasn't visited has none).
+    expect(recap.highlights.map((place) => place.myLabel)).toEqual(['Zoo']);
   });
 
   it('lists what you did each day in the order you did it, with the note and rating', () => {
@@ -57,7 +59,7 @@ describe('trip recap', () => {
       dayTitle: (day) => day,
     });
     expect(text).toBe(
-      ['New York · Nov 23–25', '3 days · 2 places', '', 'Highlights: Zoo, Wish', '', `${D1} ★★★★`, 'Zoo → Met', 'Rain, then sun'].join('\n'),
+      ['New York · Nov 23–25', '3 days · 2 places', '', 'Highlights: Zoo', '', `${D1} ★★★★`, 'Zoo → Met', 'Rain, then sun'].join('\n'),
     );
   });
 });

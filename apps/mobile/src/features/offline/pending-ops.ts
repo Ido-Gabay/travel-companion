@@ -1,4 +1,4 @@
-import type { JournalDay, Place, TripDetail, TripJournal, TripPlace } from '@travel-companion/shared';
+import type { JournalDay, Place, Stop, StopStatus, TripDetailV2, TripJournal } from '@travel-companion/shared';
 
 /**
  * M12a pending changes: the user's itinerary edits, recorded on the phone first and
@@ -54,7 +54,57 @@ export interface ReorderOp extends OpBase {
   base: string[];
 }
 
-export type PendingOp = VisitedOp | ScheduleOp | ReorderOp | JournalOp;
+/** D1: a field of one visit. status is its lifecycle (planned → in_progress → completed / skipped). */
+export type StopField = 'day' | 'startTime' | 'durationMinutes' | 'highlight' | 'status';
+export type StopValue = string | number | boolean | null;
+
+export interface StopOp extends OpBase {
+  kind: 'stop';
+  tripId: string;
+  stopId: string;
+  field: StopField;
+  value: StopValue;
+  base: StopValue;
+}
+
+/** D1: a new visit, created on the phone with its own id (sending it twice is harmless). */
+export interface StopAddOp extends OpBase {
+  kind: 'stopAdd';
+  tripId: string;
+  stopId: string;
+  tripPlaceId: string;
+  day: string;
+  startTime: string | null;
+  durationMinutes: number | null;
+  highlight: boolean;
+  value: true;
+  base: false;
+}
+
+/** D1: remove a visit (a done one only after the user confirmed). */
+export interface StopRemoveOp extends OpBase {
+  kind: 'stopRemove';
+  tripId: string;
+  stopId: string;
+  confirm: boolean;
+  value: true;
+  base: false;
+}
+
+/** D1: the order of one day's visits. */
+export interface ReorderStopsOp extends OpBase {
+  kind: 'reorderStops';
+  tripId: string;
+  day: string;
+  value: string[];
+  base: string[];
+}
+
+/**
+ * schedule and reorder are pre-D1 (v1, by place id): still sent if an older
+ * build left them queued, but new changes use the visit ops.
+ */
+export type PendingOp = VisitedOp | ScheduleOp | ReorderOp | JournalOp | StopOp | StopAddOp | StopRemoveOp | ReorderStopsOp;
 
 /** Two ops change the same thing (and so are merged). */
 function sameTarget(a: PendingOp, b: PendingOp): boolean {
@@ -65,6 +115,11 @@ function sameTarget(a: PendingOp, b: PendingOp): boolean {
   }
   if (a.kind === 'reorder' && b.kind === 'reorder') return a.tripId === b.tripId && a.day === b.day;
   if (a.kind === 'journal' && b.kind === 'journal') return a.tripId === b.tripId && a.day === b.day && a.field === b.field;
+  if (a.kind === 'stop' && b.kind === 'stop') return a.stopId === b.stopId && a.field === b.field;
+  if ((a.kind === 'stopAdd' && b.kind === 'stopAdd') || (a.kind === 'stopRemove' && b.kind === 'stopRemove')) {
+    return a.stopId === b.stopId;
+  }
+  if (a.kind === 'reorderStops' && b.kind === 'reorderStops') return a.tripId === b.tripId && a.day === b.day;
   return false;
 }
 
@@ -87,23 +142,37 @@ export function enqueue(ops: readonly PendingOp[], op: PendingOp): PendingOp[] {
   return sameValue(merged.value, merged.base) ? rest : [...rest.slice(0, index), merged, ...rest.slice(index)];
 }
 
-const sortPlaces = (places: TripPlace[]) =>
-  places.sort((a, b) => {
-    if (a.day !== b.day) return a.day === null ? 1 : b.day === null ? -1 : a.day.localeCompare(b.day);
-    return a.position - b.position || a.addedAt.localeCompare(b.addedAt);
-  });
+const sortStops = (stops: Stop[]) =>
+  stops.sort((a, b) => a.day.localeCompare(b.day) || a.position - b.position || a.createdAt.localeCompare(b.createdAt));
 
-/** Positions 0..n-1 within each day, keeping order (like the server's renumberDay). */
-function renumber(places: TripPlace[], day: string): TripPlace[] {
-  const ordered = places
-    .filter((place) => place.day === day)
-    .sort((a, b) => a.position - b.position || a.addedAt.localeCompare(b.addedAt));
-  const position = new Map(ordered.map((place, index) => [place.id, index]));
-  return places.map((place) => (place.day === day ? { ...place, position: position.get(place.id) ?? 0 } : place));
+/** Positions 0..n-1 within a day, keeping order (like the server's renumbering). */
+function renumber(stops: Stop[], day: string): Stop[] {
+  const ordered = stops
+    .filter((stop) => stop.day === day)
+    .sort((a, b) => a.position - b.position || a.createdAt.localeCompare(b.createdAt));
+  const position = new Map(ordered.map((stop, index) => [stop.id, index]));
+  return stops.map((stop) => (stop.day === day ? { ...stop, position: position.get(stop.id) ?? 0 } : stop));
 }
 
+/** A visit with a new status, timestamps set the way the server does. */
+export function withStatus(stop: Stop, status: StopStatus, at: string): Stop {
+  switch (status) {
+    case 'planned':
+      return { ...stop, status, arrivedAt: null, completedAt: null, skippedAt: null, completionSource: null };
+    case 'in_progress':
+      return { ...stop, status, arrivedAt: stop.arrivedAt ?? at, completedAt: null, skippedAt: null, completionSource: null };
+    case 'completed':
+      return { ...stop, status, completedAt: at, skippedAt: null, completionSource: 'user' };
+    case 'skipped':
+      return { ...stop, status, skippedAt: at, completedAt: null, completionSource: null };
+  }
+}
+
+const endOfDay = (stops: readonly Stop[], day: string) =>
+  stops.filter((stop) => stop.day === day).reduce((max, stop) => Math.max(max, stop.position + 1), 0);
+
 /** Applies one op to a trip the way the server would. */
-function applyOne(detail: TripDetail, op: PendingOp): TripDetail {
+function applyOne(detail: TripDetailV2, op: PendingOp): TripDetailV2 {
   if (op.kind === 'visited') {
     return {
       ...detail,
@@ -114,45 +183,70 @@ function applyOne(detail: TripDetail, op: PendingOp): TripDetail {
       ),
     };
   }
-  if (op.tripId !== detail.id || op.kind === 'journal') return detail;
-  if (op.kind === 'reorder') {
+  // Pre-D1 ops (by place id) are only sent, never drawn on the visits model.
+  if (op.kind === 'journal' || op.kind === 'schedule' || op.kind === 'reorder' || op.tripId !== detail.trip.id) return detail;
+  const at = new Date(op.createdAt).toISOString();
+
+  if (op.kind === 'stopAdd') {
+    if (detail.stops.some((stop) => stop.id === op.stopId)) return detail;
+    const member = detail.places.find((place) => place.tripPlaceId === op.tripPlaceId);
+    if (!member) return detail;
+    const stop: Stop = {
+      id: op.stopId,
+      tripId: op.tripId,
+      tripPlaceId: op.tripPlaceId,
+      placeId: member.id,
+      day: op.day,
+      position: endOfDay(detail.stops, op.day),
+      startTime: op.startTime,
+      durationMinutes: op.durationMinutes,
+      timeZone: null,
+      status: 'planned',
+      arrivedAt: null,
+      completedAt: null,
+      skippedAt: null,
+      completionSource: null,
+      highlight: op.highlight,
+      createdAt: at,
+      updatedAt: at,
+      version: 1,
+    };
+    return { ...detail, stops: sortStops([...detail.stops, stop]) };
+  }
+  if (op.kind === 'stopRemove') {
+    const target = detail.stops.find((stop) => stop.id === op.stopId);
+    if (!target) return detail;
+    return { ...detail, stops: sortStops(renumber(detail.stops.filter((stop) => stop.id !== op.stopId), target.day)) };
+  }
+  if (op.kind === 'reorderStops') {
     const order = new Map(op.value.map((id, index) => [id, index]));
-    const places = detail.places.map((place) =>
-      place.day === op.day && order.has(place.id) ? { ...place, position: order.get(place.id) ?? 0 } : place,
+    const stops = detail.stops.map((stop) =>
+      stop.day === op.day && order.has(stop.id) ? { ...stop, position: order.get(stop.id) ?? 0 } : stop,
     );
-    return { ...detail, places: sortPlaces(renumber(places, op.day)) };
+    return { ...detail, stops: sortStops(renumber(stops, op.day)) };
   }
-  const target = detail.places.find((place) => place.id === op.placeId);
+
+  const target = detail.stops.find((stop) => stop.id === op.stopId);
   if (!target) return detail;
-  let places = detail.places;
+  let stops = detail.stops;
   if (op.field === 'day') {
-    const day = op.value as string | null;
+    const day = op.value as string;
     if (day === target.day) return detail;
-    const end = places.filter((place) => place.day === day).reduce((max, place) => Math.max(max, place.position + 1), 0);
-    places = places.map((place) =>
-      place.id === op.placeId
-        ? day === null
-          ? { ...place, day: null, startTime: null, position: 0 }
-          : { ...place, day, position: end }
-        : place,
+    stops = renumber(
+      stops.map((stop) => (stop.id === op.stopId ? { ...stop, day, position: endOfDay(stops, day) } : stop)),
+      target.day,
     );
-    if (target.day !== null) places = renumber(places, target.day);
-  } else if (op.field === 'highlight') {
-    places = places.map((place) => (place.id === op.placeId ? { ...place, highlight: op.value === true } : place));
-  } else if (op.field === 'startTime') {
-    places = places.map((place) =>
-      place.id === op.placeId && place.day !== null ? { ...place, startTime: op.value as string | null } : place,
-    );
+  } else if (op.field === 'status') {
+    stops = stops.map((stop) => (stop.id === op.stopId ? withStatus(stop, op.value as StopStatus, at) : stop));
   } else {
-    places = places.map((place) =>
-      place.id === op.placeId ? { ...place, durationMinutes: op.value as number | null } : place,
-    );
+    const key = op.field;
+    stops = stops.map((stop) => (stop.id === op.stopId ? { ...stop, [key]: op.value } : stop));
   }
-  return { ...detail, places: sortPlaces([...places]) };
+  return { ...detail, stops: sortStops([...stops]) };
 }
 
 /** What the user sees: the server copy with their pending changes on top, in order. */
-export function applyOps(detail: TripDetail, ops: readonly PendingOp[]): TripDetail {
+export function applyOps(detail: TripDetailV2, ops: readonly PendingOp[]): TripDetailV2 {
   if (ops.length === 0) return detail;
   return [...ops].sort((a, b) => a.createdAt - b.createdAt).reduce(applyOne, detail);
 }
@@ -164,9 +258,17 @@ export function applyVisitedOps<P extends Pick<Place, 'id' | 'visitedAt'>>(place
   return { ...place, visitedAt: op.value ? (place.visitedAt ?? new Date(op.createdAt).toISOString()) : null };
 }
 
-/** Places with a change waiting to sync (for a small marker on the stop). */
+/** Visits (and places) with a change waiting to sync (for a small marker on the stop). */
 export function pendingPlaceIds(ops: readonly PendingOp[]): Set<string> {
-  return new Set(ops.flatMap((op) => (op.kind === 'reorder' || op.kind === 'journal' ? [] : [op.placeId])));
+  return new Set(
+    ops.flatMap((op) =>
+      op.kind === 'reorder' || op.kind === 'journal' || op.kind === 'reorderStops'
+        ? []
+        : op.kind === 'stop' || op.kind === 'stopAdd' || op.kind === 'stopRemove'
+          ? [op.stopId]
+          : [op.placeId],
+    ),
+  );
 }
 
 /** The journal the user sees: the server copy with pending notes/ratings on top. */

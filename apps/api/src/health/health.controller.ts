@@ -1,10 +1,10 @@
-import { Controller, Get, Logger } from '@nestjs/common';
+import { Controller, Get, Logger, VERSION_NEUTRAL } from '@nestjs/common';
 import { Public } from '../auth/public.decorator.js';
 import { ApiException } from '../common/api-exception.js';
 import { DatabaseService } from '../database/database.service.js';
 
 @Public()
-@Controller('health')
+@Controller({ path: 'health', version: VERSION_NEUTRAL })
 export class HealthController {
   private readonly logger = new Logger(HealthController.name);
 

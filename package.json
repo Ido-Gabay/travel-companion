@@ -12,6 +12,7 @@
     "test": "pnpm build:shared && pnpm -r test",
     "setup:db": "node scripts/set-database-url.mjs",
     "smoke:api": "node scripts/smoke-test-api.mjs",
+    "db:preview": "node scripts/preview-db.mjs",
     "setup:mobile": "node scripts/setup-mobile-env.mjs",
     "dev:api": "pnpm build:shared && pnpm --filter @travel-companion/api dev",
     "dev:mobile": "pnpm build:shared && pnpm --filter @travel-companion/mobile start",

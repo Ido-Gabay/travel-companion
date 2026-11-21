@@ -92,7 +92,7 @@ await step('preference was saved', 'GET', '/v1/me/preferences', null, (s, j) => 
 await step('switch back to English', 'PATCH', '/v1/me/preferences', { locale: 'en' }, (s, j) => s === 200 && j.locale === 'en');
 await step('invalid language is rejected', 'PATCH', '/v1/me/preferences', { locale: 'xx' }, (s, j) => s === 400 && j.error.code === 'VALIDATION_FAILED');
 await step('trips list loads', 'GET', '/v1/trips', null, (s, j) => s === 200 && Array.isArray(j.items));
-await step('usage report (cost monitoring)', 'GET', '/v1/usage', null, (s, j) => s === 200 && j.items.length === 5 && j.items.every((i) => i.monthlyCap >= 0 && (i.freePerMonth === null || i.monthlyCap <= i.freePerMonth)));
+await step('usage report (cost monitoring)', 'GET', '/v1/usage', null, (s, j) => s === 200 && j.items.length === 6 && j.items.every((i) => i.monthlyCap >= 0 && (i.freePerMonth === null || i.monthlyCap <= i.freePerMonth)));
 await step('a bad hotel pin is rejected', 'POST', '/v1/trips', { title: 'x', basePlaceId: 'bad id!' }, (s, j) => s === 400 && j.error.code === 'VALIDATION_FAILED');
 await step('trip without a title is rejected', 'POST', '/v1/trips', { title: '  ' }, (s, j) => s === 400 && j.error.code === 'VALIDATION_FAILED');
 
@@ -113,14 +113,46 @@ if (trip?.id && place?.id) {
   await step('a day outside the trip is rejected', 'PATCH', `/v1/trips/${trip.id}/places/${place.id}`, { day: '2026-12-15' }, (s, j) => s === 400 && j.error.code === 'VALIDATION_FAILED');
   await step('reorder the day', 'PUT', `/v1/trips/${trip.id}/days/2026-11-24/order`, { placeIds: [place.id] }, (s, j) => s === 200 && j.places[0]?.position === 0);
   await step('a stale reorder is a conflict', 'PUT', `/v1/trips/${trip.id}/days/2026-11-25/order`, { placeIds: [place.id] }, (s, j) => s === 409 && j.error.code === 'CONFLICT');
-  await step('shorter dates move it back to the wishlist', 'PATCH', `/v1/trips/${trip.id}`, { endDate: '2026-11-23' }, (s, j) => s === 200 && j.endDate === '2026-11-23');
-  await step('it is on the wishlist again, time cleared', 'GET', `/v1/trips/${trip.id}`, null, (s, j) => s === 200 && j.places[0]?.day === null && j.places[0]?.startTime === null);
+  // D1 Q5: dates that would leave a planned place outside are refused, never applied silently.
+  await step('shorter dates with a planned place are refused', 'PATCH', `/v1/trips/${trip.id}`, { endDate: '2026-11-23' }, (s, j) => s === 400 && j.error.code === 'VALIDATION_FAILED');
+  await step('move it back to the wishlist', 'PATCH', `/v1/trips/${trip.id}/places/${place.id}`, { day: null }, (s, j) => s === 200 && j.places[0]?.day === null);
+  await step('now the shorter dates apply', 'PATCH', `/v1/trips/${trip.id}`, { endDate: '2026-11-23' }, (s, j) => s === 200 && j.endDate === '2026-11-23');
+  await step('it is on the wishlist, time cleared', 'GET', `/v1/trips/${trip.id}`, null, (s, j) => s === 200 && j.places[0]?.day === null && j.places[0]?.startTime === null);
   await step('remove the place from the trip', 'DELETE', `/v1/trips/${trip.id}/places/${place.id}`, null, (s, j) => s === 200 && j.places.length === 0);
   await step('unknown trip id is 404', 'GET', '/v1/trips/00000000-0000-4000-8000-000000000000', null, (s, j) => s === 404 && j.error.code === 'NOT_FOUND');
   await step('malformed id is rejected', 'GET', '/v1/trips/not-a-uuid', null, (s, j) => s === 400 && j.error.code === 'VALIDATION_FAILED');
   await step('delete the place (cleanup)', 'DELETE', `/v1/places/${place.id}`, null, (s) => s === 204);
   await step('delete the trip (cleanup)', 'DELETE', `/v1/trips/${trip.id}`, null, (s) => s === 204);
   await step('deleted trip is gone', 'GET', `/v1/trips/${trip.id}`, null, (s) => s === 404);
+}
+
+// D1 · API v2: visits, lifecycle, stays, time zone suggestions. Everything is deleted at the end.
+const v2trip = await step('v2: create a trip (v1) with "Staying at"', 'POST', '/v1/trips', { title: 'Smoke v2 trip', baseLocation: 'Pod Times Square', startDate: '2026-11-23', endDate: '2026-11-29' }, (s) => s === 201);
+const v2place = await step('v2: a custom place with my own pin', 'POST', '/v1/places', { name: 'Smoke pin', latitude: 40.758, longitude: -73.9855 }, (s, j) => s === 201 && j.latitude === 40.758 && j.source === 'custom');
+if (v2trip?.id && v2place?.id) {
+  const t = `/v2/trips/${v2trip.id}`;
+  await step('v2: the "Staying at" text became a whole-trip stay', 'GET', t, null, (s, j) => s === 200 && j.stays.length === 1 && j.stays[0].label === 'Pod Times Square' && j.stays[0].checkIn === null && !('baseLocation' in j.trip));
+  const saved = await step('v2: save the place to the trip', 'POST', `${t}/places`, { placeId: v2place.id }, (s, j) => s === 200 && j.places.length === 1 && j.stops.length === 0);
+  const tripPlaceId = saved?.places?.[0]?.tripPlaceId;
+  const first = await step('v2: a visit on Nov 24 (zone from my pin)', 'POST', `${t}/stops`, { tripPlaceId, day: '2026-11-24', startTime: '10:00' }, (s, j) => s === 201 && j.stop.status === 'planned' && j.stop.timeZone === 'America/New_York');
+  await step('v2: a second visit to the same place', 'POST', `${t}/stops`, { tripPlaceId, day: '2026-11-27' }, (s, j) => s === 201 && j.stop.id !== first?.stop?.id);
+  await step('v1 still reads one visit (the earliest)', 'GET', `/v1/trips/${v2trip.id}`, null, (s, j) => s === 200 && j.places[0]?.day === '2026-11-24' && j.places[0]?.startTime === '10:00');
+  await step('v1 can\'t move a place with two visits (needs the newer app)', 'PATCH', `/v1/trips/${v2trip.id}/places/${v2place.id}`, { day: '2026-11-25' }, (s, j) => s === 409 && j.error.code === 'CONFLICT');
+  if (first?.stop?.id) {
+    const stop = `${t}/stops/${first.stop.id}`;
+    await step('v2: arrive', 'POST', `${stop}/arrive`, null, (s, j) => s === 200 && j.stop.status === 'in_progress' && j.stop.arrivedAt !== null);
+    await step('v2: done', 'POST', `${stop}/complete`, null, (s, j) => s === 200 && j.stop.status === 'completed' && j.stop.completionSource === 'user');
+    await step('v2: done again is a no-op', 'POST', `${stop}/complete`, null, (s, j) => s === 200 && j.stop.status === 'completed');
+    await step('v2: a done visit cannot be skipped', 'POST', `${stop}/skip`, null, (s, j) => s === 409 && j.error.code === 'INVALID_TRANSITION');
+    await step('v2: the place history has the visit', 'GET', `/v1/places/${v2place.id}/visits`, null, (s, j) => s === 200 && j.items.some((v) => v.stopId === first.stop.id));
+    await step('v2: shorter dates are refused with the visits outside', 'PATCH', t, { endDate: '2026-11-25' }, (s, j) => s === 409 && j.error.code === 'STOPS_OUTSIDE_DATES' && j.error.details.length === 1);
+  }
+  await step('v2: a stay for some nights', 'POST', `${t}/stays`, { label: 'Brooklyn loft', checkIn: '2026-11-25', checkOut: '2026-11-27' }, (s, j) => s === 201 && j.stay.label === 'Brooklyn loft');
+  await step('v2: overlapping nights are refused', 'POST', `${t}/stays`, { label: 'Other', checkIn: '2026-11-26', checkOut: '2026-11-28' }, (s, j) => s === 409 && j.error.code === 'STAY_OVERLAP');
+  await step('time zone suggestion (nothing stored)', 'POST', '/v1/timezones/lookup', { latitude: 40.758, longitude: -73.9855 }, (s, j) => s === 200 && j.timeZone === 'America/New_York' && j.certain === true);
+  await step('v2: set the trip zone (confirmed by me)', 'PATCH', t, { timeZone: 'America/New_York' }, (s, j) => s === 200 && j.timeZone === 'America/New_York' && j.timeZoneSource === 'user');
+  await step('v2: delete the trip and its history (cleanup)', 'DELETE', `${t}?deleteHistory=1`, null, (s) => s === 204);
+  await step('delete the pin place (cleanup)', 'DELETE', `/v1/places/${v2place.id}`, null, (s) => s === 204);
 }
 
 // Discovery (AI + Google Places). Skipped when the server has no Google key.

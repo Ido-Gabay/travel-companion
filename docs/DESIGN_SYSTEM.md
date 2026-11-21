@@ -30,7 +30,9 @@ Airbnb and Linear, not copied.
 
 | Group | Values |
 | --- | --- |
-| Colors | Unchanged from M3: `background` #F6F4F0, `surface` #FFF, `surfaceMuted`, `border`, `text` #14202E, `textSecondary`, `textTertiary`, `accent` #1F5C66, `accentSoft`, `danger`, `dangerSoft`, `success`. |
+| Colors | Unchanged from M3: `background` #F6F4F0, `surface` #FFF, `surfaceMuted`, `border`, `text` #14202E, `textSecondary`, `textTertiary`, `accent` #1F5C66, `accentSoft`, `danger`, `dangerSoft`, `success`. U4 named the remaining literals: `accentSoftPressed`, `successSoft`, `surfaceTranslucent` (map controls), `textOnAccentSecondary` / `textOnAccentTertiary` / `borderOnAccent` (on the accent surface). |
+| Weights | `weights.regular` / `semibold` / `bold` for emphasis outside the text variants; no literal `fontWeight` in new code. |
+| Touch | `hitSlop` (8 all round) for icon buttons; `compactHitSlop` (6 vertical, 4 sideways) for chips and `Button size="sm"`. A horizontal chip row pads vertically by `compactHitSlop.top` so the target isn't clipped. |
 | Type | `display` 30/700 (screen titles), `title` 20/700, `heading` 17/600, `body` 16, `bodyStrong` 16/600, `label` 13/600 (section labels, eyebrows), `caption` 13. `overline` (uppercase) is legacy; only the welcome screen uses it. |
 | Radii | `md` 12 (buttons, inputs), `card` 20 (cards, groups, sheets, action menu), `pill` (chips, compact buttons). |
 | Spacing | 4-pt scale `xxs` 2 … `huge` 48. Screen padding 20, section gap 24. |
@@ -61,7 +63,16 @@ Airbnb and Linear, not copied.
   delete trip; Google Maps, delete place). No big red buttons at the bottom of pages.
 - **Choices:** a row showing the current value; tapping opens the action menu or a
   sheet with a check on the current option (language, distance unit, Discover context).
+- **Proposals (U5):** a suggested change is a `ChangeRow` (check = included; tap to leave out), its
+  reasons are `Tag`s, a day's load is a `LoadBar`; the primary button says what it saves.
 - **Chips:** white pills without a border; the selected chip is filled teal.
+- **Show it when it matters (U4):** explanations that never change (legends, how estimates
+  work, pricing) wait behind one ghost link; status text appears only when something is off
+  (e.g. location); a note appears only when its subject is on screen (≈ only with an estimate).
+- **One copy of each action:** an action already on the screen is not repeated in its "…" menu;
+  a row keeps one visible action, the rest go in its "…".
+- **Touch targets:** `Button size="sm"` is 36pt tall with `compactHitSlop`; chips use
+  `compactHitSlop`; icon-only controls are at least 36pt with `hitSlop`.
 
 ## Map-first screens (U2, Today)
 

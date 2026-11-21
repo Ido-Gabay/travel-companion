@@ -135,9 +135,9 @@ describe('Today (map first)', () => {
     expect(await screen.findByText(t('today.alertOfflinePending', { count: 1 }))).toBeTruthy();
     const ops = await storedOps();
     expect(ops).toHaveLength(1);
-    expect(ops[0]).toMatchObject({ kind: 'visited', placeId: uuid(102) });
+    expect(ops[0]).toMatchObject({ kind: 'stop', stopId: uuid(102), field: 'status', value: 'completed' });
     // Never changes the itinerary itself: only the Done the user asked for.
-    expect(ops.some((op) => op.kind === 'schedule' || op.kind === 'reorder')).toBe(false);
+    expect(ops.some((op) => op.kind === 'schedule' || op.kind === 'reorder' || op.kind === 'reorderStops')).toBe(false);
   });
 
   it('a stop in the list selects it on the map; a second tap opens it', async () => {
@@ -170,6 +170,8 @@ describe('Today (map first)', () => {
     expect(sheetState()).toBe(t('today.sheetHalf'));
     expect(screen.getAllByRole('tab').length).toBe(7);
     expect(screen.getByText(t('today.previewBody'))).toBeTruthy();
+    // A preview never changes the plan: no Done.
+    expect(screen.queryByText(t('tripMode.done'))).toBeNull();
   });
 
   describe('real travel times (M16)', () => {

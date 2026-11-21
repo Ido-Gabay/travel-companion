@@ -7,6 +7,7 @@ import { AppText, Icon } from '@/components/ui';
 import { googleMapsEnabled } from '@/components/maps/PlacesMap';
 import { quietMapStyle } from '@/theme/map-style';
 import { colors, radii, shadows, spacing } from '@/theme/tokens';
+import { markerLabel } from '@/features/trips/map-markers';
 import type { MapPin, TodayMapModel } from './today-map';
 
 export interface TodayMapHandle {
@@ -85,13 +86,18 @@ export const TodayMap = forwardRef<TodayMapHandle, TodayMapProps>(function Today
 
   const start = model.frame[0] ?? hotel ?? { latitude: 40.758, longitude: -73.9855 };
   const pinLabel = (pin: MapPin) =>
-    pin.kind === 'done'
-      ? t('today.pinDone', { number: pin.number, name: pin.name })
-      : pin.kind === 'next'
-        ? t('today.pinNext', { number: pin.number, name: pin.name })
-        : pin.kind === 'now'
-          ? t('today.pinNow', { number: pin.number, name: pin.name })
-          : t('today.pinLater', { number: pin.number, name: pin.name });
+    [
+      pin.kind === 'done'
+        ? t('today.pinDone', { number: pin.number, name: pin.name })
+        : pin.kind === 'next'
+          ? t('today.pinNext', { number: pin.number, name: pin.name })
+          : pin.kind === 'now'
+            ? t('today.pinNow', { number: pin.number, name: pin.name })
+            : t('today.pinLater', { number: pin.number, name: pin.name }),
+      pin.also.length > 0 ? t('today.pinAlso', { numbers: pin.also.join(', ') }) : null,
+    ]
+      .filter(Boolean)
+      .join('. ');
 
   return (
     <MapView
@@ -132,18 +138,20 @@ export const TodayMap = forwardRef<TodayMapHandle, TodayMapProps>(function Today
         </Marker>
       ) : null}
 
-      {model.pins.map((pin) => {
+      {model.pins.map((pin, index) => {
         const selected = pin.id === selectedId;
         const size = PIN[pin.kind];
+        const text = pin.also.length > 0 ? markerLabel([pin.number, ...pin.also].sort((a, b) => a - b)) : String(pin.number);
         return (
           <Marker
             // Remount on state change so the custom view redraws (tracksViewChanges is off for performance).
-            key={`${pin.id}:${pin.kind}:${pin.number}:${selected ? 1 : 0}`}
+            key={`${pin.id}:${pin.kind}:${text}:${selected ? 1 : 0}`}
             identifier={pin.id}
             coordinate={pin.location}
             anchor={{ x: 0.5, y: 0.5 }}
             tracksViewChanges={false}
-            zIndex={pin.kind === 'next' || pin.kind === 'now' ? 10 : selected ? 9 : pin.kind === 'later' ? 5 : 3}
+            // By kind, then day order (earlier on top), so overlap never depends on mount order.
+            zIndex={(pin.kind === 'next' || pin.kind === 'now' ? 10 : selected ? 9 : pin.kind === 'later' ? 5 : 3) * 1000 - index}
             onPress={(event) => {
               event.stopPropagation?.();
               onSelect(pin.id);
@@ -157,7 +165,7 @@ export const TodayMap = forwardRef<TodayMapHandle, TodayMapProps>(function Today
               accessibilityState={{ selected }}
               style={[
                 styles.pin,
-                { width: size, height: size },
+                pin.also.length > 0 ? { minWidth: size, height: size, paddingHorizontal: spacing.xs } : { width: size, height: size },
                 pin.kind === 'done' && styles.pinDone,
                 pin.kind === 'later' && styles.pinLater,
                 pin.kind === 'next' && styles.pinNext,
@@ -175,7 +183,7 @@ export const TodayMap = forwardRef<TodayMapHandle, TodayMapProps>(function Today
                   style={pin.kind === 'next' ? styles.numberNext : styles.numberLater}
                   allowFontScaling={false}
                 >
-                  {pin.number}
+                  {text}
                 </AppText>
               )}
             </View>

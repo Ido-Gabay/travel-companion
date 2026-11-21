@@ -21,7 +21,7 @@ price list on 2026-11-17 (free usage is per SKU, per month, per billing account)
 | Each photo image shown | Places API **Place Details Photos** | 1,000 | $7 | 60 / 900 |
 | Real travel times + route line (M16: Today, "Plan this day"; online only) | Routes API **Compute Routes Essentials** (walk/transit; never traffic-aware, no waypoint optimization, no intermediate waypoints) | 10,000 | $5 | 150 / 2,000 |
 | Maps on iPhone | **Maps SDK** (mobile native) | Unlimited | — | — |
-| "Ask AI" | **Claude Haiku 5.5** (tokens) | — | per token | 300 / 3,000 |
+| "Ask AI" and the trip assistant (D1; only requests the phone's rules can't read) | **Claude Haiku 5.5** (tokens) | — | per token | 300 / 3,000 (shared) |
 
 Env vars: `GOOGLE_TEXT_SEARCH_DAILY_CAP` / `_MONTHLY_CAP`, `GOOGLE_PLACE_DETAILS_*`,
 `GOOGLE_PLACE_PREVIEW_*`, `GOOGLE_PLACE_PHOTO_*`, `GOOGLE_ROUTES_DAILY_CAP` / `_MONTHLY_CAP`,
@@ -86,7 +86,7 @@ results are reused for the preview and for saving, so those cost no extra lookup
 | Without a Google map, show Google attribution | One component, `components/GoogleAttribution.tsx`, everywhere Google place content appears outside a map (Discover lists, preview, cards, itinerary, Home, Today, add-places, hotel pin). Text "Google Maps" (allowed where space is limited) styled per Google's rules: sans-serif (Roboto on Android), weight 400, #5E5E5E, 12–16 sp, one line, never translated. Reminder notifications that name a Google place carry "Google Maps" as the iOS subtitle. The official logo (16–19 dp, Google's asset files) is optional polish. |
 | Credit photo authors and link photos to Google Maps | Each photo shows "Photo: <author>" (linking to the author) and opens the photo's `googleMapsUri` when tapped. |
 | Users must be able to reach the place on Google Maps | Every result and saved place has "Google Maps" / "Directions" buttons using `googleMapsUri` or official Maps URLs. |
-| Don't create content based on Google Maps content | Google results are never sent to Claude, and Claude never ranks or describes them. Claude only turns the user's words (plus their own trip name, destination and dates) into a search. The "Searching for …" line describes the request, not the places. |
+| Don't create content based on Google Maps content | Google results are never sent to Claude, and Claude never ranks or describes them. Claude only turns the user's words (plus their own trip name, destination and dates) into a search. The "Searching for …" line describes the request, not the places. The trip assistant (D1) sends Claude opaque refs, categories, times, stars and the user's own labels only (never Google names or IDs; strict schema); Claude never names or recommends places, and "find dinner near …" runs a normal Google search only when the user taps it. "I also want to visit …" (D1-C): Claude gets only the user's words; the place is found by a normal Text Search when the user taps Search (one call, `GOOGLE_TEXT_SEARCH_*` caps), its opening hours only on "Check opening hours" (one preview call), and it is saved by place ID only on Apply. Where it is relative to the trip is computed on the phone (estimates, ≈). Live (D1-D): "Saved places near you" uses only what the phone already has (saved places' details or cached coordinates, previews already in memory); an alternative for a closed place or "something nearby" is a Text Search around a point, only on tap. |
 
 Server key and iOS key are different keys. The server key never ships in the app.
 

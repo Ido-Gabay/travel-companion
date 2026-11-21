@@ -63,6 +63,10 @@ export interface ReminderDay {
   day: string;
   /** In itinerary order. */
   stops: readonly ReminderStop[];
+  /** D1: this day's zone (its stay), when known; else the trip's. */
+  timeZone?: string | null;
+  /** D1: where the user sleeps that night (first leg of the day), when known; else the trip's hotel. */
+  hotel?: LatLng | null;
 }
 
 export interface ReminderInput {
@@ -118,12 +122,14 @@ function minutesOf(time: string): number {
 export function planReminders(input: ReminderInput, options: { raw?: boolean } = {}): PlannedReminder[] {
   const { settings, tripId, timeZone, nowMs } = input;
   if (!settings.enabled) return [];
-  const at = (day: string, minutes: number) =>
-    // Minutes may go below 0 (leave before midnight): shift through the day boundary.
-    zonedDateTimeToUtc(day, toClock(Math.max(0, minutes)), timeZone) + Math.min(0, minutes) * 60_000;
-
   const planned: PlannedReminder[] = [];
-  for (const { day, stops } of input.days) {
+  for (const { day, stops, ...dayOnly } of input.days) {
+    // D1: a trip can cross time zones; each day uses its own (stay) zone when known.
+    const zone = dayOnly.timeZone ?? timeZone;
+    const hotel = dayOnly.hotel !== undefined && dayOnly.hotel !== null ? dayOnly.hotel : input.hotel;
+    const at = (minutes: number) =>
+      // Minutes may go below 0 (leave before midnight): shift through the day boundary.
+      zonedDateTimeToUtc(day, toClock(Math.max(0, minutes)), zone) + Math.min(0, minutes) * 60_000;
     const open = stops.filter((stop) => !stop.visited);
 
     if (settings.morningSummary && open.length > 0) {
@@ -131,7 +137,7 @@ export function planReminders(input: ReminderInput, options: { raw?: boolean } =
       planned.push({
         id: `tc:morning:${tripId}:${day}`,
         kind: 'morning',
-        fireAtMs: zonedDateTimeToUtc(day, MORNING_SUMMARY_TIME, timeZone),
+        fireAtMs: zonedDateTimeToUtc(day, MORNING_SUMMARY_TIME, zone),
         tripId,
         day,
         placeId: null,
@@ -146,7 +152,7 @@ export function planReminders(input: ReminderInput, options: { raw?: boolean } =
       if (stop.visited || stop.startTime === null || input.muted.has(stop.id)) return;
       const start = minutesOf(stop.startTime);
       // Travel from the previous stop of the day (its location), else from the hotel.
-      const previous = [...stops.slice(0, index)].reverse().find((item) => item.location !== null)?.location ?? input.hotel;
+      const previous = [...stops.slice(0, index)].reverse().find((item) => item.location !== null)?.location ?? hotel;
       // Unreliable estimates (bad coordinates) fall back to the "unknown travel" timing.
       const travel = reliableTravel(previous, stop.location);
       const travelMinutes = travel?.minutes ?? UNKNOWN_TRAVEL_MIN;
@@ -160,7 +166,7 @@ export function planReminders(input: ReminderInput, options: { raw?: boolean } =
           ...base,
           id: `tc:leaveSoon:${tripId}:${stop.id}`,
           kind: 'leaveSoon',
-          fireAtMs: at(day, leaveSoonAt),
+          fireAtMs: at(leaveSoonAt),
           vars: { name: stop.name, time: stop.startTime, lead: settings.leadMinutes, ...travelVars },
         });
       }
@@ -169,7 +175,7 @@ export function planReminders(input: ReminderInput, options: { raw?: boolean } =
           ...base,
           id: `tc:leaveNow:${tripId}:${stop.id}`,
           kind: 'leaveNow',
-          fireAtMs: at(day, leaveAt),
+          fireAtMs: at(leaveAt),
           vars: { name: stop.name, time: stop.startTime, ...travelVars },
         });
       }
@@ -180,7 +186,7 @@ export function planReminders(input: ReminderInput, options: { raw?: boolean } =
           ...base,
           id: `tc:headsUp:${tripId}:${stop.id}`,
           kind: 'headsUp',
-          fireAtMs: at(day, headsUpAt),
+          fireAtMs: at(headsUpAt),
           vars: { name: stop.name, time: stop.startTime, google: stop.google },
         });
       }

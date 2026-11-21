@@ -1,4 +1,4 @@
-import type { TripDetail } from '@travel-companion/shared';
+import type { TripDetailV2 } from '@travel-companion/shared';
 import { useMutation, useQueries, useQueryClient } from '@tanstack/react-query';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
@@ -16,14 +16,17 @@ export function TripMembership({ placeId }: { placeId: string }) {
   const trips = useTrips();
   const tripItems = trips.data?.items ?? [];
   const details = useQueries({
-    queries: tripItems.map((trip) => ({ queryKey: tripKey(trip.id), queryFn: () => api.getTrip(trip.id) })),
+    queries: tripItems.map((trip) => ({ queryKey: tripKey(trip.id), queryFn: () => api.getTripV2(trip.id) })),
   });
 
   const toggle = useMutation({
-    mutationFn: ({ tripId, add }: { tripId: string; add: boolean }) =>
-      add ? api.addTripPlace(tripId, placeId) : api.removeTripPlace(tripId, placeId),
-    onSuccess: (detail: TripDetail) => {
-      queryClient.setQueryData(tripKey(detail.id), detail);
+    mutationFn: ({ tripId, add }: { tripId: string; add: boolean }) => {
+      const member = queryClient.getQueryData<TripDetailV2>(tripKey(tripId))?.places.find((place) => place.id === placeId);
+      // Removing keeps visits that already happened in the place's history (D1).
+      return add || !member ? api.addTripMember(tripId, { placeId }) : api.removeTripMember(tripId, member.tripPlaceId);
+    },
+    onSuccess: (detail: TripDetailV2) => {
+      queryClient.setQueryData(tripKey(detail.trip.id), detail);
       void queryClient.invalidateQueries({ queryKey: ['trips', 'list'] });
       void queryClient.invalidateQueries({ queryKey: ['places'] });
     },

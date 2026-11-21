@@ -15,33 +15,49 @@ interface DayPickerSheetProps {
   counts: ReadonlyMap<string, number>;
   onPick: (day: string | null) => void;
   onClose: () => void;
+  /** Sheet title (default: "Pick a day"). */
+  title?: string;
+  /** Offer "not planned" as a choice (default true). D1: a visit is removed from its menu instead. */
+  allowWishlist?: boolean;
 }
 
 /** Choose which day of the trip a place is planned for, or move it back to the wishlist. */
-export function DayPickerSheet({ visible, placeName, days, current, counts, onPick, onClose }: DayPickerSheetProps) {
+export function DayPickerSheet({
+  visible,
+  placeName,
+  days,
+  current,
+  counts,
+  onPick,
+  onClose,
+  title,
+  allowWishlist = true,
+}: DayPickerSheetProps) {
   const { t } = useTranslation();
   const { locale } = useLocale();
 
   return (
-    <Sheet visible={visible} title={t('itinerary.pickDay')} subtitle={placeName} onClose={onClose}>
+    <Sheet visible={visible} title={title ?? t('itinerary.pickDay')} subtitle={placeName} onClose={onClose}>
       {days.map((day, index) => (
         <Row
           key={day}
           icon="calendar-outline"
           title={t('itinerary.dayNumber', { number: index + 1 })}
           subtitle={dayTitle(day, locale)}
-          meta={t('itinerary.placesCount', { count: counts.get(day) ?? 0 })}
+          meta={counts.get(day) ? t('itinerary.placesCount', { count: counts.get(day) ?? 0 }) : undefined}
           selected={current === day}
           onPress={() => onPick(day)}
         />
       ))}
-      <Row
-        icon="bookmark-outline"
-        title={t('itinerary.wishlist')}
-        subtitle={t('itinerary.wishlistHint')}
-        selected={current === null}
-        onPress={() => onPick(null)}
-      />
+      {allowWishlist ? (
+        <Row
+          icon="bookmark-outline"
+          title={t('itinerary.wishlist')}
+          subtitle={t('itinerary.wishlistHint')}
+          selected={current === null}
+          onPress={() => onPick(null)}
+        />
+      ) : null}
     </Sheet>
   );
 }

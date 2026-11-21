@@ -46,6 +46,17 @@ Google rules), `docs/LIVE_COMPANION.md` (Today + reminders design),
   Needs the owner to enable Routes API and allow it on the server key. Real run: shared 50,
   API 57, app logic 155, app screens 26; typecheck clean.
 - Open owner decision: M15 stage 2 (photos) now / after the trip / never (P17).
+- **D1 working tree (uncommitted, 2026-11-19):** visits/stays + API v2 + complete trip
+  plan + **smart trip assistant** (P20, accepted on code + tests; DEVELOPMENT_STATUS.md → "D1 trip assistant")
+  + **Replan the rest of today** on Today (D1-B, written; DEVELOPMENT_STATUS.md → "Replan the rest of today")
+  + **Find a place and plan it in** (D1-C, written; DEVELOPMENT_STATUS.md → "Find a place and plan it in")
+  + **Live trip adjustments** on Today (D1-D, written; DEVELOPMENT_STATUS.md → "Live trip adjustments")
+  + **New trip redesign** (U3) and a **UX/UI audit pass** across screens (U4; DEVELOPMENT_STATUS.md → "UX/UI audit pass")
+  + **Import places** (paste / Takeout CSV, `POST /v1/assistant/extract-places`) and **Link to Google Maps**
+  (`POST /v1/places/:id/google`) + **Saved by trip** (DEVELOPMENT_STATUS.md → those sections).
+  Before deploying: the D1 migration `20261118150000` must be pushed first (owner approval), then the API.
+  Real `pnpm test` / `pnpm typecheck` pass; nothing seen on a screen or against real
+  Claude; D1 migration `20261118150000` remote status not checked.
 - **Nothing from U1 or M12a has been looked at on a screen yet.** Device behavior
   of M9–M11 (Today, reminders) is also unconfirmed in writing.
 - Offline design: docs/ARCHITECTURE.md → "Offline-tolerant trip mode (M12a)".

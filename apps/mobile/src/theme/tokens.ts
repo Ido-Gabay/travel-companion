@@ -14,14 +14,23 @@ export const colors = {
   textSecondary: '#5B6573',
   textTertiary: '#8A929C',
   textOnAccent: '#FFFFFF',
+  /** Text and lines on the accent surface (the New trip ticket). */
+  textOnAccentSecondary: 'rgba(255,255,255,0.72)',
+  textOnAccentTertiary: 'rgba(255,255,255,0.5)',
+  borderOnAccent: 'rgba(255,255,255,0.35)',
 
   accent: '#1F5C66',
   accentPressed: '#174850',
   accentSoft: '#E3EEEF',
+  accentSoftPressed: '#D3E4E6',
 
   danger: '#B3261E',
   dangerSoft: '#FBEAE8',
   success: '#2E6B3F',
+  successSoft: '#E6F2E9',
+
+  /** Controls floating over the map. */
+  surfaceTranslucent: 'rgba(255,255,255,0.88)',
 
   /** The user's own location on maps (the platform's familiar blue). */
   location: '#2F6FDE',
@@ -47,6 +56,13 @@ export const radii = {
   /** Cards, grouped lists and sheets. */
   card: 20,
   pill: 999,
+} as const;
+
+/** Font weights outside the text variants (emphasis inside a caption, chip labels, map badges). */
+export const weights = {
+  regular: '400',
+  semibold: '600',
+  bold: '700',
 } as const;
 
 /** System fonts (SF Pro on iOS, Roboto on Android) cover Latin and Hebrew. */
@@ -86,3 +102,6 @@ export const shadows = {
 } as const;
 
 export const hitSlop = { top: 8, bottom: 8, left: 8, right: 8 } as const;
+
+/** Chips and small buttons (32–36pt tall): reach a 44pt target without looking bigger. Half the 8pt gap sideways. */
+export const compactHitSlop = { top: 6, bottom: 6, left: 4, right: 4 } as const;

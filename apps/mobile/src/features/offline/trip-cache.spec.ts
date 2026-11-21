@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { COORDS_SOURCE, upsertCoord } from './coords';
-import { memoryStore, tripDetail, tripPlace, uuid } from './test-fixtures';
+import { buildTripView } from '../trips/model';
+import { memoryStore, tripDetail, tripDetailV1, tripPlace, uuid } from './test-fixtures';
 import { clearAllOffline, clearOtherUsers, OFFLINE_PREFIX, sanitizeTripDetail, TripCache } from './trip-cache';
 
 const NOW = Date.UTC(2026, 10, 24, 12);
@@ -12,22 +13,24 @@ describe('offline trip cache', () => {
   it('saves and restores a trip list and a trip with plan, notes and Done status', async () => {
     const store = memoryStore();
     const cache = new TripCache(store, ALICE);
-    const detail = tripDetail([
+    const places = [
       tripPlace(1, { startTime: '10:00', durationMinutes: 90, notes: 'Book tickets', visitedAt: '2026-11-23T15:00:00.000Z' }),
-    ]);
-    await cache.saveTrips({ items: [detail] }, NOW - 60_000);
+    ];
+    const detail = tripDetail(places);
+    await cache.saveTrips({ items: [tripDetailV1(places)] }, NOW - 60_000);
     await cache.saveTrip(detail, NOW - 30_000);
     const snapshot = await cache.load(NOW);
-    expect(snapshot.trips?.data.items.map((trip) => trip.id)).toEqual([detail.id]);
+    expect(snapshot.trips?.data.items.map((trip) => trip.id)).toEqual([detail.trip.id]);
     expect(snapshot.trips?.savedAt).toBe(NOW - 60_000);
     expect(snapshot.details[0]?.savedAt).toBe(NOW - 30_000);
-    expect(snapshot.details[0]?.data.places[0]).toMatchObject({
+    const view = buildTripView(snapshot.details[0]!.data);
+    expect(view.places[0]).toMatchObject({
       startTime: '10:00',
       durationMinutes: 90,
       notes: 'Book tickets',
       visitedAt: '2026-11-23T15:00:00.000Z',
     });
-    expect(snapshot.details[0]?.data.baseLocation).toBe('Pod Times Square');
+    expect(view.baseLocation).toBe('Pod Times Square');
   });
 
   it('keeps users apart: another user reads nothing', async () => {
@@ -62,7 +65,7 @@ describe('offline trip cache', () => {
   it('saves the trip journal per user and drops it with its trip', async () => {
     const store = memoryStore();
     const cache = new TripCache(store, ALICE);
-    const trip = tripDetail([]);
+    const trip = tripDetailV1([]);
     const journal = { days: [{ day: '2026-11-23', note: 'Rainy but great', rating: 4, updatedAt: '2026-11-23T22:00:00.000Z' }] };
     await cache.saveTrips({ items: [trip] }, NOW);
     await cache.saveJournal(trip.id, journal, NOW);
@@ -70,6 +73,12 @@ describe('offline trip cache', () => {
     expect((await new TripCache(store, BOB).load(NOW)).journals).toEqual([]);
     await cache.saveTrips({ items: [] }, NOW);
     expect((await cache.load(NOW)).journals).toEqual([]);
+  });
+
+  it('a copy saved by an older build (pre-D1 shape) is dropped and refetched, never misread', async () => {
+    const store = memoryStore();
+    await store.setItem(`${OFFLINE_PREFIX}${ALICE}.trip.${uuid(1)}`, JSON.stringify({ savedAt: NOW, data: tripDetailV1([tripPlace(1)]) }));
+    expect((await new TripCache(store, ALICE).load(NOW)).details).toEqual([]);
   });
 
   it('drops corrupted entries instead of failing', async () => {
@@ -85,11 +94,10 @@ describe('offline trip cache', () => {
   it('removes saved details of trips that no longer exist', async () => {
     const store = memoryStore();
     const cache = new TripCache(store, ALICE);
-    const kept = tripDetail([], { id: uuid(1) });
-    await cache.saveTrip(kept, NOW);
+    await cache.saveTrip(tripDetail([], { id: uuid(1) }), NOW);
     await cache.saveTrip(tripDetail([], { id: uuid(2) }), NOW);
-    await cache.saveTrips({ items: [kept] }, NOW);
-    expect((await cache.load(NOW)).details.map((item) => item.data.id)).toEqual([uuid(1)]);
+    await cache.saveTrips({ items: [tripDetailV1([], { id: uuid(1) })] }, NOW);
+    expect((await cache.load(NOW)).details.map((item) => item.data.trip.id)).toEqual([uuid(1)]);
   });
 
   it('deletes expired coordinates (and ones for places not in a saved trip) automatically on load', async () => {

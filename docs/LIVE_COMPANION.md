@@ -45,7 +45,7 @@ keeps it on the wishlist; removing it from the trip keeps it in the collection.
 | Itinerary per day, order, time | ✅ M6 | `trip_places.day/position/start_time`, `ItineraryView` |
 | Visited ("Done") | ✅ M7 | `places.visited_at`, `useSetVisited` |
 | Today card: next stop, directions, Done | ✅ M7 | `features/trips/TripModeCard.tsx`, `tripMode()` |
-| Hotel as a real location | ✅ M8 | `trips.base_google_place_id` (ID only), `HotelPinSheet` |
+| Hotel as a real location | ✅ M8 | `trips.base_google_place_id` (ID only); D1: stays (`trip_stays`), `StaySheet` |
 | Current location, foreground, one reading | ✅ M8 | `features/companion/location.ts` (`useCurrentLocation`) |
 | Distance helpers | ✅ M8 | `features/companion/geo.ts` (haversine, formatting in km/mi) |
 | Planned duration per stop | ✅ M9 | `trip_places.duration_minutes` (null = category default, `visitMinutes()` in shared) |
@@ -54,6 +54,9 @@ keeps it on the wishlist; removing it from the trip keeps it in the collection.
 | Free-time detection | ✅ M9 | `computeToday()`: from now (or the end of the current visit) to the leave-by time; rest of the day once the plan is done |
 | Suggestions that fit | ✅ M9 | Wishlist first, then collection (max 40); travel there + visit + travel on must fit the gap; walking distance only after the plan is done. Opening hours not used yet (would cost Enterprise calls) |
 | Running late / overbooked | ✅ M9 | ≥10 min late: "Start at …" or "Move to tomorrow"/"Remove from today"; plan past 23:00: move the last stop. Accept or dismiss (dismissals stored on the phone per day) |
+| Replan the rest of today | 🟡 D1-B (written) | Today (full sheet) → `TripPlanSheet` with `focusDay`; behind schedule it starts with the `catchUp` instruction (`features/assistant/request.ts`); same planner, switches and change queue as the trip plan |
+| Something changed? (closed, staying longer, skip, late, nearby) | 🟡 D1-D (written) | Today peek → action menu → the same sheet with `closedVisit` / `extendVisit` / `skipVisit` / `catchUp` / `findPlace.nearHere`; also typed in en/he. Skips, longer visits, new times, optional shorter visits and a replacement place are each a switch; Apply through the change queue |
+| Saved places nearby | 🟡 D1-D (written) | `features/companion/nearby-saved.ts`: trip places not on any day within a ≈ 15 min walk of the one location reading; fits the free time / plan done / tight; opening hours only if already in memory; dismiss per day; Today section + peek alert; "Add to today" opens the focused sheet (preview, Apply) |
 | Local reminders ("leave in 10 min") | ✅ M10 (written) | See "Reminders (M10) as built" below |
 | Nearby saved place alerts | Later | Background location / geofencing, own permission, opt-in |
 

@@ -1,5 +1,5 @@
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
-import { colors, radii, spacing, typography } from '@/theme/tokens';
+import { colors, compactHitSlop, radii, spacing, typography } from '@/theme/tokens';
 import { AppText } from './AppText';
 import { Icon, type IconName } from './Icon';
 
@@ -24,11 +24,12 @@ interface ButtonProps {
   /** md = 48pt (default), sm = 36pt compact. */
   size?: Size;
   accessibilityHint?: string;
+  testID?: string;
 }
 
 const palette: Record<Variant, { bg: string; pressed: string; text: string; border?: string }> = {
   primary: { bg: colors.accent, pressed: colors.accentPressed, text: colors.textOnAccent },
-  secondary: { bg: colors.accentSoft, pressed: '#D3E4E6', text: colors.accent },
+  secondary: { bg: colors.accentSoft, pressed: colors.accentSoftPressed, text: colors.accent },
   ghost: { bg: 'transparent', pressed: colors.surfaceMuted, text: colors.accent },
   danger: { bg: 'transparent', pressed: colors.dangerSoft, text: colors.danger },
 };
@@ -43,18 +44,22 @@ export function Button({
   block = true,
   size = 'md',
   accessibilityHint,
+  testID,
 }: ButtonProps) {
   const p = palette[variant];
   const inactive = disabled || loading;
 
   return (
     <Pressable
+      testID={testID}
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityHint={accessibilityHint}
       accessibilityState={{ disabled: inactive, busy: loading }}
       disabled={inactive}
       onPress={onPress}
+      // A 36pt button still gets a 44pt touch target.
+      hitSlop={size === 'sm' ? compactHitSlop : undefined}
       style={({ pressed }) => [
         styles.base,
         size === 'sm' && styles.small,

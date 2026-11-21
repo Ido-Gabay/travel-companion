@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { fireEvent, screen } from '@testing-library/react-native';
+import { fireEvent, screen, waitFor } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import HomeScreen from '@/app/(tabs)/index';
 import { tripDetail, tripPlace } from '@/features/offline/test-fixtures';
 import i18n from '@/i18n/i18n';
-import { goOffline, renderApp, resetAll, seedSavedCopy, serverHas } from '../render';
+import { goOffline, renderApp, resetAll, seedSavedCopy, serverHas, storedOps } from '../render';
 
 const trip = tripDetail([tripPlace(1, { startTime: '10:00' }), tripPlace(2, { startTime: '13:00' })]);
 
@@ -23,13 +23,30 @@ describe('Home', () => {
     expect(await screen.findByText('New York')).toBeTruthy();
     expect(await screen.findByText(i18n.t('tripMode.openToday'))).toBeTruthy();
     expect(screen.queryByText(/Offline/)).toBeNull();
+    // Progress sits in the eyebrow; Directions and Done wait in the next stop's menu.
+    expect(screen.getByText(new RegExp(i18n.t('tripMode.doneShort', { done: 0, total: 2 })))).toBeTruthy();
+    expect(screen.queryByText(i18n.t('tripMode.done'))).toBeNull();
+    expect(screen.queryByText(i18n.t('places.directions'))).toBeNull();
+  });
+
+  it("the next stop's menu has Directions and Done; Done marks it (offline too)", async () => {
+    await seedSavedCopy([trip], Date.parse('2026-11-23T08:30:00Z'));
+    goOffline();
+    await renderApp(<HomeScreen />);
+    await fireEvent.press(await screen.findByLabelText(/^Directions or done for /));
+    expect(await screen.findByText(i18n.t('places.directions'))).toBeTruthy();
+    await fireEvent.press(screen.getByText(i18n.t('tripMode.done')));
+    await waitFor(async () => {
+      const ops = await storedOps();
+      expect(ops[0]).toMatchObject({ kind: 'stop', field: 'status', value: 'completed' });
+    });
   });
 
   it('the trip card opens live Today during the trip', async () => {
     serverHas([trip]);
     await renderApp(<HomeScreen />);
     await fireEvent.press(await screen.findByText('New York'));
-    expect(router.push).toHaveBeenCalledWith({ pathname: '/today', params: { tripId: trip.id } });
+    expect(router.push).toHaveBeenCalledWith({ pathname: '/today', params: { tripId: trip.trip.id } });
     expect(screen.getByText(i18n.t('tripMode.viewItinerary'))).toBeTruthy();
   });
 
@@ -38,7 +55,7 @@ describe('Home', () => {
     serverHas([trip]);
     await renderApp(<HomeScreen />);
     await fireEvent.press(await screen.findByText('New York'));
-    expect(router.push).toHaveBeenCalledWith({ pathname: '/today', params: { tripId: trip.id, preview: '1' } });
+    expect(router.push).toHaveBeenCalledWith({ pathname: '/today', params: { tripId: trip.trip.id, preview: '1' } });
   });
 
   it('opens offline from the saved copy and says so (cold launch, airplane mode)', async () => {

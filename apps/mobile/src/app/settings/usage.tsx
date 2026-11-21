@@ -1,13 +1,14 @@
 import type { UsageItem } from '@travel-companion/shared';
 import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
-import { AppText, Card, ErrorState, LoadingState, NavHeader } from '@/components/ui';
+import { AppText, Button, Card, ErrorState, LoadingState, NavHeader } from '@/components/ui';
 import { useLocale } from '@/i18n/LocaleProvider';
 import { api } from '@/lib/api';
 import { useErrorMessage } from '@/lib/use-error-message';
-import { colors, radii, spacing } from '@/theme/tokens';
+import { colors, radii, spacing, weights } from '@/theme/tokens';
 
 /**
  * Cost monitoring: this server's paid API usage today and this month, against
@@ -18,6 +19,7 @@ export default function UsageScreen() {
   const { t } = useTranslation();
   const errorMessage = useErrorMessage();
   const usage = useQuery({ queryKey: ['usage'], queryFn: api.getUsage });
+  const [showPricing, setShowPricing] = useState(false);
 
   const total = usage.data?.items.reduce((sum, item) => sum + (item.estimatedCostUsd ?? 0), 0) ?? 0;
 
@@ -43,11 +45,21 @@ export default function UsageScreen() {
               </AppText>
             </Card>
             {usage.data.items.map((item) => (
-              <UsageRow key={item.metric} item={item} />
+              <UsageRow key={item.metric} item={item} showPricing={showPricing} />
             ))}
-            <AppText variant="caption" color="tertiary">
-              {t('usage.footnote')}
-            </AppText>
+            {/* SKUs, prices and caps are for checking the bill, not for every visit. */}
+            <Button
+              label={showPricing ? t('usage.hidePricing') : t('usage.showPricing')}
+              variant="ghost"
+              size="sm"
+              block={false}
+              onPress={() => setShowPricing((value) => !value)}
+            />
+            {showPricing ? (
+              <AppText variant="caption" color="tertiary">
+                {t('usage.footnote')}
+              </AppText>
+            ) : null}
           </>
         )}
       </ScrollView>
@@ -55,7 +67,7 @@ export default function UsageScreen() {
   );
 }
 
-function UsageRow({ item }: { item: UsageItem }) {
+function UsageRow({ item, showPricing }: { item: UsageItem; showPricing: boolean }) {
   const { t } = useTranslation();
   const { locale } = useLocale();
   const number = (value: number) => new Intl.NumberFormat(locale).format(value);
@@ -79,16 +91,18 @@ function UsageRow({ item }: { item: UsageItem }) {
       <AppText variant="caption" color="secondary">
         {t('usage.today', { today: number(item.today), cap: number(item.dailyCap) })}
       </AppText>
-      <AppText variant="caption" color="tertiary">
-        {item.freePerMonth !== null && item.usdPer1000 !== null
-          ? t('usage.pricing', {
-              sku: item.sku,
-              free: number(item.freePerMonth),
-              price: item.usdPer1000.toFixed(2),
-              cap: number(item.monthlyCap),
-            })
-          : t('usage.pricingTokens', { sku: item.sku, cap: number(item.monthlyCap) })}
-      </AppText>
+      {showPricing ? (
+        <AppText variant="caption" color="tertiary">
+          {item.freePerMonth !== null && item.usdPer1000 !== null
+            ? t('usage.pricing', {
+                sku: item.sku,
+                free: number(item.freePerMonth),
+                price: item.usdPer1000.toFixed(2),
+                cap: number(item.monthlyCap),
+              })
+            : t('usage.pricingTokens', { sku: item.sku, cap: number(item.monthlyCap) })}
+        </AppText>
+      ) : null}
     </Card>
   );
 }
@@ -97,7 +111,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.xl, gap: spacing.md },
   flex: { flex: 1 },
-  bold: { fontWeight: '600' },
+  bold: { fontWeight: weights.semibold },
   cost: { color: colors.danger },
   rowHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.sm },
   track: { height: 6, borderRadius: radii.pill, backgroundColor: colors.surfaceMuted, overflow: 'hidden', marginBottom: spacing.sm },

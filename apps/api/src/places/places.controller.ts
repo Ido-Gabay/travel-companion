@@ -11,11 +11,14 @@ import {
 } from '@nestjs/common';
 import {
   createPlaceSchema,
+  linkGooglePlaceSchema,
   saveGooglePlacesSchema,
+  type LinkGooglePlaceInput,
   updatePlaceSchema,
   type CreatePlaceData,
   type Place,
   type PlaceList,
+  type PlaceVisitList,
   type SaveGooglePlacesInput,
   type UpdatePlaceData,
 } from '@travel-companion/shared';
@@ -55,6 +58,23 @@ export class PlacesController {
   @Get(':id')
   get(@CurrentUser() user: AuthUser, @Param('id', uuid) id: string): Promise<Place> {
     return this.places.get(user, id);
+  }
+
+  /** D1: the place's visit history. */
+  @Get(':id/visits')
+  visits(@CurrentUser() user: AuthUser, @Param('id', uuid) id: string): Promise<PlaceVisitList> {
+    return this.places.visits(user, id);
+  }
+
+  /** Link the user's own place to the Google place they picked (same id, or the one already saved). */
+  @Post(':id/google')
+  @HttpCode(200)
+  linkGoogle(
+    @CurrentUser() user: AuthUser,
+    @Param('id', uuid) id: string,
+    @Body(new ZodValidationPipe(linkGooglePlaceSchema)) body: LinkGooglePlaceInput,
+  ): Promise<Place> {
+    return this.places.linkGoogle(user, id, body);
   }
 
   @Patch(':id')

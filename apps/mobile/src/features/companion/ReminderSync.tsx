@@ -1,4 +1,4 @@
-import { tripDays, type TripDetail } from '@travel-companion/shared';
+import { tripDays } from '@travel-companion/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef } from 'react';
@@ -8,6 +8,7 @@ import { useOfflineCoords } from '@/features/offline/OfflineProvider';
 import { useGooglePlace, useGooglePlaces } from '@/features/places/queries';
 import { fallbackName } from '@/features/places/use-place-display';
 import { tripMode, placesForDay } from '@/features/trips/itinerary';
+import { stayForNight, storedZoneFor, type TripView } from '@/features/trips/model';
 import { useTrip, useTrips } from '@/features/trips/queries';
 import { useLocale } from '@/i18n/LocaleProvider';
 import { toIsoDate } from '@/lib/dates';
@@ -91,7 +92,7 @@ function SignedInSync() {
   );
 }
 
-function Scheduler({ trip, hasTrip, tripsKnown }: { trip: TripDetail | null; hasTrip: boolean; tripsKnown: boolean }) {
+function Scheduler({ trip, hasTrip, tripsKnown }: { trip: TripView | null; hasTrip: boolean; tripsKnown: boolean }) {
   const { t } = useTranslation();
   const { locale } = useLocale();
   const queryClient = useQueryClient();
@@ -101,15 +102,24 @@ function Scheduler({ trip, hasTrip, tripsKnown }: { trip: TripDetail | null; has
   const coordsFor = useOfflineCoords();
 
   const timedStops = useMemo(
-    () => (trip ? trip.places.filter((place) => place.day !== null && place.startTime !== null && place.visitedAt === null) : []),
+    () =>
+      trip
+        ? trip.places.filter(
+            (place) => place.day !== null && place.startTime !== null && place.visitedAt === null && place.status !== 'skipped',
+          )
+        : [],
     [trip],
   );
   const googleIds = useMemo(
     () =>
       trip
-        ? [...new Set(trip.places.filter((place) => place.day !== null).map((place) => place.googlePlaceId))].filter(
-            (id): id is string => id !== null,
-          )
+        ? [
+            ...new Set([
+              ...trip.places.filter((place) => place.day !== null).map((place) => place.googlePlaceId),
+              // D1: each night's hotel, for the first leg of that day.
+              ...trip.stays.map((stay) => stay.place?.googlePlaceId ?? null),
+            ]),
+          ].filter((id): id is string => id !== null)
         : [],
     [trip],
   );
@@ -121,6 +131,14 @@ function Scheduler({ trip, hasTrip, tripsKnown }: { trip: TripDetail | null; has
     let missing = false;
     const reminderDays: ReminderDay[] = tripDays(trip.startDate, trip.endDate).map((day) => ({
       day,
+      // D1: the zone and hotel of that day (trips can cross time zones and change hotels).
+      timeZone: storedZoneFor(trip, day),
+      hotel: (() => {
+        const place = stayForNight(trip.stays, day)?.place;
+        if (!place) return null;
+        if (place.latitude != null && place.longitude != null) return { latitude: place.latitude, longitude: place.longitude };
+        return place.googlePlaceId ? (details.get(place.googlePlaceId)?.location ?? coordsFor(place.googlePlaceId)) : null;
+      })(),
       stops: placesForDay(trip.places, day).map((place) => {
         const google = place.googlePlaceId ? details.get(place.googlePlaceId) : undefined;
         if (place.googlePlaceId && !google && place.startTime && place.visitedAt === null) missing = true;
@@ -130,17 +148,20 @@ function Scheduler({ trip, hasTrip, tripsKnown }: { trip: TripDetail | null; has
           name: google?.name ?? place.name ?? fallbackName(place, t),
           category: place.category,
           startTime: place.startTime,
-          visited: place.visitedAt !== null,
+          // D1: a skipped visit gets no reminder, like a done one.
+          visited: place.visitedAt !== null || place.status === 'skipped',
           location: google?.location ?? coordsFor(place.googlePlaceId),
           // Attribution only when the text really contains Google's name.
           google: google !== undefined,
         };
       }),
     }));
-    if (trip.basePlaceId && !hotel.data) missing = true;
+    // D1: a zone the user confirmed (stay or trip) wins; else the hotel's live zone.
+    const stored = storedZoneFor(trip, toIsoDate(new Date()));
+    if (trip.basePlaceId && !hotel.data && !stored) missing = true;
     return {
       tripId: trip.id,
-      timeZone: hotel.data?.timeZone ?? null,
+      timeZone: stored ?? hotel.data?.timeZone ?? null,
       hotel: hotel.data?.location ?? coordsFor(trip.basePlaceId),
       days: reminderDays,
       muted: mutedSet,

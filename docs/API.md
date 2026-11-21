@@ -1,7 +1,8 @@
 # API reference
 
 Base URL in development: `http://<your-mac-ip>:3000` (use `localhost` from the Mac
-itself). All application routes are under `/v1`. Request and response bodies are
+itself). Application routes are under `/v1`; D1 adds trip routes under `/v2`
+beside them (see [API v2](#api-v2-d1-visits-stays-time-zones)). Request and response bodies are
 JSON. Response shapes are defined as zod schemas in `packages/shared`.
 
 ## Authentication
@@ -35,7 +36,10 @@ Every non-2xx response has this body:
 | 401 | `UNAUTHENTICATED` | Missing, malformed, expired or foreign token. |
 | 403 | `FORBIDDEN` | Authenticated but not allowed. |
 | 404 | `NOT_FOUND` | Route or record does not exist (or is not yours). |
-| 409 | `CONFLICT` | Duplicate record. |
+| 409 | `CONFLICT` | Duplicate record, a stale list, or (D1) a change v1 can't express: `details` = `[{ "path": "reason", "message": "USE_NEWER_APP" }]`. Other reasons: `CONFIRM_REQUIRED`, `DAY_CHANGED`, `ID_IN_USE`. |
+| 409 | `INVALID_TRANSITION` | (v2 only) The visit can't change that way (e.g. skip a done visit). |
+| 409 | `STAY_OVERLAP` | (v2 only) The nights overlap another stay, named in `details`. |
+| 409 | `STOPS_OUTSIDE_DATES` | (v2 only) New trip dates would leave visits outside; `details` lists them. |
 | 429 | `RATE_LIMITED` | A provider (Google) is busy; try again shortly. |
 | 429 | `DAILY_LIMIT_REACHED` | Today's cost cap for Google or AI is used up (resets midnight UTC). |
 | 503 | `NOT_CONFIGURED` | The server has no key for this integration. |
@@ -194,7 +198,8 @@ Blank or `null` clears a text field or date. End before start is
 
 ### `DELETE /v1/trips/:id`
 
-Soft-deletes the trip. `204`. Places stay in the collection.
+Soft-deletes the trip and its stays. `204`. Places stay in the collection;
+completed visits stay in place history (v2 can remove them too).
 
 ### `POST /v1/trips/:id/places`
 
@@ -204,8 +209,9 @@ trip changes nothing. `404` if the trip or place isn't the caller's.
 
 ### `DELETE /v1/trips/:id/places/:placeId`
 
-Takes the place out of the trip (it stays in the collection). Returns the trip
-detail (`200`). Idempotent.
+Takes the place out of the trip (it stays in the collection) with its planned
+visits; visits that already happened stay in history. Returns the trip detail
+(`200`). Idempotent.
 
 ### Itinerary (days)
 
@@ -242,8 +248,19 @@ Body `{ "placeIds": ["<uuid>", ...] }`: every place planned for that day, in the
 new order. Returns the trip detail. `409 CONFLICT` if the list doesn't match the
 day's places exactly (the day changed elsewhere; refresh and retry).
 
-Changing a trip's dates moves places whose day falls outside the new dates back
-to the wishlist. Removing a place from a trip also drops its plan.
+D1: since the visits model, a trip's dates can't be changed while planned places
+fall outside them (`400 VALIDATION_FAILED`): move them first. Nothing is
+unplanned silently. Removing a place from a trip also drops its plan.
+
+**D1 · v1 on top of visits.** The plan now lives in visits (see v2). v1 shows
+each place's earliest visit; `visitedAt` is the place's "visited" mark, else its
+latest completed visit. `PATCH …/places/:placeId` acts on the place's single
+visit (creates it, moves it, or removes it for `day: null`); a place with
+several visits, or a visit already done or skipped (except `highlight`), is
+`409 CONFLICT` with reason `USE_NEWER_APP`. `baseLocation`/`basePlaceId` edit the
+trip's whole-trip stay (`409 … USE_NEWER_APP` when it has stays for different
+nights). `GET /v1/trips` and `GET /v1/trips/:id` answer exactly as before for
+single-visit data (golden tests).
 
 `PATCH /v1/trips/:id/places/:placeId` also accepts `highlight` (boolean, M15): star
 the stop as a trip highlight. Trip places carry `highlight` (default `false`).
@@ -288,9 +305,44 @@ place per user: saving again returns the same place (a deleted one is revived).
 
 1–20 items. Returns `201 { "places": [Place, …] }`. `404` if the trip isn't the caller's.
 
+### `POST /v1/places/:id/google`
+
+Link one of the caller's own places (saved by name, e.g. imported) to the Google place they
+picked: `{ "googlePlaceId": "ChIJ…" }`. Returns `200` with the place as it now is:
+
+- the Google place isn't saved yet → the **same** place (same id, trips and visits), now
+  `source: "google"`; the user's name becomes `myLabel`, their address is added to `notes`;
+  name, address and pin are cleared (Google content is never stored);
+- it is already saved (even deleted) → **that** place, revived, with this place's trips, visits
+  and stays moved to it; this place is soft-deleted.
+
+Same ID again = no change; a Google place or another ID = `409 CONFLICT`; not the caller's = `404`.
+No Google call is made.
+
 ### `POST /v1/places`
 
 A custom place: `{ "name", "address"?, "notes"?, "category"? }`. Returns `201` with the place.
+D1: optional `latitude` + `longitude` (the user's own pin; never 0,0) and
+`linkedGooglePlaceId` ("Use my own pin": the Google place it stands in for, ID
+only; the Google place itself is never changed).
+
+Places (outside v1 trip responses) carry `latitude`, `longitude` and
+`linkedGooglePlaceId` (`null` for Google places).
+
+### `GET /v1/places/:id/visits` (D1)
+
+The place's visit history, newest first: `{ "items": [{ "source": "visit" | "legacy_mark",
+"tripId", "tripTitle", "stopId", "day", "completedAt" }] }`. Completed visits of
+deleted trips stay unless deleted with `deleteHistory`.
+
+### `POST /v1/timezones/lookup` (D1)
+
+`{ "latitude", "longitude" }` → `{ "timeZone", "alternatives", "certain", "dataset" }`.
+A suggestion for the user to confirm; nothing is stored or logged. Uses bundled
+open data (tzf-wasm 2.0.2, loaded on the first lookup; boundaries from
+timezone-boundary-builder, © OpenStreetMap contributors, ODbL; `dataset` is the
+release the library reports, e.g. `2026f`). `certain` is
+false at sea, on borders or in disputed areas.
 
 ### `GET /v1/places/:id` · `DELETE /v1/places/:id`
 
@@ -300,8 +352,10 @@ One place / soft-delete it (also removes it from every trip, `204`).
 
 Any of `notes`, `myLabel` (≤60 chars, trimmed; blank or `null` clears; allowed on
 Google places too), `category`, `tags` (≤10, each ≤30 chars, de-duplicated),
-`visited` (boolean), and for custom places `name`, `address`. Sending
-`name`/`address` for a Google place is `400`.
+`visited` (boolean), and for custom places `name`, `address`, and (D1)
+`latitude` + `longitude` (`null` both to remove the pin). Sending
+`name`/`address`/coordinates for a Google place is `400`. `visited` only sets or
+clears the place's mark; it never creates or completes a visit.
 
 ## Google
 
@@ -393,6 +447,64 @@ result, from Google's type (falling back to the plan's category):
 
 Counts against the `GOOGLE_TEXT_SEARCH_*` caps (daily and monthly).
 
+## Trip assistant (D1)
+
+### `POST /v1/assistant/extract-places`
+
+Import: place names from text the user pasted (a chat message, recommendations).
+`{ "text": "…" (1–4000), "locale": "en" | "he" }` → `200 { "action": "places", "places": [{ "name",
+"note": string | null, "area": string | null }] }` (at most 100) or `{ "action": "unavailable" }`
+(no key, over the `ai_interpret` caps, or an error). Names that aren't in the text are dropped. Rate
+limited like other paid routes. The app reads lists and CSVs itself and calls this only for free text.
+
+### `POST /v1/assistant/trip`
+
+The user's request about their plan ("make Wednesday less busy", "תעביר את המוזיאון ליום
+אחר") turned into planning instructions. Stateless: nothing is read or written in
+the database. The app sends this only for requests its own rules can't read
+(`features/assistant/rules.ts`, free and offline). Shapes: `packages/shared/src/trip-assistant.ts`.
+
+```json
+{ "message": "I want a calmer pace overall", "locale": "en",
+  "context": { "today": "2026-11-23",
+    "days": [{ "day": "2026-11-24", "visits": [{ "ref": "v1", "category": "sights", "label": "The Met", "start": null, "starred": true, "status": "planned" }] }],
+    "wishlist": [] },
+  "clarifications": [{ "question": "Which day?", "answer": "Tuesday" }] }
+```
+
+`context` holds only opaque refs, categories, times, stars, status and the
+user's own words (`myLabel`, or the name of a place they created). Google names
+and IDs are never sent (the schema is strict). Message ≤ 300 characters, ≤ 31
+days, ≤ 150 items per list.
+
+```json
+{ "action": "plan", "summary": "Lighter Tuesday",
+  "instructions": [{ "kind": "lighten", "day": "2026-11-24", "maxHours": null }] }
+```
+
+Instruction kinds: `lighten` (day, `maxHours` or null), `dayStart` / `dayEnd`
+(`time`, `days`, `[]` = every day), `moreTime` (`category`, `extraMinutes` or
+null), `keepFixed` (`starred` | `all`), `moveVisit` (`target` by ref / category /
+text / day, `toDay` or null = best day), `findNearby` (`category`, English
+`query`, `day`, `near`: `dayEnd` | `stay`; the search itself is a separate tap),
+`catchUp` (no fields: running late today; visits whose time has passed get new
+times from now, applied by the app to today only), `findPlace` (`query` = the
+user's words naming a place or a kind, or null for "this place"; `category`,
+`area` the user named, `nearPlanned`, `day`, `intent`: `locate` | `add`; the
+app then searches Google Maps with `POST /v1/discover/search` only when the user
+taps Search, and saves with `POST /v1/places/google` only on Apply). Live (on a
+trip day): `skipVisit` (`target`, null = the next visit), `extendVisit` (`target`,
+null = the one happening now; `extraMinutes` or null = 30), `closedVisit`
+(`target`, null = the next one; the app offers skip / keep / an alternative
+nearby), and `findPlace.nearHere` ("something interesting nearby": the app
+searches around the user's one location reading, on tap).
+The server drops instructions naming days or refs that aren't in the context.
+Other answers: `{ "action": "clarify", "question", "options" }` (at most once;
+after an answer it must plan) and `{ "action": "unavailable" }` (no key, AI cap
+reached, Claude error or unusable output: the app keeps manual planning). The
+instructions only shape the on-device proposal; the itinerary changes only when
+the user applies it. Counts against the `AI_*` caps (`ai_interpret`).
+
 ### `GET /v1/google/places/:placeId/preview?lang=en|he`
 
 The place preview: everything from the basic details plus `rating`,
@@ -424,21 +536,47 @@ This server's paid API usage (all users together; no user data):
 ```
 
 Metrics: `google_text_search`, `google_place_details`, `google_place_preview`,
-`google_place_photo`, `ai_interpret`. When a cap is used up, the feature answers
+`google_place_photo`, `ai_interpret` (Ask AI and the trip assistant). When a cap is used up, the feature answers
 `429 DAILY_LIMIT_REACHED` or `429 MONTHLY_LIMIT_REACHED`.
 
 ## Rate limits
 
 Every signed-in user may make **240 requests per minute** across the API and
-**60 per minute** on the paid routes (`/v1/discover/*`, `/v1/google/*`).
+**60 per minute** on the paid routes (`/v1/discover/*`, `/v1/google/*`, `/v1/assistant/*`).
 Above that the API answers `429 RATE_LIMITED`, with
 `details: [{ "path": "retryAfterSeconds", "message": "<seconds>" }]`. Limits are
 per API instance and in memory (one Render instance today). Configure with
 `RATE_LIMIT_PER_MINUTE` and `RATE_LIMIT_PAID_PER_MINUTE`. The daily/monthly cost
 caps (`DAILY_LIMIT_REACHED`, `MONTHLY_LIMIT_REACHED`) apply on top.
 
+## API v2 (D1: visits, stays, time zones)
+
+Same authentication and error format. Shapes: `packages/shared/src/stop.ts`,
+`stay.ts`, `trip-v2.ts`, `timezone.ts`. Every create accepts an optional
+client-generated `id` (offline): repeating it is a no-op.
+
+| Route | What |
+| --- | --- |
+| `GET /v2/trips/:id` | `{ trip, places, stops, stays }`. `trip` has `timeZone`/`timeZoneSource`, no base fields. `places` are the saved places (`tripPlaceId`, `savedAt`). |
+| `PATCH /v2/trips/:id` | `title`, `destination`, dates, `timeZone` (stored as the user's choice; `null` clears). Dates leaving visits outside: `409 STOPS_OUTSIDE_DATES` with the list, unless `unscheduleOutside: true` (removes planned visits; visits that started, were done or skipped are never removed). A stay covering exactly the old dates follows the new ones. |
+| `DELETE /v2/trips/:id[?deleteHistory=1]` | Soft-deletes the trip and its stays; completed visits stay in place history unless `deleteHistory`. |
+| `POST /v2/trips/:id/places` · `DELETE /v2/trips/:id/places/:tripPlaceId` | Save a place to the trip (`200`, trip detail) / remove it with its planned visits. |
+| `POST /v2/trips/:id/stops` | A visit: `{ tripPlaceId, day, startTime?, durationMinutes?, highlight?, timeZone?, location? }` → `201 { stop, timeZoneSuggestion }`. A place can have any number of visits. |
+| `PATCH /v2/trips/:id/stops/:stopId` | `day`, `startTime`, `durationMinutes`, `tripPlaceId` (planned/in-progress only), `highlight`, `timeZone`. |
+| `POST /v2/trips/:id/stops/:stopId/{arrive,complete,skip,reset}` | Lifecycle; optional `{ at }` (when it happened, not in the future). Repeating the current state is a no-op; anything else that doesn't fit is `409 INVALID_TRANSITION`. |
+| `DELETE /v2/trips/:id/stops/:stopId[?confirm=1]` | Removes a visit (soft); a completed one needs `confirm`. |
+| `PUT /v2/trips/:id/days/:day/order` | `{ stopIds }`: the day's visits in order (`409` if stale). |
+| `POST/PATCH/DELETE /v2/trips/:id/stays[/:stayId]` | Stays: `placeId` and/or `label` (the user's text, unchanged), `checkIn`/`checkOut` (both or neither = whole trip). Shared nights: `409 STAY_OVERLAP`. Each stay carries its `place` (the hotel; Google places by ID only). v1's `baseLocation`/`basePlaceId` follow the stay of the first night. |
+
+**Time zones (D1 Q3).** A zone the user sends is stored as `user`. For a custom
+place with the user's own pin the server derives the zone and stores it as
+`derived` (with the boundary data release) when unambiguous. A `location` the app
+sends (e.g. a Google place's coordinates) only produces a `timeZoneSuggestion`
+in the response; nothing is stored until the user confirms it.
+
 ## Versioning
 
 `/v1` changes only in backward-compatible ways (new optional fields, new
-routes). Breaking changes would go to `/v2`. Every record carries `version` and
+routes); since D1 it is an adapter over the visits model and stays until no
+installed app uses it. New trip work goes to `/v2`. Every record carries `version` and
 `updatedAt` for future conflict handling and sync.

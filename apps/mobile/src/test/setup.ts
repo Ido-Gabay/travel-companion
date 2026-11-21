@@ -31,6 +31,12 @@ jest.mock('@/lib/api', () => {
     'addTripPlace', 'removeTripPlace', 'scheduleTripPlace', 'reorderTripDay', 'listPlaces', 'getPlace',
     'createPlace', 'updatePlace', 'deletePlace', 'saveGooglePlaces', 'getGooglePlace', 'getGooglePlacePreview',
     'getGooglePhoto', 'getUsage', 'interpret', 'discoverSearch', 'getJournal', 'updateJournalDay', 'computeRoutes',
+    // D1 (API v2)
+    'getTripV2', 'updateTripV2', 'deleteTripV2', 'addTripMember', 'removeTripMember', 'addStop', 'updateStop',
+    'transitionStop', 'removeStop', 'reorderStops', 'addStay', 'updateStay', 'removeStay', 'getPlaceVisits', 'lookupTimeZone',
+    'tripAssistant',
+    'extractPlaces',
+    'linkGooglePlace',
   ];
   const api: Record<string, unknown> = {};
   for (const name of methods) api[name] = jest.fn(() => Promise.reject(new Error(`api.${name} not mocked`)));
@@ -69,5 +75,6 @@ jest.mock('expo-location', () => ({
   requestForegroundPermissionsAsync: jest.fn(() => Promise.resolve({ status: 'denied', granted: false, canAskAgain: false })),
   getCurrentPositionAsync: jest.fn(() => Promise.reject(new Error('no location in tests'))),
   getLastKnownPositionAsync: jest.fn(() => Promise.resolve(null)),
+  PermissionStatus: { GRANTED: 'granted', DENIED: 'denied', UNDETERMINED: 'undetermined' },
   Accuracy: { Balanced: 3 },
 }));

@@ -6,6 +6,7 @@ import {
   type PlaceCategory,
 } from '@travel-companion/shared';
 import { router, useLocalSearchParams } from 'expo-router';
+import { useState } from 'react';
 import { Alert, KeyboardAvoidingView, Linking, Platform, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
@@ -29,7 +30,10 @@ import { LabelEditor } from '@/features/places/LabelEditor';
 import { NotesTagsEditor } from '@/features/places/NotesTagsEditor';
 import { openInMaps } from '@/features/places/open-in-maps';
 import { PlaceForm } from '@/features/places/PlaceForm';
-import { useDeletePlace, usePlace, useSetVisited, useUpdatePlace } from '@/features/places/queries';
+import { CustomPinSection, OwnPinSheet } from '@/features/places/PlacePinSection';
+import { VisitHistory } from '@/features/places/VisitHistory';
+import { useDeletePlace, useLinkGooglePlace, usePlace, useSetVisited, useUpdatePlace } from '@/features/places/queries';
+import { GoogleLinkSheet } from '@/features/places/GoogleLinkSheet';
 import { TripMembership } from '@/features/places/TripMembership';
 import { usePlaceDisplay } from '@/features/places/use-place-display';
 import { useErrorMessage } from '@/lib/use-error-message';
@@ -68,6 +72,9 @@ function PlaceDetail({ place }: { place: Place }) {
   const visited = place.visitedAt !== null;
   const google = display.google;
   const placeId = place.googlePlaceId;
+  const [more, setMore] = useState(false);
+  const [linking, setLinking] = useState(false);
+  const link = useLinkGooglePlace();
 
   const openUrl = (url: string) => void Linking.openURL(url).catch(() => undefined);
 
@@ -105,40 +112,65 @@ function PlaceDetail({ place }: { place: Place }) {
           icon="navigate"
           onPress={() => openUrl(googleMapsDirectionsUrl(placeId, google?.name ?? display.name))}
         />
-      ) : (
+      ) : place.latitude == null ? (
         <Button
           label={t('tripDetail.openInMaps')}
           icon="map-outline"
           onPress={() => openInMaps(place.name ?? '', place.address)}
         />
-      )}
-
-      <ListGroup>
-        <ListRow
-          title={t('places.visited')}
-          leading="checkmark-circle-outline"
-          trailing={
-            <Switch
-              value={visited}
-              onValueChange={(value) => setVisited.mutate({ id: place.id, visited: value })}
-              trackColor={{ true: colors.success, false: colors.surfaceMuted }}
-              accessibilityLabel={t('places.markVisited')}
+      ) : null}
+      {/* Saved by name only (typed or imported): find it on Google Maps, on tap. */}
+      {place.source === 'custom' && place.latitude == null && !place.linkedGooglePlaceId ? (
+        <>
+          <Button label={t('googleLink.action')} icon="location-outline" variant="secondary" onPress={() => setLinking(true)} />
+          {linking ? (
+            <GoogleLinkSheet
+              visible
+              name={display.name}
+              query={[place.name, place.address].filter(Boolean).join(' ')}
+              near={null}
+              category={place.category}
+              busy={link.isPending}
+              error={link.isError ? errorMessage(link.error) : null}
+              onPick={(result) =>
+                link.mutate(
+                  { placeId: place.id, googlePlaceId: result.placeId },
+                  {
+                    onSuccess: (linked) => {
+                      setLinking(false);
+                      if (linked.id !== place.id) router.replace({ pathname: '/places/[id]', params: { id: linked.id } });
+                    },
+                  },
+                )
+              }
+              onClose={() => setLinking(false)}
             />
-          }
-        />
-      </ListGroup>
+          ) : null}
+        </>
+      ) : null}
+      {place.source === 'custom' ? <CustomPinSection place={place} /> : null}
 
-      <LabelEditor key={place.myLabel ?? ''} place={place} />
-
-      <Section title={t('places.category')}>
-        <CategoryChips
-          options={PLACE_CATEGORIES.map((value) => ({ value }))}
-          value={place.category}
-          onChange={(category: PlaceCategory) => update.mutate({ category })}
-        />
+      <Section title={t('places.inTrips')}>
+        <TripMembership placeId={place.id} />
       </Section>
 
-      {update.isError ? <InlineError message={errorMessage(update.error)} /> : null}
+      <Section title={t('visits.history')}>
+        <VisitHistory placeId={place.id} />
+        <ListGroup>
+          <ListRow
+            title={t('places.visited')}
+            leading="checkmark-circle-outline"
+            trailing={
+              <Switch
+                value={visited}
+                onValueChange={(value) => setVisited.mutate({ id: place.id, visited: value })}
+                trackColor={{ true: colors.success, false: colors.surfaceMuted }}
+                accessibilityLabel={t('places.markVisited')}
+              />
+            }
+          />
+        </ListGroup>
+      </Section>
 
       <Section title={t('places.myNotes')}>
         <NotesTagsEditor
@@ -151,23 +183,43 @@ function PlaceDetail({ place }: { place: Place }) {
         />
       </Section>
 
-      {place.source === 'custom' ? (
-        <Section title={t('placeForm.editTitle')}>
-          <PlaceForm
-            key={place.version}
-            initial={{ name: place.name ?? '', address: place.address, notes: place.notes }}
-            submitLabel={t('placeForm.saveChanges')}
-            submitting={update.isPending}
-            onSubmit={(values) => update.mutate({ name: values.name, address: values.address })}
-            showNotes={false}
-          />
-        </Section>
+      {update.isError ? <InlineError message={errorMessage(update.error)} /> : null}
+
+      {/* Rarely changed after saving: the offline label, the category and (own places) name and address. */}
+      <Button
+        label={more ? t('places.lessDetails') : t('places.moreDetails')}
+        icon={more ? 'chevron-up' : 'chevron-down'}
+        variant="ghost"
+        size="sm"
+        block={false}
+        onPress={() => setMore((value) => !value)}
+      />
+      {more ? (
+        <>
+          <LabelEditor key={place.myLabel ?? ''} place={place} />
+
+          <Section title={t('places.category')}>
+            <CategoryChips
+              options={PLACE_CATEGORIES.map((value) => ({ value }))}
+              value={place.category}
+              onChange={(category: PlaceCategory) => update.mutate({ category })}
+            />
+          </Section>
+
+          {place.source === 'custom' ? (
+            <Section title={t('placeForm.editTitle')}>
+              <PlaceForm
+                key={place.version}
+                initial={{ name: place.name ?? '', address: place.address, notes: place.notes }}
+                submitLabel={t('placeForm.saveChanges')}
+                submitting={update.isPending}
+                onSubmit={(values) => update.mutate({ name: values.name, address: values.address })}
+                showNotes={false}
+              />
+            </Section>
+          ) : null}
+        </>
       ) : null}
-
-      <Section title={t('places.inTrips')}>
-        <TripMembership placeId={place.id} />
-      </Section>
-
     </>
   );
 }
@@ -180,6 +232,7 @@ function PlaceMenu({ place }: { place: Place }) {
   const display = usePlaceDisplay(place);
   const remove = useDeletePlace();
   const placeId = place.googlePlaceId;
+  const [ownPin, setOwnPin] = useState(false);
 
   const confirmDelete = () => {
     Alert.alert(t('placeForm.deletePlaceTitle'), t('placeForm.deletePlaceBody'), [
@@ -197,6 +250,8 @@ function PlaceMenu({ place }: { place: Place }) {
   };
 
   return (
+    <>
+    <OwnPinSheet place={place} visible={ownPin} onClose={() => setOwnPin(false)} />
     <IconButton
       icon="ellipsis-horizontal"
       accessibilityLabel={t('itinerary.moreFor', { name: display.name })}
@@ -214,11 +269,13 @@ function PlaceMenu({ place }: { place: Place }) {
                   () => undefined,
                 ),
             },
+            { label: t('pin.ownTitle'), icon: 'location-outline', hidden: !placeId, onPress: () => setOwnPin(true) },
             { label: t('placeForm.deletePlace'), icon: 'trash-outline', destructive: true, onPress: confirmDelete },
           ],
         })
       }
     />
+    </>
   );
 }
 

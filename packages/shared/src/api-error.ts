@@ -17,6 +17,10 @@ export const API_ERROR_CODES = [
   'NOT_CONFIGURED',
   'SERVICE_UNAVAILABLE',
   'INTERNAL',
+  // D1 (API v2 only; v1 endpoints never return these, so installed apps keep parsing every error).
+  'INVALID_TRANSITION',
+  'STAY_OVERLAP',
+  'STOPS_OUTSIDE_DATES',
 ] as const;
 export const apiErrorCodeSchema = z.enum(API_ERROR_CODES);
 export type ApiErrorCode = z.infer<typeof apiErrorCodeSchema>;

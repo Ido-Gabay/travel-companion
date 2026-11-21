@@ -1,10 +1,11 @@
 import {
   meSchema,
-  tripDetailSchema,
+  tripDetailV2Schema,
   tripJournalSchema,
   tripListSchema,
   type Me,
-  type TripDetail,
+  type Place,
+  type TripDetailV2,
   type TripJournal,
   type TripList,
 } from '@travel-companion/shared';
@@ -34,7 +35,7 @@ export interface Cached<T> {
 
 export interface OfflineSnapshot {
   trips: Cached<TripList> | null;
-  details: Cached<TripDetail>[];
+  details: Cached<TripDetailV2>[];
   me: Cached<Me> | null;
   coords: CachedCoord[];
   /** M15: trip journals (the user's notes and ratings), by trip id. */
@@ -46,19 +47,20 @@ export interface OfflineSnapshot {
  * address in our data (the API and a DB constraint already ensure it), so make
  * sure nothing like that can reach the device copy either.
  */
-export function sanitizeTripDetail(detail: TripDetail): TripDetail {
+export function sanitizeTripDetail(detail: TripDetailV2): TripDetailV2 {
+  const clean = <P extends Place>(place: P): P => (place.source === 'google' ? { ...place, name: null, address: null } : place);
   return {
     ...detail,
-    places: detail.places.map((place) =>
-      place.source === 'google' ? { ...place, name: null, address: null } : place,
-    ),
+    places: detail.places.map(clean),
+    stays: detail.stays.map((stay) => (stay.place ? { ...stay, place: clean(stay.place) } : stay)),
   };
 }
 
-/** Google place IDs used by a trip (its stops and its pinned hotel). */
-export function tripGoogleIds(detail: TripDetail): string[] {
+/** Google place IDs used by a trip (its saved places and its hotels). */
+export function tripGoogleIds(detail: TripDetailV2): string[] {
   const ids = detail.places.flatMap((place) => (place.googlePlaceId ? [place.googlePlaceId] : []));
-  return detail.basePlaceId ? [...ids, detail.basePlaceId] : ids;
+  const hotels = detail.stays.flatMap((stay) => (stay.place?.googlePlaceId ? [stay.place.googlePlaceId] : []));
+  return [...new Set([...ids, ...hotels])];
 }
 
 function parse<S extends z.ZodType>(raw: string | null, schema: S): Cached<z.output<S>> | null {
@@ -95,9 +97,9 @@ export class TripCache {
     if (stale.length > 0) await this.store.multiRemove(stale);
   }
 
-  async saveTrip(detail: TripDetail, nowMs: number): Promise<void> {
+  async saveTrip(detail: TripDetailV2, nowMs: number): Promise<void> {
     await this.store.setItem(
-      this.key(`${TRIP}${detail.id}`),
+      this.key(`${TRIP}${detail.trip.id}`),
       JSON.stringify({ savedAt: nowMs, data: sanitizeTripDetail(detail) }),
     );
   }
@@ -124,9 +126,10 @@ export class TripCache {
     const keys = (await this.store.getAllKeys()).filter((key) => key.startsWith(userPrefix(this.userId)));
     const trips = parse(keys.includes(this.key(TRIPS)) ? await this.store.getItem(this.key(TRIPS)) : null, tripListSchema);
     const me = parse(keys.includes(this.key(ME)) ? await this.store.getItem(this.key(ME)) : null, meSchema);
-    const details: Cached<TripDetail>[] = [];
+    const details: Cached<TripDetailV2>[] = [];
     for (const key of keys.filter((item) => item.startsWith(this.key(TRIP)))) {
-      const detail = parse(await this.store.getItem(key), tripDetailSchema);
+      // D1: copies saved by an older build (v1 shape) don't parse and are refetched online.
+      const detail = parse(await this.store.getItem(key), tripDetailV2Schema);
       if (detail) details.push({ ...detail, data: sanitizeTripDetail(detail.data) });
       else await this.store.removeItem(key);
     }

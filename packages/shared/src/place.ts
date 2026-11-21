@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { googlePlaceIdSchema } from './google.js';
+import { googlePlaceIdSchema, latLngSchema } from './google.js';
 
 export const PLACE_NAME_MAX = 120;
 export const PLACE_ADDRESS_MAX = 200;
@@ -47,6 +47,15 @@ export const placeSchema = z.object({
    * app works against an older server.
    */
   myLabel: z.string().nullable().default(null),
+  /**
+   * D1: the user's own pin for a custom place (chosen on the map, never a Google
+   * coordinate); null for Google places. Absent from v1 trip responses (kept
+   * byte-identical for installed apps) and from older servers: treat absent as null.
+   */
+  latitude: z.number().min(-90).max(90).nullable().optional(),
+  longitude: z.number().min(-180).max(180).nullable().optional(),
+  /** D1 "Use my own pin": the Google place this custom place stands in for (ID only). */
+  linkedGooglePlaceId: googlePlaceIdSchema.nullable().optional(),
   category: placeCategorySchema,
   tags: z.array(z.string()),
   visitedAt: z.iso.datetime({ offset: true }).nullable(),
@@ -88,13 +97,29 @@ export const placeTagsSchema = z
     });
   });
 
-/** Request body of POST /v1/places (a custom place the user types in). */
-export const createPlaceSchema = z.strictObject({
-  name: placeName,
-  address: nullableText(PLACE_ADDRESS_MAX).optional().transform((value) => value ?? null),
-  notes: nullableText(PLACE_NOTES_MAX).optional().transform((value) => value ?? null),
-  category: placeCategorySchema.optional().transform((value) => value ?? 'other'),
-});
+/** Not 0,0 ("null island"): almost always a missing value, never a real pin. */
+const notNullIsland = (body: { latitude?: number | null; longitude?: number | null }) =>
+  !(body.latitude === 0 && body.longitude === 0);
+const pairSet = (body: { latitude?: number | null; longitude?: number | null }) =>
+  (body.latitude === undefined) === (body.longitude === undefined) &&
+  (body.latitude === null) === (body.longitude === null);
+
+/**
+ * Request body of POST /v1/places (a custom place the user types in).
+ * D1: optionally the user's own pin, and the Google place it replaces ("Use my own pin").
+ */
+export const createPlaceSchema = z
+  .strictObject({
+    name: placeName,
+    address: nullableText(PLACE_ADDRESS_MAX).optional().transform((value) => value ?? null),
+    notes: nullableText(PLACE_NOTES_MAX).optional().transform((value) => value ?? null),
+    category: placeCategorySchema.optional().transform((value) => value ?? 'other'),
+    latitude: latLngSchema.shape.latitude.optional(),
+    longitude: latLngSchema.shape.longitude.optional(),
+    linkedGooglePlaceId: googlePlaceIdSchema.optional(),
+  })
+  .refine(pairSet, { error: 'Send latitude and longitude together.', path: ['longitude'] })
+  .refine(notNullIsland, { error: 'Pick the location on the map.', path: ['latitude'] });
 export type CreatePlaceInput = z.input<typeof createPlaceSchema>;
 export type CreatePlaceData = z.output<typeof createPlaceSchema>;
 
@@ -111,10 +136,15 @@ export const updatePlaceSchema = z
     category: placeCategorySchema.optional(),
     tags: placeTagsSchema.optional(),
     visited: z.boolean().optional(),
+    /** D1: move (or with null, remove) the user's own pin. Custom places only. */
+    latitude: latLngSchema.shape.latitude.nullable().optional(),
+    longitude: latLngSchema.shape.longitude.nullable().optional(),
   })
   .refine((body) => Object.values(body).some((value) => value !== undefined), {
     error: 'Provide at least one field to update.',
-  });
+  })
+  .refine(pairSet, { error: 'Send latitude and longitude together.', path: ['longitude'] })
+  .refine(notNullIsland, { error: 'Pick the location on the map.', path: ['latitude'] });
 export type UpdatePlaceInput = z.input<typeof updatePlaceSchema>;
 export type UpdatePlaceData = z.output<typeof updatePlaceSchema>;
 
@@ -137,3 +167,13 @@ export const saveGooglePlacesResponseSchema = z.object({
   places: z.array(placeSchema),
 });
 export type SaveGooglePlacesResponse = z.infer<typeof saveGooglePlacesResponseSchema>;
+
+/**
+ * Request body of POST /v1/places/:id/google: link one of the user's own places
+ * (e.g. imported by name) to the Google place they picked. The response is the
+ * place as it now is: the same id, or the Google place they had already saved.
+ */
+export const linkGooglePlaceSchema = z.strictObject({
+  googlePlaceId: googlePlaceIdSchema,
+});
+export type LinkGooglePlaceInput = z.infer<typeof linkGooglePlaceSchema>;

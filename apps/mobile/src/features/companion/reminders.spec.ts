@@ -60,6 +60,25 @@ describe('planReminders', () => {
     expect(new Date(nyTime('2026-11-23', '11:00')).toISOString()).toBe('2026-11-23T16:00:00.000Z');
   });
 
+  it('D1: a trip that crosses time zones uses each day\'s own zone and that night\'s hotel', () => {
+    const LONDON = 'Europe/London';
+    const LONDON_HOTEL = { latitude: 51.5074, longitude: -0.1278 };
+    const result = planReminders(
+      input({
+        settings: { ...ON, morningSummary: true, leaveSoon: false, headsUp: false },
+        days: [
+          { day: '2026-11-23', stops: [stop('moma', { startTime: '11:00' })] },
+          { day: '2026-11-26', timeZone: LONDON, hotel: LONDON_HOTEL, stops: [stop('museum', { startTime: '11:00', location: { latitude: 51.5194, longitude: -0.127 } })] },
+        ],
+      }),
+    );
+    const morning = result.filter((r) => r.kind === 'morning');
+    expect(morning.map((r) => r.fireAtMs)).toEqual([nyTime('2026-11-23', '08:00'), zonedDateTimeToUtc('2026-11-26', '08:00', LONDON)]);
+    const museum = result.find((r) => r.placeId === 'museum' && r.kind === 'leaveNow');
+    const travel = estimateTravel(LONDON_HOTEL, { latitude: 51.5194, longitude: -0.127 }).minutes;
+    expect(museum?.fireAtMs).toBe(zonedDateTimeToUtc('2026-11-26', '11:00', LONDON) - (travel + 5) * 60_000);
+  });
+
   it('measures travel from the previous stop and uses a default when location is unknown', () => {
     const result = planReminders(
       input({

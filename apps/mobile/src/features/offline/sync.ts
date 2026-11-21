@@ -1,5 +1,26 @@
-import type { JournalDay, Place, TripDetail, TripJournal, TripPlace } from '@travel-companion/shared';
-import { sameValue, type JournalField, type PendingOp, type ScheduleField, type ScheduleValue } from './pending-ops';
+import type {
+  AddStopInput,
+  JournalDay,
+  Place,
+  Stop,
+  StopStatus,
+  StopTransition,
+  StopWriteResponse,
+  TripDetail,
+  TripDetailV2,
+  TripJournal,
+  TripPlace,
+  UpdateStopInput,
+} from '@travel-companion/shared';
+import {
+  sameValue,
+  type JournalField,
+  type PendingOp,
+  type ScheduleField,
+  type ScheduleValue,
+  type StopField,
+  type StopValue,
+} from './pending-ops';
 
 /**
  * M12a sync: replays pending changes against the server, safely.
@@ -28,6 +49,13 @@ export interface SyncApi {
   getJournal(tripId: string): Promise<TripJournal>;
   updateJournal(tripId: string, day: string, body: Partial<Record<JournalField, string | number | null>>): Promise<JournalDay>;
   reorder(tripId: string, day: string, placeIds: string[]): Promise<TripDetail>;
+  /** D1 (API v2). */
+  getTripV2(tripId: string): Promise<TripDetailV2>;
+  addStop(tripId: string, body: AddStopInput): Promise<StopWriteResponse>;
+  updateStop(tripId: string, stopId: string, body: UpdateStopInput): Promise<StopWriteResponse>;
+  transitionStop(tripId: string, stopId: string, action: StopTransition, at: string | null): Promise<StopWriteResponse>;
+  removeStop(tripId: string, stopId: string, confirm: boolean): Promise<TripDetailV2>;
+  reorderStops(tripId: string, day: string, stopIds: string[]): Promise<TripDetailV2>;
 }
 
 /** How a failed request is treated. */
@@ -40,8 +68,10 @@ export interface SyncResult {
   conflicts: Conflict[];
   /** Ids of changes that are now on the server (sent, or found already there). */
   done: string[];
-  /** Latest server copies seen, to refresh the screens and the saved copy. */
-  trips: TripDetail[];
+  /** Latest server copies seen (v2), to refresh the screens and the saved copy. */
+  trips: TripDetailV2[];
+  /** Trips changed through older (v1) changes: refetch them. */
+  legacyTrips: string[];
   journals: { tripId: string; journal: TripJournal }[];
   places: Place[];
   /** The run stopped early because the server couldn't be reached. */
@@ -66,6 +96,45 @@ export function alignOrder(order: readonly string[], serverIds: readonly string[
   return [...kept, ...serverIds.filter((id) => !kept.includes(id))];
 }
 
+/** Server order of a day's visits. */
+export function stopOrder(stops: readonly Stop[], day: string): string[] {
+  return stops
+    .filter((stop) => stop.day === day)
+    .sort((a, b) => a.position - b.position || a.createdAt.localeCompare(b.createdAt))
+    .map((stop) => stop.id);
+}
+
+const stopValue = (stop: Stop, field: StopField): StopValue =>
+  field === 'status'
+    ? stop.status
+    : field === 'day'
+      ? stop.day
+      : field === 'startTime'
+        ? stop.startTime
+        : field === 'highlight'
+          ? stop.highlight
+          : stop.durationMinutes;
+
+/** The lifecycle calls that take a visit from `from` to `to` (each repeats safely). */
+export function transitionsTo(from: StopStatus, to: StopStatus): StopTransition[] {
+  if (from === to) return [];
+  switch (to) {
+    case 'planned':
+      return ['reset'];
+    case 'completed':
+      return from === 'skipped' ? ['reset', 'complete'] : ['complete'];
+    case 'skipped':
+      return from === 'completed' ? ['reset', 'skip'] : ['skip'];
+    case 'in_progress':
+      return from === 'planned' ? ['arrive'] : ['reset', 'arrive'];
+  }
+}
+
+const replaceStop = (trip: TripDetailV2, stop: Stop): TripDetailV2 => ({
+  ...trip,
+  stops: [...trip.stops.filter((item) => item.id !== stop.id), stop],
+});
+
 const fieldValue = (place: TripPlace, field: ScheduleField): ScheduleValue =>
   field === 'day'
     ? place.day
@@ -82,8 +151,19 @@ export async function syncOps(
   nowMs: number,
 ): Promise<SyncResult> {
   const queue = [...ops].sort((a, b) => a.createdAt - b.createdAt);
-  const result: SyncResult = { remaining: [], conflicts: [], done: [], trips: [], journals: [], places: [], stoppedOffline: false };
+  const result: SyncResult = {
+    remaining: [],
+    conflicts: [],
+    done: [],
+    trips: [],
+    legacyTrips: [],
+    journals: [],
+    places: [],
+    stoppedOffline: false,
+  };
   const trips = new Map<string, TripDetail>();
+  const tripsV2 = new Map<string, TripDetailV2>();
+  const legacy = new Set<string>();
   const journals = new Map<string, TripJournal>();
   const conflict = (op: PendingOp, reason: ConflictReason, serverValue: unknown) =>
     result.conflicts.push({ op, reason, serverValue, detectedAt: nowMs });
@@ -127,6 +207,79 @@ export async function syncOps(
         continue;
       }
 
+      if (op.kind === 'stopAdd' || op.kind === 'stop' || op.kind === 'stopRemove' || op.kind === 'reorderStops') {
+        let trip = tripsV2.get(op.tripId);
+        if (!trip) {
+          trip = await api.getTripV2(op.tripId);
+          tripsV2.set(op.tripId, trip);
+        }
+        const stop = op.kind === 'reorderStops' ? undefined : trip.stops.find((item) => item.id === op.stopId);
+
+        if (op.kind === 'stopAdd') {
+          if (stop) {
+            result.done.push(op.id);
+          } else if (!trip.places.some((place) => place.tripPlaceId === op.tripPlaceId)) {
+            conflict(op, 'gone', null);
+          } else {
+            const saved = await api.addStop(op.tripId, {
+              id: op.stopId,
+              tripPlaceId: op.tripPlaceId,
+              day: op.day,
+              startTime: op.startTime,
+              durationMinutes: op.durationMinutes,
+              highlight: op.highlight,
+            });
+            tripsV2.set(op.tripId, replaceStop(trip, saved.stop));
+            result.done.push(op.id);
+          }
+          continue;
+        }
+        if (op.kind === 'stopRemove') {
+          if (stop) tripsV2.set(op.tripId, await api.removeStop(op.tripId, op.stopId, op.confirm));
+          result.done.push(op.id);
+          continue;
+        }
+        if (op.kind === 'reorderStops') {
+          const server = stopOrder(trip.stops, op.day);
+          const wanted = alignOrder(op.value, server);
+          const base = alignOrder(op.base, server);
+          if (sameValue(server, wanted)) {
+            result.done.push(op.id);
+          } else if (sameValue(server, base)) {
+            tripsV2.set(op.tripId, await api.reorderStops(op.tripId, op.day, wanted));
+            result.done.push(op.id);
+          } else {
+            conflict(op, 'changed', server);
+          }
+          continue;
+        }
+        if (!stop) {
+          conflict(op, 'gone', null);
+          continue;
+        }
+        const server = stopValue(stop, op.field);
+        if (sameValue(server, op.value)) {
+          result.done.push(op.id);
+        } else if (sameValue(server, op.base)) {
+          let latest = stop;
+          if (op.field === 'status') {
+            // When it happened on the phone (an offline Done keeps its real time).
+            const at = new Date(op.createdAt).toISOString();
+            for (const action of transitionsTo(stop.status, op.value as StopStatus)) {
+              latest = (await api.transitionStop(op.tripId, op.stopId, action, action === 'reset' ? null : at)).stop;
+            }
+          } else {
+            latest = (await api.updateStop(op.tripId, op.stopId, { [op.field]: op.value } as UpdateStopInput)).stop;
+          }
+          tripsV2.set(op.tripId, replaceStop(trip, latest));
+          result.done.push(op.id);
+        } else {
+          conflict(op, 'changed', server);
+        }
+        continue;
+      }
+
+      legacy.add(op.tripId);
       let trip = trips.get(op.tripId);
       if (!trip) {
         trip = await api.getTrip(op.tripId);
@@ -176,7 +329,8 @@ export async function syncOps(
       }
     }
   }
-  result.trips = [...trips.values()];
+  result.trips = [...tripsV2.values()];
+  result.legacyTrips = [...legacy];
   result.journals = [...journals.entries()].map(([tripId, journal]) => ({ tripId, journal }));
   return result;
 }
@@ -189,10 +343,12 @@ export async function syncOps(
 export function keepMine(item: Conflict): PendingOp | null {
   // A place that's gone or a change the server refused can't be re-sent as is.
   if (item.reason !== 'changed') return null;
-  if (item.op.kind === 'reorder') {
+  if (item.op.kind === 'reorder' || item.op.kind === 'reorderStops') {
     const server = Array.isArray(item.serverValue) ? (item.serverValue as string[]) : item.op.base;
     return { ...item.op, base: server, value: alignOrder(item.op.value, server) };
   }
+  if (item.op.kind === 'stopAdd' || item.op.kind === 'stopRemove') return null;
+  if (item.op.kind === 'stop') return { ...item.op, base: item.serverValue as StopValue };
   if (item.op.kind === 'visited') return { ...item.op, base: item.serverValue as boolean };
   if (item.op.kind === 'journal') return { ...item.op, base: item.serverValue as string | number | null };
   return { ...item.op, base: item.serverValue as ScheduleValue };

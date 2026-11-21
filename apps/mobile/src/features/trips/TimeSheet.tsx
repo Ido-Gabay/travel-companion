@@ -5,7 +5,7 @@ import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { AppText, Button, Icon, Sheet } from '@/components/ui';
 import { useLocale } from '@/i18n/LocaleProvider';
-import { colors, radii, spacing } from '@/theme/tokens';
+import { colors, compactHitSlop, radii, spacing, weights } from '@/theme/tokens';
 import { formatStartTime, fromStartTime, toStartTime } from './itinerary';
 
 export interface TimeSheetValue {
@@ -89,6 +89,7 @@ export function TimeSheet({
             accessibilityRole="switch"
             accessibilityState={{ checked: !hasTime }}
             onPress={() => setHasTime((current) => !current)}
+            hitSlop={compactHitSlop}
             style={[styles.chip, !hasTime && styles.chipOn]}
           >
             <AppText variant="caption" style={[styles.chipText, !hasTime && styles.chipTextOn]}>
@@ -132,6 +133,7 @@ export function TimeSheet({
               accessibilityRole="radio"
               accessibilityState={{ selected: duration === null }}
               onPress={() => setDuration(null)}
+              hitSlop={compactHitSlop}
               style={[styles.chip, duration === null && styles.chipOn]}
             >
               <AppText variant="caption" style={[styles.chipText, duration === null && styles.chipTextOn]}>
@@ -144,6 +146,7 @@ export function TimeSheet({
                 accessibilityRole="radio"
                 accessibilityState={{ selected: duration === minutes }}
                 onPress={() => setDuration(minutes)}
+                hitSlop={compactHitSlop}
                 style={[styles.chip, duration === minutes && styles.chipOn]}
               >
                 <AppText variant="caption" style={[styles.chipText, duration === minutes && styles.chipTextOn]}>
@@ -184,7 +187,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     backgroundColor: colors.surface,
   },
-  chips: { gap: spacing.sm },
+  chips: { gap: spacing.sm, paddingVertical: compactHitSlop.top },
   chip: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs + 2,
@@ -194,6 +197,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   chipOn: { backgroundColor: colors.accent, borderColor: colors.accent },
-  chipText: { fontWeight: '600', color: colors.textSecondary },
+  chipText: { fontWeight: weights.semibold, color: colors.textSecondary },
   chipTextOn: { color: colors.textOnAccent },
 });

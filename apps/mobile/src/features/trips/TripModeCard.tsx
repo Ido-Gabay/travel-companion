@@ -1,26 +1,27 @@
-import { googleMapsDirectionsUrl, tripDays, type TripPlace } from '@travel-companion/shared';
+import { googleMapsDirectionsUrl, tripDays } from '@travel-companion/shared';
 import { router } from 'expo-router';
 import { useMemo } from 'react';
 import { ActivityIndicator, Linking, Pressable, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { AppText, Button, Icon, InlineError } from '@/components/ui';
+import { AppText, Button, Icon, IconButton, InlineError, useActionMenu } from '@/components/ui';
 import { GoogleAttribution } from '@/components/GoogleAttribution';
 import { openInMaps } from '@/features/places/open-in-maps';
 import { zonedNow } from '@/features/companion/zoned-time';
-import { useGooglePlace, useSetVisited } from '@/features/places/queries';
+import { useGooglePlace } from '@/features/places/queries';
 import { usePlaceDisplay } from '@/features/places/use-place-display';
 import { useLocale } from '@/i18n/LocaleProvider';
 import { formatTripDates } from '@/lib/dates';
 import { useErrorMessage } from '@/lib/use-error-message';
 import { colors, radii, spacing } from '@/theme/tokens';
 import { countByDay, formatStartTime, nextStop, placesForDay, wishlistPlaces, type TripMode } from './itinerary';
-import { useTrip } from './queries';
+import { storedZoneFor, type TripItem } from './model';
+import { useSetVisitStatus, useTrip } from './queries';
 
 /**
  * Home's focus card. Tapping the card opens Today: live during the trip, as a
  * preview before it. Before the trip: a countdown, a one-line summary of the plan and
- * one primary action (keep planning). During the trip: the next stop with Directions
- * and Done, Open Today, and a link to the itinerary. The full day lives on Today.
+ * one primary action (keep planning). During the trip: the day's progress, the next
+ * stop (its Directions and Done in a "…" menu), Open Today and a link to the itinerary.
  */
 export function TripModeCard({ mode, today }: { mode: TripMode; today: string }) {
   const { t } = useTranslation();
@@ -28,7 +29,8 @@ export function TripModeCard({ mode, today }: { mode: TripMode; today: string })
   const detail = useTrip(mode.trip.id);
   // During the trip, "today" is the trip's day (pinned hotel's time zone), not the phone's.
   const hotel = useGooglePlace(detail.data?.basePlaceId ?? null);
-  const tripToday = hotel.data?.timeZone ? zonedNow(Date.now(), hotel.data.timeZone).day : null;
+  const zone = (detail.data ? storedZoneFor(detail.data, today) : null) ?? hotel.data?.timeZone ?? null;
+  const tripToday = zone ? zonedNow(Date.now(), zone).day : null;
   const openTrip = () => router.push({ pathname: '/trips/[id]', params: { id: mode.trip.id } });
   const openToday = () =>
     router.push({
@@ -36,9 +38,19 @@ export function TripModeCard({ mode, today }: { mode: TripMode; today: string })
       params: mode.phase === 'during' ? { tripId: mode.trip.id } : { tripId: mode.trip.id, preview: '1' },
     });
 
+  const todayStops =
+    detail.data && mode.phase === 'during'
+      ? placesForDay(detail.data.places, tripToday ?? today).filter((stop) => stop.status !== 'skipped')
+      : [];
+  const doneToday = todayStops.filter((stop) => stop.visitedAt !== null).length;
   const eyebrow =
     mode.phase === 'during'
-      ? t('tripMode.dayOf', { day: mode.dayNumber, total: mode.totalDays })
+      ? [
+          t('tripMode.dayOf', { day: mode.dayNumber, total: mode.totalDays }),
+          todayStops.length > 0 ? t('tripMode.doneShort', { done: doneToday, total: todayStops.length }) : null,
+        ]
+          .filter(Boolean)
+          .join(' · ')
       : mode.daysUntil === 1
         ? t('tripMode.tomorrow')
         : t('tripMode.inDays', { count: mode.daysUntil });
@@ -83,7 +95,12 @@ export function TripModeCard({ mode, today }: { mode: TripMode; today: string })
           onPreview={openToday}
         />
       ) : (
-        <Today stops={placesForDay(detail.data.places, tripToday ?? today)} onOpen={openTrip} onToday={openToday} />
+        <Today
+          tripId={mode.trip.id}
+          stops={todayStops}
+          onOpen={openTrip}
+          onToday={openToday}
+        />
       )}
     </View>
   );
@@ -97,7 +114,7 @@ function BeforeTrip({
   onOpen,
   onPreview,
 }: {
-  places: readonly TripPlace[];
+  places: readonly TripItem[];
   totalDays: number;
   hasBase: boolean;
   tripId: string;
@@ -142,19 +159,20 @@ function BeforeTrip({
 }
 
 function Today({
+  tripId,
   stops,
   onOpen,
   onToday,
 }: {
-  stops: readonly TripPlace[];
+  tripId: string;
+  stops: readonly TripItem[];
   onOpen: () => void;
   onToday: () => void;
 }) {
   const { t } = useTranslation();
   const errorMessage = useErrorMessage();
-  const setVisited = useSetVisited();
+  const setStatus = useSetVisitStatus(tripId);
   const next = useMemo(() => nextStop(stops), [stops]);
-  const done = stops.filter((stop) => stop.visitedAt !== null).length;
 
   if (stops.length === 0) {
     return (
@@ -173,8 +191,8 @@ function Today({
         <NextStop
           stop={next}
           number={stops.indexOf(next) + 1}
-          marking={setVisited.isPending}
-          onDone={() => setVisited.mutate({ id: next.id, visited: true })}
+          marking={setStatus.isPending}
+          onDone={() => setStatus.mutate({ stopId: next.id, status: 'completed' })}
         />
       ) : (
         <View style={styles.allDone}>
@@ -184,13 +202,10 @@ function Today({
           </AppText>
         </View>
       )}
-      {setVisited.isError ? <InlineError message={errorMessage(setVisited.error)} /> : null}
+      {setStatus.isError ? <InlineError message={errorMessage(setStatus.error)} /> : null}
       <View style={styles.actions}>
         <Button label={t('tripMode.openToday')} onPress={onToday} />
         <Button label={t('tripMode.viewItinerary')} variant="ghost" size="sm" onPress={onOpen} />
-        <AppText variant="caption" color="tertiary" align="center">
-          {t('tripMode.doneOf', { done, total: stops.length })}
-        </AppText>
       </View>
     </>
   );
@@ -202,13 +217,14 @@ function NextStop({
   marking,
   onDone,
 }: {
-  stop: TripPlace;
+  stop: TripItem;
   number: number;
   marking: boolean;
   onDone: () => void;
 }) {
   const { t } = useTranslation();
   const { locale } = useLocale();
+  const openMenu = useActionMenu();
   const display = usePlaceDisplay(stop);
   const directions = () => {
     if (stop.googlePlaceId) {
@@ -222,15 +238,16 @@ function NextStop({
 
   return (
     <View style={styles.next}>
-      <AppText variant="label" color="secondary">
-        {stop.startTime
-          ? t('tripMode.nextAt', { number, time: formatStartTime(stop.startTime, locale) })
-          : t('tripMode.next', { number })}
-      </AppText>
       <Pressable
         accessibilityRole="button"
-        onPress={() => router.push({ pathname: '/places/[id]', params: { id: stop.id } })}
+        onPress={() => router.push({ pathname: '/places/[id]', params: { id: stop.placeId } })}
+        style={({ pressed }) => [styles.nextText, pressed && styles.pressed]}
       >
+        <AppText variant="label" color="secondary">
+          {stop.startTime
+            ? t('tripMode.nextAt', { number, time: formatStartTime(stop.startTime, locale) })
+            : t('tripMode.next', { number })}
+        </AppText>
         <AppText variant="heading" numberOfLines={2}>
           {display.name}
         </AppText>
@@ -241,19 +258,23 @@ function NextStop({
         ) : null}
         {stop.source === 'google' && display.google ? <GoogleAttribution inline align="start" /> : null}
       </Pressable>
-      <View style={styles.row}>
-        <Button label={t('places.directions')} icon="navigate" variant="secondary" size="sm" block={false} onPress={directions} />
-        <Button
-          label={t('tripMode.done')}
-          icon="checkmark"
-          variant="secondary"
-          size="sm"
-          block={false}
-          loading={marking}
-          onPress={onDone}
-          accessibilityHint={t('tripMode.markDone', { name: display.name })}
+      {marking ? (
+        <ActivityIndicator color={colors.accent} />
+      ) : (
+        <IconButton
+          icon="ellipsis-horizontal"
+          accessibilityLabel={t('tripMode.nextActions', { name: display.name })}
+          onPress={() =>
+            openMenu({
+              title: display.name,
+              items: [
+                { label: t('places.directions'), icon: 'navigate-outline', onPress: directions },
+                { label: t('tripMode.done'), icon: 'checkmark', onPress: onDone },
+              ],
+            })
+          }
         />
-      </View>
+      )}
     </View>
   );
 }
@@ -277,12 +298,14 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accentSoft,
   },
   actions: { gap: spacing.sm },
-  row: { flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap' },
   next: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: spacing.sm,
     padding: spacing.lg,
     borderRadius: radii.lg,
     backgroundColor: colors.background,
   },
   allDone: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  nextText: { flex: 1, gap: spacing.xs },
 });

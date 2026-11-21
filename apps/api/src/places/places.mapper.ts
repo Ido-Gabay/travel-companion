@@ -10,7 +10,12 @@ export interface PlaceRow {
   my_label: string | null;
   category: PlaceCategory;
   tags: string[];
+  /** The legacy mark, else the latest completed visit (D1). */
   visited_at: Date | null;
+  /** D1: the user's own pin (custom places only). */
+  latitude: number | null;
+  longitude: number | null;
+  linked_google_place_id: string | null;
   /** Selected as ::int. */
   trip_count: number;
   created_at: Date;
@@ -29,7 +34,8 @@ export interface TripPlaceRow extends PlaceRow {
   highlight: boolean;
 }
 
-export function toPlace(row: PlaceRow): Place {
+/** Place fields as they were before D1 (v1 trip responses stay byte-identical). */
+function basePlace(row: PlaceRow): Place {
   return {
     id: row.id,
     source: row.google_place_id ? 'google' : 'custom',
@@ -48,9 +54,19 @@ export function toPlace(row: PlaceRow): Place {
   };
 }
 
+export function toPlace(row: PlaceRow): Place {
+  const place = basePlace(row);
+  return {
+    ...place,
+    latitude: row.latitude,
+    longitude: row.longitude,
+    linkedGooglePlaceId: row.linked_google_place_id,
+  };
+}
+
 export function toTripPlace(row: TripPlaceRow): TripPlace {
   return {
-    ...toPlace(row),
+    ...basePlace(row),
     addedAt: row.added_at.toISOString(),
     day: row.day,
     startTime: row.start_time,

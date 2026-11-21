@@ -1,4 +1,5 @@
 import type { LatLng } from '@travel-companion/shared';
+import { groupVisitMarkers, locationKey } from '../trips/map-markers';
 import type { StopStatus, TodayResult } from './today-engine';
 import { isUsableLatLng } from './travel';
 
@@ -13,9 +14,12 @@ import { isUsableLatLng } from './travel';
 export const LOCATION_STALE_MS = 2 * 60 * 1000;
 
 export interface MapPin {
+  /** The visit the pin stands for (the one happening now or next, else the first). */
   id: string;
   /** Position in the day (1-based). */
   number: number;
+  /** Other visits of the day at the same spot, by their numbers. */
+  also: number[];
   name: string;
   kind: StopStatus;
   location: LatLng;
@@ -51,15 +55,28 @@ export function originPoint(result: TodayResult, here: LatLng | null, hotel: Lat
   }
 }
 
+const KIND_RANK: Record<StopStatus, number> = { now: 0, next: 1, later: 2, done: 3 };
+
 export function buildTodayMap(result: TodayResult, here: LatLng | null, hotel: LatLng | null): TodayMapModel {
-  const pins: MapPin[] = [];
-  let unmapped = 0;
-  result.timeline.forEach((item, index) => {
-    if (isUsableLatLng(item.stop.location)) {
-      pins.push({ id: item.stop.id, number: index + 1, name: item.stop.name, kind: item.status, location: item.stop.location });
-    } else {
-      unmapped += 1;
-    }
+  const visits = result.timeline.map((item, index) => ({
+    id: item.stop.id,
+    placeKey: locationKey(item.stop.location),
+    location: item.stop.location,
+    item,
+    number: index + 1,
+  }));
+  const { markers, unmapped } = groupVisitMarkers(visits);
+  const pins: MapPin[] = markers.map((marker) => {
+    // Stable choice: the most relevant visit, ties broken by day order.
+    const lead = [...marker.visits].sort((a, b) => KIND_RANK[a.item.status] - KIND_RANK[b.item.status] || a.number - b.number)[0]!;
+    return {
+      id: lead.id,
+      number: lead.number,
+      also: marker.numbers.filter((number) => number !== lead.number),
+      name: lead.item.stop.name,
+      kind: lead.item.status,
+      location: marker.location,
+    };
   });
 
   const from = originPoint(result, here, hotel);
@@ -72,7 +89,10 @@ export function buildTodayMap(result: TodayResult, here: LatLng | null, hotel: L
       ? [from, nextLocation]
       : null;
 
-  const laterPath = pins.filter((pin) => pin.kind === 'next' || pin.kind === 'later').map((pin) => pin.location);
+  // Every open visit in order, including a return to a place already drawn.
+  const laterPath = result.timeline
+    .filter((item) => (item.status === 'next' || item.status === 'later') && isUsableLatLng(item.stop.location))
+    .map((item) => item.stop.location as LatLng);
 
   const frame = [...pins.map((pin) => pin.location)];
   if (isUsableLatLng(hotel) && pins.length === 0) frame.push(hotel);

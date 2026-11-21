@@ -3,12 +3,12 @@ import {
   tripDays,
   type LatLng,
   type PlaceCategory,
-  type TripDetail,
 } from '@travel-companion/shared';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { GoogleAttribution } from '@/components/GoogleAttribution';
 import {
@@ -28,19 +28,25 @@ import {
 import { useMe } from '@/features/me/queries';
 import { CATEGORY_ICONS } from '@/features/places/categories';
 import { openInMaps } from '@/features/places/open-in-maps';
-import { useGooglePlace, useGooglePlaces, usePlaces, useSetVisited } from '@/features/places/queries';
+import { useGooglePlace, useGooglePlacePreviews, useGooglePlaces, usePlaces } from '@/features/places/queries';
 import { dayChipParts, dayTitle, formatStartTime, initialDay, placesForDay } from '@/features/trips/itinerary';
-import { useTrip } from '@/features/trips/queries';
+import { stayForNight, storedZoneFor, type TripView } from '@/features/trips/model';
+import { useSetVisitStatus, useTrip } from '@/features/trips/queries';
 import { formatDurationShort, TimeSheet } from '@/features/trips/TimeSheet';
 import { useLocale } from '@/i18n/LocaleProvider';
 import { useErrorMessage } from '@/lib/use-error-message';
-import { colors, hitSlop, radii, shadows, spacing } from '@/theme/tokens';
+import { colors, hitSlop, radii, shadows, spacing, weights } from '@/theme/tokens';
 import { OfflineStatus } from '@/features/offline/OfflineStatus';
 import { useOfflineCoords } from '@/features/offline/OfflineProvider';
 import { usePendingState } from '@/features/offline/ops-store';
 import { useConnection } from '@/features/offline/connection';
 import { fallbackName } from '@/features/places/use-place-display';
+import { TripPlanSheet } from '@/features/planning/TripPlanning';
 import { useDismissals } from './dismissals';
+import { NEARBY_SAVED_WALK_MIN, nearbyKey, nearbySaved, type NearbySaved } from './nearby-saved';
+import type { AssistantResult } from '@/features/assistant/AssistantPanel';
+import type { SavedToAdd } from '@/features/planning/TripPlanning';
+import { dayWindows } from '@/features/planning/opening-hours';
 import { formatDistance } from './geo';
 import { useCurrentLocation } from './location';
 import { useTodayAction } from './today-actions';
@@ -134,7 +140,7 @@ function TodayContent({
   savedAt,
   stale,
 }: {
-  trip: TripDetail;
+  trip: TripView;
   forcePreview: boolean;
   onRefreshTrip: () => void;
   refreshing: boolean;
@@ -149,7 +155,7 @@ function TodayContent({
   const distanceUnit = useMe().data?.preferences.distanceUnit ?? 'km';
   const collection = usePlaces();
   const location = useCurrentLocation();
-  const setVisited = useSetVisited();
+  const setStatus = useSetVisitStatus(trip.id);
   const now = useNow();
   const coordsFor = useOfflineCoords();
   const pending = usePendingState();
@@ -159,8 +165,10 @@ function TodayContent({
   const days = useMemo(() => tripDays(trip.startDate, trip.endDate), [trip.startDate, trip.endDate]);
   // "Today" and "now" in the trip's time zone (pinned hotel), so they're right
   // even if the phone is still on home time; the phone's clock otherwise.
+  // D1: the zone stored for the day (stay or trip, confirmed by the user), else the hotel's, else the phone's.
   const hotel = useGooglePlace(trip.basePlaceId);
-  const tripNow = zonedNow(now.getTime(), hotel.data?.timeZone ?? null);
+  const phoneDay = now.toISOString().slice(0, 10);
+  const tripNow = zonedNow(now.getTime(), storedZoneFor(trip, phoneDay) ?? hotel.data?.timeZone ?? null);
   const realToday = tripNow.day;
   const live = !forcePreview && days.includes(realToday);
 
@@ -177,6 +185,7 @@ function TodayContent({
   const [chosenIndex, setChosenIndex] = useState<SheetIndex | null>(null);
   const [sheetHeight, setSheetHeight] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [replan, setReplan] = useState<{ request: AssistantResult | null; saved?: SavedToAdd } | null>(null);
 
   // One location reading when Today opens for real (not in preview).
   const { locate } = location;
@@ -192,11 +201,15 @@ function TodayContent({
   const act = useTodayAction(trip.id, day ?? '', tomorrow);
 
   // The day's stops and the places that could fill free time.
-  const stops = useMemo(() => (day ? placesForDay(trip.places, day) : []), [trip.places, day]);
-  const tripPlaceIds = useMemo(() => new Set(trip.places.map((place) => place.id)), [trip.places]);
+  // D1: the day's visits; skipped ones are off today's plan.
+  const stops = useMemo(
+    () => (day ? placesForDay(trip.places, day).filter((stop) => stop.status !== 'skipped') : []),
+    [trip.places, day],
+  );
+  const tripPlaceIds = useMemo(() => new Set(trip.saved.map((place) => place.id)), [trip.saved]);
   const candidatePlaces = useMemo(() => {
     const wishlist = trip.places
-      .filter((place) => place.day === null && place.visitedAt === null)
+      .filter((place) => place.stopId === null)
       .map((place) => ({ place, source: 'wishlist' as const }));
     const others = (collection.data?.items ?? [])
       .filter((place) => !tripPlaceIds.has(place.id) && place.visitedAt === null && place.googlePlaceId)
@@ -231,7 +244,15 @@ function TodayContent({
     source,
   }));
 
-  const hotelPoint = hotel.data?.location ?? coordsFor(trip.basePlaceId);
+  // Where the user sleeps that night (D1 stays), else the trip's main stay.
+  const nightStay = stayForNight(trip.stays, day);
+  const nightGoogleId = nightStay?.place?.googlePlaceId ?? (nightStay ? null : trip.basePlaceId);
+  const nightHotel = useGooglePlace(nightGoogleId);
+  const ownPin =
+    nightStay?.place?.latitude != null && nightStay.place.longitude != null
+      ? { latitude: nightStay.place.latitude, longitude: nightStay.place.longitude }
+      : null;
+  const hotelPoint = ownPin ?? nightHotel.data?.location ?? coordsFor(nightGoogleId);
   const baseInput = {
     stops: engineStops,
     nowMinutes,
@@ -261,6 +282,70 @@ function TodayContent({
   const mapModel = buildTodayMap(result, result.hereIgnored ? null : here, hotelPoint);
   // With nothing to draw, or before the trip, the list is more useful than an empty map.
   const sheetIndex: SheetIndex = chosenIndex ?? (mapModel.pins.length === 0 || !live ? 1 : 0);
+
+  // Live: places saved to this trip, not on any day, a short walk from here (opening hours only if already known).
+  const savedItems = useMemo(() => trip.places.filter((item) => item.stopId === null), [trip.places]);
+  const savedPreviews = useGooglePlacePreviews(
+    savedItems.flatMap((item) => (item.googlePlaceId ? [item.googlePlaceId] : [])),
+    false,
+  );
+  const hereNow = result.hereIgnored ? null : here;
+  const nearby: NearbySaved[] =
+    live && day
+      ? nearbySaved({
+          here: hereNow,
+          candidates: savedItems.map((item) => {
+            const preview = item.googlePlaceId ? savedPreviews.byId.get(item.googlePlaceId) : undefined;
+            const pin = item.latitude != null && item.longitude != null ? { latitude: item.latitude, longitude: item.longitude } : null;
+            return {
+              id: item.id,
+              name: nameOf(item),
+              category: item.category,
+              durationMinutes: item.durationMinutes,
+              location: locationOf(item) ?? pin,
+              hours: preview ? (preview.detail === 'full' && preview.openingPeriods.length > 0 ? dayWindows(preview.openingPeriods, day) : null) : undefined,
+            };
+          }),
+          nowMinutes,
+          free: result.free,
+          planDone: !result.next && !result.current,
+          dismissed,
+        })
+      : [];
+  const nearbyIds = new Set(nearby.map((item) => item.candidate.id));
+  const lateRequest = (): AssistantResult | null =>
+    stops.some((stop) => stop.status === 'planned' && stop.startTime !== null && toMinutes(stop.startTime) < nowMinutes)
+      ? { message: t('replan.lateMessage'), instructions: [{ kind: 'catchUp' }], source: 'rules', summary: '', refs: new Map() }
+      : null;
+  // "Something changed?" for the visit happening now (or the next one): a live request, still only a proposal.
+  const openLiveMenu = (stop: { id: string; name: string }) => {
+    const target = { ref: 't1', category: null, text: null, day: null };
+    const ask = (message: string, instructions: AssistantResult['instructions']) =>
+      setReplan({ request: { message, instructions, source: 'rules', summary: '', refs: new Map([['t1', stop.id]]) } });
+    openMenu({
+      items: [
+        { label: t('live.menuClosed'), icon: 'close-circle-outline', onPress: () => ask(t('live.msgClosed', { name: stop.name }), [{ kind: 'closedVisit', target }]) },
+        { label: t('live.menuLonger'), icon: 'time-outline', onPress: () => ask(t('live.msgLonger', { name: stop.name }), [{ kind: 'extendVisit', target, extraMinutes: null }]) },
+        { label: t('live.menuSkip'), icon: 'play-skip-forward-outline', onPress: () => ask(t('live.msgSkip', { name: stop.name }), [{ kind: 'skipVisit', target }]) },
+        { label: t('live.menuLate'), icon: 'hourglass-outline', onPress: () => ask(t('replan.lateMessage'), [{ kind: 'catchUp' }]) },
+      ],
+    });
+  };
+  const addSaved = (item: NearbySaved) =>
+    setReplan({
+      request: { message: t('live.addSavedMessage', { name: item.candidate.name }), instructions: [], source: 'rules', summary: '', refs: new Map() },
+      saved: { id: item.candidate.id, name: item.candidate.name, category: item.candidate.category, location: item.candidate.location },
+    });
+  const openSavedDirections = (item: NearbySaved) => {
+    const place = savedItems.find((entry) => entry.id === item.candidate.id);
+    if (!place) return;
+    if (place.googlePlaceId) {
+      void Linking.openURL(googleMapsDirectionsUrl(place.googlePlaceId, item.candidate.name, 'walking')).catch(() => undefined);
+    } else if (item.candidate.location) {
+      const { latitude, longitude } = item.candidate.location;
+      void Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}&travelmode=walking`).catch(() => undefined);
+    }
+  };
 
   const clock = (minutes: number) => formatStartTime(toClock(minutes), locale);
   const travelText = (travel: TravelEstimate) => {
@@ -314,7 +399,22 @@ function TodayContent({
     }
   };
   const openItinerary = () => router.push({ pathname: '/trips/[id]', params: { id: trip.id } });
-  const openDiscover = () => router.push({ pathname: '/trips/[id]/discover', params: { id: trip.id } });
+  // Live, "nearby" is near you and can go straight into today; a preview has no "here", so it browses Discover.
+  const nearbyLabel = live ? t('live.menuNearby') : t('today.discoverNearby');
+  const openNearby = () =>
+    live
+      ? setReplan({
+          request: {
+            message: t('live.msgNearby'),
+            instructions: [
+              { kind: 'findPlace', query: 'tourist attractions', category: 'sights', area: null, nearPlanned: false, nearHere: true, day: null, intent: 'add' },
+            ],
+            source: 'rules',
+            summary: '',
+            refs: new Map(),
+          },
+        })
+      : router.push({ pathname: '/trips/[id]/discover', params: { id: trip.id } });
 
   if (days.length === 0 || !day) {
     return (
@@ -359,8 +459,11 @@ function TodayContent({
           : here
             ? t('today.usingLocation')
             : t('today.noLocation');
+  // Live, the chip only mentions location when something is off (the map shows the dot otherwise).
+  const locationUnusual = location.state.status === 'locating' || result.hereIgnored || Boolean(hereAge?.stale);
+  const hasEstimates = result.timeline.some((item) => item.travel && item.travel.source !== 'google');
 
-  const alerts = peekAlerts(result, pending, offline, t, clock);
+  const alerts = peekAlerts(result, pending, offline, t, clock, nearby[0] ?? null);
   // The note is only needed while a straight line is drawn (a real route needs no caveat).
   const hasLines = (mapModel.nextLeg !== null && !mapModel.nextLegIsRoute) || mapModel.laterPath.length > 1;
   const topPadding = insets.top + TOP_BAR + (hasLines ? 28 : 0);
@@ -387,14 +490,16 @@ function TodayContent({
               time: clock(result.current.projectedEnd ?? nowMinutes),
             })}
           </AppText>
-          <Button
-            label={t('tripMode.done')}
-            icon="checkmark"
-            variant="secondary"
-            size="sm"
-            block={false}
-            onPress={() => result.current && setVisited.mutate({ id: result.current.stop.id, visited: true })}
-          />
+          {live ? (
+            <Button
+              label={t('tripMode.done')}
+              icon="checkmark"
+              variant="secondary"
+              size="sm"
+              block={false}
+              onPress={() => result.current && setStatus.mutate({ stopId: result.current.stop.id, status: 'completed' })}
+            />
+          ) : null}
         </View>
       ) : null}
 
@@ -463,17 +568,33 @@ function TodayContent({
           <View style={styles.flex}>
             <Button label={t('places.directions')} icon="navigate" onPress={openDirections} />
           </View>
-          <Button
-            label={t('tripMode.done')}
-            icon="checkmark"
-            variant="secondary"
-            block={false}
-            loading={setVisited.isPending}
-            onPress={() => result.next && setVisited.mutate({ id: result.next.stop.id, visited: true })}
-          />
+          {/* One Done at a time: the visit happening now has its own; preview never changes the plan. */}
+          {live && !result.current ? (
+            <Button
+              label={t('tripMode.done')}
+              icon="checkmark"
+              variant="secondary"
+              block={false}
+              loading={setStatus.isPending}
+              onPress={() => result.next && setStatus.mutate({ stopId: result.next.stop.id, status: 'completed' })}
+            />
+          ) : null}
         </View>
       ) : result.total === 0 ? (
         <Button label={t('today.openItinerary')} variant="secondary" onPress={openItinerary} />
+      ) : null}
+      {live && (result.current ?? result.next) ? (
+        <Button
+          label={t('live.somethingChanged')}
+          icon="help-circle-outline"
+          variant="ghost"
+          size="sm"
+          block={false}
+          onPress={() => {
+            const stop = (result.current ?? result.next)?.stop;
+            if (stop) openLiveMenu(stop);
+          }}
+        />
       ) : null}
     </View>
   );
@@ -516,7 +637,11 @@ function TodayContent({
             <AppText variant="label">{dayTitle(day, locale)}</AppText>
           </AppText>
           <AppText variant="caption" color="secondary" numberOfLines={1}>
-            {live ? `${t('today.nowAt', { time: clock(nowMinutes) })} · ${locationStatus}` : locationStatus}
+            {live
+              ? locationUnusual
+                ? `${t('today.nowAt', { time: clock(nowMinutes) })} · ${locationStatus}`
+                : t('today.nowAt', { time: clock(nowMinutes) })
+              : locationStatus}
           </AppText>
         </Pressable>
         <Pressable
@@ -526,7 +651,7 @@ function TodayContent({
             openMenu({
               items: [
                 { label: t('today.openItinerary'), icon: 'list-outline', onPress: openItinerary },
-                { label: t('today.discoverNearby'), icon: 'search', onPress: openDiscover },
+                { label: nearbyLabel, icon: 'search', onPress: openNearby },
                 { label: t('today.refresh'), icon: 'refresh', onPress: refresh },
               ],
             })
@@ -637,7 +762,7 @@ function TodayContent({
 
         <OfflineStatus savedAt={savedAt} stale={stale} />
         {act.isError ? <InlineError message={errorMessage(act.error)} /> : null}
-        {setVisited.isError ? <InlineError message={errorMessage(setVisited.error)} /> : null}
+        {setStatus.isError ? <InlineError message={errorMessage(setStatus.error)} /> : null}
 
         {/* Should I consider changing my plan? (Nothing changes until the user picks an action.) */}
         {result.hints.map((hint) => (
@@ -651,6 +776,108 @@ function TodayContent({
             onDismiss={() => dismiss(hint.id)}
           />
         ))}
+
+        {/* The whole rest of the day at once (a proposal; Apply is a separate tap). */}
+        {live && result.done < result.total ? (
+          <View style={styles.section}>
+            <Button label={t('replan.open')} icon="refresh" variant="secondary" onPress={() => setReplan({ request: lateRequest() })} />
+            <AppText variant="caption" color="tertiary">
+              {t('replan.openHint')}
+            </AppText>
+          </View>
+        ) : null}
+
+        {/* Saved for this trip but not on a day, and a short walk from here. */}
+        {live && savedItems.length > 0 ? (
+          <View style={styles.section} testID="today-nearby-saved">
+            <AppText variant="heading" accessibilityRole="header">
+              {t('live.nearbyTitle')}
+            </AppText>
+            {!hereNow ? (
+              <>
+                <AppText variant="body" color="secondary">
+                  {result.hereIgnored ? t('live.nearbyFar') : t('live.nearbyNeedLocation')}
+                </AppText>
+                <Button
+                  label={t('live.nearbyCheck')}
+                  icon="locate-outline"
+                  variant="secondary"
+                  size="sm"
+                  block={false}
+                  loading={location.state.status === 'locating'}
+                  onPress={() => void showMyLocation()}
+                />
+                <AppText variant="caption" color="tertiary">
+                  {t('live.locationPrivacy')}
+                </AppText>
+              </>
+            ) : nearby.length === 0 ? (
+              <AppText variant="body" color="secondary">
+                {t('live.nearbyNone', { min: NEARBY_SAVED_WALK_MIN })}
+              </AppText>
+            ) : (
+              nearby.map((item) => (
+                <View key={item.candidate.id} style={styles.suggestion}>
+                  <View style={styles.rowBetween}>
+                    <AppText variant="bodyStrong" style={styles.flex} numberOfLines={2}>
+                      {item.candidate.name}
+                    </AppText>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={t('live.nearbyDismiss', { name: item.candidate.name })}
+                      onPress={() => dismiss(nearbyKey(item.candidate.id))}
+                      hitSlop={hitSlop}
+                    >
+                      <Icon name="close" size={18} color={colors.textTertiary} />
+                    </Pressable>
+                  </View>
+                  <AppText variant="caption" color="secondary">
+                    {[travelText(item.travel), item.hours === 'open' ? t('live.nearbyOpen') : null].filter(Boolean).join(' · ')}
+                  </AppText>
+                  <AppText variant="caption" color="secondary">
+                    {item.reason === 'fitsFree'
+                      ? t('live.nearbyFits', {
+                          trip: trip.title,
+                          duration: formatDurationShort(item.visitMinutes, t),
+                          name: nameById.get(item.untilStopId ?? '') ?? '',
+                          time: clock(item.until ?? nowMinutes),
+                        })
+                      : item.reason === 'dayDone'
+                        ? t('live.nearbyDayDone', { trip: trip.title, duration: formatDurationShort(item.visitMinutes, t) })
+                        : t('live.nearbyTight', { trip: trip.title })}
+                  </AppText>
+                  <View style={styles.previewRow}>
+                    <Button label={t('live.nearbyAdd')} icon="add" variant="secondary" size="sm" block={false} onPress={() => addSaved(item)} />
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={t('live.nearbyMore', { name: item.candidate.name })}
+                      hitSlop={hitSlop}
+                      style={styles.moreButton}
+                      onPress={() =>
+                        openMenu({
+                          items: [
+                            { label: t('places.directions'), icon: 'navigate-outline', onPress: () => openSavedDirections(item) },
+                            {
+                              label: t('live.nearbyOpenPlace'),
+                              icon: 'information-circle-outline',
+                              onPress: () => {
+                                const place = savedItems.find((entry) => entry.id === item.candidate.id);
+                                if (place) router.push({ pathname: '/places/[id]', params: { id: place.placeId } });
+                              },
+                            },
+                          ],
+                        })
+                      }
+                    >
+                      <Icon name="ellipsis-horizontal" size={18} color={colors.textSecondary} />
+                    </Pressable>
+                  </View>
+                </View>
+              ))
+            )}
+            {nearby.some((item) => savedItems.find((entry) => entry.id === item.candidate.id)?.googlePlaceId) ? <GoogleAttribution inline /> : null}
+          </View>
+        ) : null}
 
         {/* Where am I in my day? */}
         <View style={styles.section}>
@@ -681,7 +908,10 @@ function TodayContent({
                   travelText={travelText}
                   onPress={() =>
                     item.stop.id === selectedId
-                      ? router.push({ pathname: '/places/[id]', params: { id: item.stop.id } })
+                      ? router.push({
+                          pathname: '/places/[id]',
+                          params: { id: stops.find((stop) => stop.id === item.stop.id)?.placeId ?? item.stop.id },
+                        })
                       : selectStop(item.stop.id, 'list')
                   }
                 />
@@ -714,7 +944,7 @@ function TodayContent({
               </AppText>
             ) : null}
             {/* Two at most: dismissing one brings the next. */}
-            {result.suggestions.slice(0, MAX_SHOWN_SUGGESTIONS).map((suggestion) => (
+            {result.suggestions.filter((suggestion) => !nearbyIds.has(suggestion.candidate.id)).slice(0, MAX_SHOWN_SUGGESTIONS).map((suggestion) => (
               <SuggestionRow
                 key={suggestion.id}
                 suggestion={suggestion}
@@ -726,19 +956,25 @@ function TodayContent({
               />
             ))}
             {result.free && result.suggestions.length === 0 ? (
-              <AppText variant="caption" color="secondary">
-                {result.origin ? t('today.nothingFits') : t('today.needLocation')}
-              </AppText>
+              <>
+                <AppText variant="caption" color="secondary">
+                  {result.origin ? t('today.nothingFits') : t('today.needLocation')}
+                </AppText>
+                {result.origin ? (
+                  <Button label={nearbyLabel} icon="search" variant="ghost" size="sm" block={false} onPress={openNearby} />
+                ) : null}
+              </>
             ) : null}
             {result.suggestions.length > 0 ? <GoogleAttribution inline /> : null}
           </View>
         ) : null}
 
-        <Button label={t('today.discoverNearby')} icon="search" variant="ghost" onPress={openDiscover} />
-
-        <AppText variant="caption" color="tertiary" style={styles.footnote}>
-          {t('today.footnote')}
-        </AppText>
+        {/* Only when a travel time on this screen is an estimate (the map's lines have their own note). */}
+        {hasEstimates ? (
+          <AppText variant="caption" color="tertiary" style={styles.footnote}>
+            {t('today.estimateNote')}
+          </AppText>
+        ) : null}
 
         {act.isPending ? <ActivityIndicator color={colors.accent} /> : null}
       </MapSheet>
@@ -756,11 +992,24 @@ function TodayContent({
         }}
         onClose={() => setPickingTime(false)}
       />
+      {replan ? (
+        <TripPlanSheet
+          trip={trip}
+          today={day}
+          nowMinutes={nowMinutes}
+          focusDay={day}
+          here={result.hereIgnored ? null : here}
+          initialRequest={replan.request}
+          initialSaved={replan.saved ?? null}
+          onClose={() => setReplan(null)}
+        />
+      ) : null}
     </View>
   );
 }
 
-type TFn = ReturnType<typeof useTranslation>['t'];
+// TFunction (not the hook's return type): the hook's type grows too deep to check with the full key set.
+type TFn = TFunction;
 
 interface PeekAlert {
   id: string;
@@ -780,6 +1029,7 @@ function peekAlerts(
   offline: boolean,
   t: TFn,
   clock: (minutes: number) => string,
+  nearby: NearbySaved | null,
 ): PeekAlert[] {
   const alerts: PeekAlert[] = [];
   if (pending.conflicts.length > 0) {
@@ -791,6 +1041,9 @@ function peekAlerts(
         ? { id: hint.id, tone: 'danger', icon: 'hourglass-outline', text: t('today.hintLate', { min: hint.lateBy, name: hint.stopName }) }
         : { id: hint.id, tone: 'danger', icon: 'moon-outline', text: t('today.alertMayNotFit', { name: hint.stopName, time: clock(hint.endsAt) }) },
     );
+  }
+  if (nearby && nearby.reason !== 'tight') {
+    alerts.push({ id: 'nearby', tone: 'accent', icon: 'bookmark-outline', text: t('live.alertNearby', { name: nearby.candidate.name, min: nearby.travel.minutes }) });
   }
   if (offline) {
     // Details (when the copy was saved) are in the sheet's offline status.
@@ -1066,7 +1319,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.surfaceMuted },
   emptyWrap: { padding: spacing.xl },
   flex: { flex: 1 },
-  bold: { fontWeight: '600' },
+  bold: { fontWeight: weights.semibold },
   tabular: { fontVariant: ['tabular-nums'] },
   muted: { color: colors.textSecondary },
   onAccent: { color: colors.textOnAccent },
@@ -1105,7 +1358,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xxs,
     borderRadius: radii.pill,
-    backgroundColor: 'rgba(255,255,255,0.88)',
+    backgroundColor: colors.surfaceTranslucent,
   },
   controls: { position: 'absolute', end: spacing.lg, gap: spacing.sm },
 
@@ -1140,7 +1393,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceMuted,
   },
   dayOptionOn: { backgroundColor: colors.accent },
-  previewRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  previewRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },
+  moreButton: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
 
   section: { gap: spacing.md },
   rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
@@ -1177,8 +1431,8 @@ const styles = StyleSheet.create({
   dotDone: { backgroundColor: colors.surfaceMuted, borderColor: colors.borderStrong },
   dotNow: { backgroundColor: colors.success, borderColor: colors.success },
   dotNext: { backgroundColor: colors.accent, borderColor: colors.accent },
-  dotNumber: { color: colors.accent, fontWeight: '700', fontSize: 11, lineHeight: 14 },
-  dotNumberOn: { color: colors.textOnAccent, fontWeight: '700', fontSize: 11, lineHeight: 14 },
+  dotNumber: { color: colors.accent, fontWeight: weights.bold, fontSize: 11, lineHeight: 14 },
+  dotNumberOn: { color: colors.textOnAccent, fontWeight: weights.bold, fontSize: 11, lineHeight: 14 },
   railLine: { flex: 1, width: 2, backgroundColor: colors.border, marginTop: 2 },
   struck: { textDecorationLine: 'line-through' },
   detailsLink: { flexDirection: 'row', alignItems: 'center', gap: spacing.xxs, alignSelf: 'center' },

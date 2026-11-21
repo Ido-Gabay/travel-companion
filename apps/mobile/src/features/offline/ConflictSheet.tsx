@@ -1,4 +1,5 @@
-import type { TripDetail, TripPlace } from '@travel-companion/shared';
+import type { StopStatus, TripDetailV2, TripPlace } from '@travel-companion/shared';
+import { buildTripView } from '@/features/trips/model';
 import { useQueryClient } from '@tanstack/react-query';
 import { StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
@@ -31,9 +32,12 @@ export function ConflictSheet({ visible, onClose }: { visible: boolean; onClose:
   );
 }
 
-function findPlace(details: (TripDetail | undefined)[], placeId: string): TripPlace | null {
+/** The visit (by visit id) or the place (by place id) a change is about, from the saved trips. */
+function findPlace(details: (TripDetailV2 | undefined)[], id: string): TripPlace | null {
   for (const detail of details) {
-    const match = detail?.places.find((place) => place.id === placeId);
+    if (!detail) continue;
+    const view = buildTripView(detail);
+    const match = view.places.find((item) => item.id === id) ?? view.places.find((item) => item.placeId === id);
     if (match) return match;
   }
   return null;
@@ -44,8 +48,11 @@ function ConflictRow({ conflict }: { conflict: Conflict }) {
   const { locale } = useLocale();
   const queryClient = useQueryClient();
   const { op } = conflict;
-  const details = queryClient.getQueriesData<TripDetail>({ queryKey: ['trips', 'detail'] }).map(([, detail]) => detail);
-  const place = op.kind === 'reorder' || op.kind === 'journal' ? null : findPlace(details, op.placeId);
+  const details = queryClient.getQueriesData<TripDetailV2>({ queryKey: ['trips', 'detail'] }).map(([, detail]) => detail);
+  const place =
+    op.kind === 'reorder' || op.kind === 'journal' || op.kind === 'reorderStops'
+      ? null
+      : findPlace(details, op.kind === 'stop' || op.kind === 'stopAdd' || op.kind === 'stopRemove' ? op.stopId : op.placeId);
 
   const show = (value: unknown): string => {
     if (op.kind === 'visited') return value ? t('offline.valueDone') : t('offline.valueNotDone');
@@ -53,10 +60,12 @@ function ConflictRow({ conflict }: { conflict: Conflict }) {
       if (value === null || value === undefined) return t('offline.valueEmpty');
       return op.field === 'rating' ? '★'.repeat(Number(value)) : `“${String(value).slice(0, 80)}”`;
     }
-    if (op.kind === 'schedule' && op.field === 'highlight') {
+    if (op.kind === 'stop' && op.field === 'status') return t(`visits.status.${value as StopStatus}`);
+    if (op.kind === 'stopAdd' || op.kind === 'stopRemove') return '';
+    if ((op.kind === 'schedule' || op.kind === 'stop') && op.field === 'highlight') {
       return value ? t('offline.valueHighlight') : t('offline.valueNoHighlight');
     }
-    if (op.kind === 'schedule') {
+    if (op.kind === 'schedule' || op.kind === 'stop') {
       if (value === null || value === undefined) {
         return op.field === 'day' ? t('itinerary.wishlist') : op.field === 'startTime' ? t('itinerary.flexible') : t('offline.valueTypical');
       }
@@ -72,7 +81,7 @@ function ConflictRow({ conflict }: { conflict: Conflict }) {
       ? t('offline.conflictGone')
       : conflict.reason === 'rejected'
         ? t('offline.conflictRejected')
-        : op.kind === 'reorder'
+        : op.kind === 'reorder' || op.kind === 'reorderStops'
           ? t('offline.conflictOrder', { day: dayTitle(op.day, locale) })
           : t('offline.conflictChanged', { mine: show(op.value), server: show(conflict.serverValue) });
 
@@ -80,7 +89,7 @@ function ConflictRow({ conflict }: { conflict: Conflict }) {
     <View style={styles.row}>
       {place ? <PlaceTitle place={place} /> : (
         <AppText variant="bodyStrong">
-          {op.kind === 'reorder'
+          {op.kind === 'reorder' || op.kind === 'reorderStops'
             ? t('offline.dayOrder', { day: dayTitle(op.day, locale) })
             : op.kind === 'journal'
               ? t('offline.journalDay', { day: dayTitle(op.day, locale) })

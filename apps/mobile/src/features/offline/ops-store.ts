@@ -1,4 +1,4 @@
-import type { Place, ScheduleTripPlaceInput, TripDetail, TripJournal, UpdateJournalDayInput } from '@travel-companion/shared';
+import type { Place, ScheduleTripPlaceInput, TripDetailV2, TripJournal, UpdateJournalDayInput } from '@travel-companion/shared';
 import type { QueryClient } from '@tanstack/react-query';
 import { useSyncExternalStore } from 'react';
 import { api } from '@/lib/api';
@@ -76,6 +76,15 @@ export function resetPending(): void {
   set(EMPTY);
 }
 
+/**
+ * Drops queued changes that haven't been sent (e.g. a visit added and removed
+ * again offline: nothing needs to reach the server).
+ */
+export async function dropOps(drop: (op: PendingOp) => boolean): Promise<void> {
+  set({ ...state, ops: state.ops.filter((op) => !drop(op)) });
+  await persist();
+}
+
 /** Records changes on the phone first; the caller then asks for a sync. */
 export async function addOps(newOps: readonly PendingOp[]): Promise<void> {
   let ops = state.ops;
@@ -111,6 +120,12 @@ const liveApi: SyncApi = {
   reorder: (tripId, day, placeIds) => api.reorderTripDay(tripId, day, { placeIds }),
   getJournal: (tripId) => api.getJournal(tripId),
   updateJournal: (tripId, day, body) => api.updateJournalDay(tripId, day, body as UpdateJournalDayInput),
+  getTripV2: (tripId) => api.getTripV2(tripId),
+  addStop: (tripId, body) => api.addStop(tripId, body),
+  updateStop: (tripId, stopId, body) => api.updateStop(tripId, stopId, body),
+  transitionStop: (tripId, stopId, action, at) => api.transitionStop(tripId, stopId, action, at),
+  removeStop: (tripId, stopId, confirm) => api.removeStop(tripId, stopId, confirm),
+  reorderStops: (tripId, day, stopIds) => api.reorderStops(tripId, day, stopIds),
 };
 
 /**
@@ -134,6 +149,7 @@ export function syncPending(queryClient: QueryClient, syncApi: SyncApi = liveApi
       set({ ops, conflicts: [...state.conflicts, ...result.conflicts], syncing: false });
       await persist();
       applyServerCopies(queryClient, result.trips, result.places, result.journals);
+      for (const tripId of result.legacyTrips) void queryClient.invalidateQueries({ queryKey: ['trips', 'detail', tripId] });
     } catch {
       set({ ...state, syncing: false });
     } finally {
@@ -146,11 +162,11 @@ export function syncPending(queryClient: QueryClient, syncApi: SyncApi = liveApi
 
 function applyServerCopies(
   queryClient: QueryClient,
-  trips: readonly TripDetail[],
+  trips: readonly TripDetailV2[],
   places: readonly Place[],
   journals: readonly { tripId: string; journal: TripJournal }[],
 ): void {
-  for (const trip of trips) queryClient.setQueryData(['trips', 'detail', trip.id], trip);
+  for (const trip of trips) queryClient.setQueryData(['trips', 'detail', trip.trip.id], trip);
   for (const { tripId, journal } of journals) queryClient.setQueryData(['trips', 'journal', tripId], journal);
   for (const place of places) queryClient.setQueryData(['places', 'detail', place.id], place);
   if (places.length > 0) {

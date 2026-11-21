@@ -10,7 +10,7 @@ import { useReminderSettings, useUpdateReminderSettings } from '@/features/compa
 import { LEAD_OPTIONS, type ReminderSettings } from '@/features/companion/reminders';
 import { reminderStatusKey, type ReminderStatus } from '@/features/companion/ReminderSync';
 import { useLocale } from '@/i18n/LocaleProvider';
-import { colors, radii, spacing } from '@/theme/tokens';
+import { colors, compactHitSlop, radii, spacing, weights } from '@/theme/tokens';
 
 /**
  * Reminder settings (stored on this phone) and what is scheduled right now.
@@ -105,6 +105,7 @@ export default function RemindersScreen() {
                   accessibilityState={{ selected: on }}
                   disabled={!enabled || !value?.leaveSoon}
                   onPress={() => set({ leadMinutes: lead })}
+                  hitSlop={compactHitSlop}
                   style={[styles.chip, on && styles.chipOn]}
                 >
                   <AppText variant="caption" style={[styles.chipText, on && styles.chipTextOn]}>
@@ -239,7 +240,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   chipOn: { backgroundColor: colors.accent, borderColor: colors.accent },
-  chipText: { fontWeight: '600', color: colors.textSecondary },
+  chipText: { fontWeight: weights.semibold, color: colors.textSecondary },
   chipTextOn: { color: colors.textOnAccent },
   notice: {
     flexDirection: 'row',

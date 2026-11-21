@@ -21,9 +21,11 @@
     "postgres": "^3.4.5",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
+    "tzf-wasm": "2.0.2",
     "zod": "^4.1.0"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.16",
     "@nestjs/cli": "^12.0.0",
     "@nestjs/schematics": "^12.0.0",
     "@swc/core": "^1.10.0",

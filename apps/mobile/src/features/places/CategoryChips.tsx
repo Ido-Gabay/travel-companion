@@ -2,7 +2,7 @@ import type { PlaceCategory } from '@travel-companion/shared';
 import { Pressable, ScrollView, StyleSheet } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { AppText, Icon } from '@/components/ui';
-import { colors, radii, spacing } from '@/theme/tokens';
+import { colors, compactHitSlop, radii, spacing, weights } from '@/theme/tokens';
 import { CATEGORY_ICONS } from './categories';
 
 interface CategoryChipsProps<T extends PlaceCategory | 'all'> {
@@ -25,6 +25,7 @@ export function CategoryChips<T extends PlaceCategory | 'all'>({ options, value,
             accessibilityRole="button"
             accessibilityState={{ selected }}
             onPress={() => onChange(option.value)}
+            hitSlop={compactHitSlop}
             style={[styles.chip, selected && styles.chipSelected]}
           >
             {option.value !== 'all' ? (
@@ -45,7 +46,8 @@ export function CategoryChips<T extends PlaceCategory | 'all'>({ options, value,
 }
 
 const styles = StyleSheet.create({
-  row: { gap: spacing.sm, paddingVertical: spacing.xxs },
+  // Vertical room so the chips' hit area isn't clipped by the scroll view.
+  row: { gap: spacing.sm, paddingVertical: compactHitSlop.top },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -58,6 +60,6 @@ const styles = StyleSheet.create({
     borderColor: colors.surface,
   },
   chipSelected: { backgroundColor: colors.accent, borderColor: colors.accent },
-  label: { fontWeight: '600', color: colors.textSecondary },
+  label: { fontWeight: weights.semibold, color: colors.textSecondary },
   labelSelected: { color: colors.textOnAccent },
 });

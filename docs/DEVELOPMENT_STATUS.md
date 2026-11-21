@@ -35,6 +35,364 @@ Update this file at the end of every milestone or meaningful change.
 | M11 | Everything: vitest on the Mac, deploy, Simulator check of Today with a pinned hotel, attribution labels, photo links, rate limits against the live API. |
 | U1 redesign | Everything visual: no screen was rendered. Typecheck and logic tests only. See the U1 checklist in "Exact next steps". |
 
+## UX/UI audit pass (U4; written, uncommitted; Simulator checks pending)
+
+Written 2026-11-19. App only (no API, schema, data or dependency change). Every screen was
+reviewed; the changes below remove repetition and show details only when they matter.
+
+- **Today:** Done never appears in a preview (it changed real data before); only one Done at a
+  time (the visit happening now has its own); the time chip mentions location only when it is
+  off (locating, far away, stale); a saved place nearby shows one action ("Add to today") plus a
+  "…" menu (directions, place details); the location privacy line shows only before location is
+  used; the bottom "Discover nearby" button and the long footnote are gone (Discover stays in the
+  "…" menu and appears under free time when nothing fits; a short ≈ note shows only when a time is
+  an estimate).
+- **Plan sheet:** the legend and general limits wait behind "How this plan works"; the repeated
+  "The plan below includes this" note is gone; day status aligns to the end in Hebrew too (was a
+  hard-coded `right`). **Find a place:** after a pick the other matches collapse behind "Change";
+  the results list now carries Google attribution.
+- **Trip:** "Search places" / "From saved" removed from the trip "…" menu (the Add places button
+  already offers them). Day picker shows the planned count only when a day has visits. Stay sheet
+  shows the "every night no other stay covers" hint only when the trip has another stay.
+- **Discover:** three AI examples instead of six; the preview's rate-limit note no longer talks
+  about Google's free limit. **Usage:** SKU, price and cap lines behind one toggle. **Reminders:**
+  shorter intro and footnote (en already shortened in the working tree; he footnote aligned in pass 2).
+- **Shared:** `Button size="sm"` adds a 4pt vertical `hitSlop` (44pt target).
+
+Tests (real runs, 2026-11-19): `pnpm typecheck` clean; app logic 246 passed (28 files); app
+screens 55 passed (16 suites), then the two Today suites again (16 passed) after adding checks
+(no Done in preview; the nearby row's "…" menu). API and shared not re-run (untouched).
+Simulator: only the Home screen was seen (screenshot); nothing changed there.
+
+**Second pass (2026-11-19):**
+
+- **Home trip card (during the trip):** progress moved into the eyebrow ("Day 1 of 3 · Today · 1 of 3
+  done"); the next stop is one tappable block (opens the place) with a "…" menu for Directions and
+  Done; one primary button (Open Today) and a quiet "View itinerary" link.
+- **Place details:** order is name/address → map + Directions → own pin → In trips → Your visits
+  (history + the Visited switch) → My notes; label, category and (own places) name/address edit
+  wait behind "Label, category and more".
+- **Nearby on Today:** one entry, in the "…" menu (and under free time when nothing fits). Live it
+  is "Find something nearby" (finder near you, added only through the preview + Apply); in a preview
+  it opens Discover. "Something changed?" now holds only plan changes (closed, longer, skip, late).
+  Discover itself stays reachable from the trip screen and the Discover tab.
+- **Touch targets:** `compactHitSlop` on CategoryChips, Discover chips, TimeSheet chips, New trip
+  neighborhood chips and reminder lead chips; "Open now" uses `hitSlop`; the itinerary time chip
+  reaches 44pt; chip rows pad vertically so the target isn't clipped.
+- **Tokens:** new `weights`, `compactHitSlop` and the colors listed in DESIGN_SYSTEM.md; literal
+  colors/weights replaced in the files touched by U4.
+
+Tests (real runs): `pnpm typecheck` clean; app logic 246 passed; app screens 57 passed in 16 suites
+(new: Home next-stop menu marks Done offline; Today nearby entry only in "…"; Place details
+"more" disclosure). Simulator: the Home trip card (during a trip, English, iPhone 15 Pro Max) was
+seen in a screenshot after the change; its "…" menu, Place details, Today, chips and Hebrew/RTL
+were not.
+
+**Checks (Simulator, en + he, small and large iPhones):** Today live and preview (peek, chip,
+nearby row menu), plan sheet "How this plan works", Find a place → pick → Change, trip "…"
+menu, day picker, stay sheet, Discover AI examples, Usage toggle.
+
+## Link places to Google Maps + Saved by trip (written 2026-11-21, uncommitted; Simulator checks pending)
+
+- **API** `POST /v1/places/:id/google` `{ googlePlaceId }` (`linkGooglePlaceSchema`, `PlacesService.linkGoogle`):
+  links one of the user's own places (saved by name, e.g. imported) to the Google place they picked.
+  Not saved yet → the same row becomes the Google place (same id, trips and visits kept); the user's name
+  becomes their label, their address goes to notes; Google text and location are never stored. Already
+  saved (also deleted) → that row is revived and takes the trips, visits and stays; the own row is
+  soft-deleted. Same ID again = no-op; another ID = 409. No migration (existing constraints hold).
+- **App** `GoogleLinkSheet` (same search-and-pick as pinning a hotel; one Text Search only on tap,
+  results primed into the details cache): "Link to Google Maps" on a place saved by name (place details,
+  and the trip's Places row menu), and "Find on Google Maps" per row in Import's review (linked rows are
+  saved with `saveGooglePlaces(tripId)`, the user's name/note kept as label/notes). Own pins are not offered.
+- **Saved** tab: a "Show places from" pill (All saved places / a trip). A trip narrows the list to the
+  places saved to it (from the trip detail, works from the saved copy); categories and map still apply.
+
+Tests (real runs): typecheck clean; app logic 277; app screens 69 (new `place-link.test.tsx`: link from
+the place, no link for Google places, Saved by trip; import: link a row → saved by Google ID, one search);
+shared 60; API `places-d1.spec.ts` 9 (4 new: convert in place, merge into the saved Google place with
+visits moved, revive a deleted one, another user's place = 404). Not seen on a screen.
+
+## Import places (written 2026-11-20, uncommitted; Simulator checks pending)
+
+Trip → Add places → "Import a list" (`app/trips/[id]/import.tsx`, modal). Two modes: paste a list
+(default) or a Google Takeout saved-places CSV; then a review list (already in trip = shown, not
+selectable; already in your places = reused; select all / clear) and "Add N places to wishlist".
+
+- Reading: `features/places/place-import.ts` (+ spec): RFC 4180 CSV, Takeout headers in English
+  (`Title`, `Note`, `Comment`) and Hebrew (`כותרת`, `הערה`, `תגובה`); the URL column is ignored; line or
+  bullet lists, "name - note", "name (area)", one comma-separated line; dedupe by normalized name;
+  matching against the user's places by their own names/labels (Google names only if already in memory).
+- Free text (a chat message): one Claude call on tap, `POST /v1/assistant/extract-places`
+  (`place-import.ts` contract in shared; `AiService.extractPlaces`, same `ai_interpret` caps and paid
+  rate-limit class). The prompt forbids invented facts, and names not found in the text are dropped
+  server-side. Offline / no AI → a message, the text stays, lists still work.
+- Saving (`use-import-places.ts`): reuse the saved place or `createPlace` (name, note → notes, area →
+  address, category other), then `addTripMember` (idempotent). Online, one at a time; a retry reuses
+  places already created. No Google call anywhere in the flow.
+- **Not done (needs the owner):** choosing a file directly needs `expo-document-picker` (a new native
+  module + rebuild; P15 says no new native dependency before the trip), so the CSV mode asks the user
+  to paste the file's contents. Imported places have no location; "Find locations" only resolves
+  Google IDs, so resolving them by name would need Text Search per place (cost approval).
+- **Update Nov 21:** "Choose CSV file" added (`expo-document-picker` ~58.0.5 + `expo-file-system`
+  ~58.0.14, T20; `features/places/pick-csv.ts`): read on the phone, cancel = no change, unreadable / too
+  big / not a Takeout list = a message, paste stays as fallback. **Native rebuild required**
+  (`cd apps/mobile && npx expo prebuild --platform ios && cd ../.. && pnpm ios`). Places without a
+  location are linked one by one with "Link to Google Maps" (see the section above).
+
+Tests (real runs): typecheck clean; app logic 277 (12 new); app screens 65 (5 new: list import with
+dedupe and no Google calls, AI message, offline, Hebrew CSV and a wrong CSV, retry without duplicates);
+shared 60 (2 new); API 186 in 20 files (8 new in `extract-places.spec.ts`).
+Not seen on a screen; the API on Render doesn't have the new route until deployed.
+
+## Plan sheet redesign (U5; written, uncommitted; Simulator checks pending)
+
+Written 2026-11-19. App only; the planner (`trip-plan.ts`, `smart-plan.ts`, `complete-plan.ts`),
+the assistant, Find a place and the change queue are unchanged.
+
+- `features/planning/PlanParts.tsx`: `Tag` (short pill), `LoadBar` (thin day-load bar with "3 h free"
+  or "1 h over"; the "x of y planned" numbers are its VoiceOver label) and `ChangeRow` (a proposed change
+  is a row with a check: included by default, one tap leaves it out and says "Left out"; reasons are tags
+  such as "Near MoMA · 5 min", "−12 min travel", "You asked"). Replaces the switches in the trip plan sheet.
+- `plan-summary.ts` (+ spec): `loadState`, `planOutcome`. The footer shows what saving does as tags
+  ("+3 places", "1 moved", "4 time & order updates") above "Save to my itinerary" ("Update today" when
+  replanning today; "Add X to Tue, Nov 24" when the plan is one new place).
+- Day cards: day + one status tag (Too full / Better order / Past), one line (visits · travel · ends), the
+  load bar, "Before: …" only when the day changes, its changes, then the visits with New / Moved / Done tags.
+- Google lookups: one "For a sharper plan" row with "Find locations" and "Check opening hours" (tap only,
+  no counts or quota copy); assumptions (no location, hours unknown), the legend and the rules moved behind
+  "How this plan works". Find a place: day options as tags + load bar; no "one search" / lookup copy.
+
+Tests (real runs): typecheck clean; app logic 262 (new `plan-summary.spec`); app screens 59 (plan, assistant,
+replan, find-a-place and Today tests updated for the row control, the outcome footer and tags).
+
+**"Start every day at …" fix (same day):** an earlier start than the usual 9:30 was ignored (`Math.max`
+with the default); now any requested start is used (today never before a little after now). The note
+now says what happened: suggested times move, or "all N visits already have a time", or nothing to change.
+On a day where every open visit has a time, a `ChangeRow` (off by default) offers to move the whole day to
+the new start, keeping the gaps (`DayShift`, `shiftKey`, sent as time changes through the queue).
+Tests: app logic 265, app screens 60 (new: earlier start, the timed-day offer, never before now, and the
+screen flow off → on → saved). Not seen on a screen.
+Not run: anything on a screen. **Checks (Simulator, en + he, SE and Pro Max):** Plan my entire trip on a
+busy trip (tags wrap, bar direction in Hebrew, footer above the home indicator and the keyboard), leave
+a change out and back, Find a place day list, Today → Something changed? sheets.
+
+## Fix: repeat visits and map numbering (2026-11-19; written, uncommitted)
+
+**Root cause (reproduced on the local preview DB):** no place or membership was duplicated (the
+unique indexes on `places (owner_id, google_place_id)` and `trip_places (trip_id, place_id)` held).
+The day had 17 *visits* to 5 places: 14 extra visits created ~1 s apart from the "Add to day"
+sheet. Each tap planned another visit (repeat visits are allowed by design, D1), the sheet stays
+open, and a place just added moves to its "Visit again" group with no sign it was added. On the map,
+every visit got its own marker, so several numbered markers sat on the same coordinates; their
+key included the label, so a remount changed which one was drawn on top (the "jumping numbers").
+
+**Fix:**
+- `AddToDaySheet`: a place added in the sheet is marked "Added to this day" and further taps do
+  nothing until the sheet is reopened; a second visit on a day that already has the place asks
+  first ("Plan another visit"). Repeat visits stay possible.
+- `features/trips/map-markers.ts` (+ spec): one marker per place (`place:<placeId>`, stable), carrying
+  every visit's number in day order, labelled "1·6+2"; a repeated or missing visit id is never drawn
+  twice; numbers are the list's numbers (position in the day).
+- Itinerary `DayMap` uses it; the route line follows the visits (a return to a place is drawn).
+  `PlacesMap` gets a `path` prop and a deterministic `zIndex` (earlier points on top).
+- Today's map (`buildTodayMap`): one pin per spot standing for the visit that matters (now, next,
+  later, done; ties by order), showing all its numbers; the dashed path keeps every open visit;
+  `zIndex` by kind then order; VoiceOver adds "Also stop N of the day".
+- Existing data was left untouched (extra visits are real records; remove them from the day's
+  row menu if unwanted). Server idempotency was already in place (client visit ids, `on conflict`
+  for places and memberships) and is now covered by tests.
+
+Tests (real runs): typecheck clean; app logic 257 (new `map-markers.spec`, Today map repeat case);
+app screens 59 (two new: repeat taps add once, offline; same-day second visit asks first); API 178
+(four new in `v2.spec.ts`: same Google place twice, same custom place twice, same place in two trips,
+two visits same day). Simulator (iPhone 15 Pro Max, English): the reported trip's day shows four
+markers "1·6+2", "2·4+5", "3·9+2", "12·17", unchanged across two screenshots several seconds apart.
+Not seen: Today's map, the add sheet's new states, Hebrew.
+
+## New trip redesign (U3; written, uncommitted; Simulator checks pending)
+
+Written 2026-11-19. App only (no API, schema or data change; `createTripSchema` and
+`useCreateTrip` unchanged; Edit trip uses the same form without "Staying at").
+
+- `features/trips/TripForm.tsx`: a ticket at the top ("Where to?" + a large destination input,
+  a perforation, first and last day with the number of days); local destination suggestions
+  while typing (`destinations.ts`: ~50 cities, en/he, free and offline, our own data → written as
+  "New York, USA"; any other place can be typed); "When" with `DateRangePicker.tsx` (one month,
+  Sunday first, band between the days, today underlined, clear dates; `date-range.ts` makes an
+  end before the start impossible); "Where you're staying" (optional) with neighborhood chips for
+  listed cities; "Trip name" suggested as "New York in November" until the user types one; the
+  primary action pinned at the bottom, above the keyboard. Flat surfaces per DESIGN_SYSTEM.md.
+- No Google lookup is made for the destination (no cost, nothing from Google stored).
+
+Tests (real runs, 2026-11-19): `pnpm typecheck` clean; app logic 246 (incl. `date-range.spec`,
+`destinations.spec`), app screens 55 in 16 suites (incl. new `new-trip.test.tsx`; the Edit trip
+test in `visits.test.tsx` still passes). Not run: any device rendering.
+
+**Checks (Simulator):** Home → New trip, on an iPhone SE / mini and a Pro Max, in English and
+Hebrew: keyboard up on open with the destination focused; suggestions under the ticket; the
+calendar band in RTL; the button stays above the keyboard while typing the stay and name.
+
+## Live trip adjustments (D1-D; written, uncommitted; Simulator checks pending)
+
+Written 2026-11-19 on the trip assistant, Replan the rest of today and Find a place. App +
+shared contract + AI prompt/parser; no migration, no new endpoint, no new dependency.
+
+- **Something changed?** (Today, collapsed sheet, for the visit happening now or the next one):
+  It's closed · We're staying longer · Skip it · We're running late ("Find something nearby"
+  moved to Today's "…" menu in U4). Each opens the focused trip plan sheet with the request already read. The same works
+  typed, in English and Hebrew ("the Frick is closed", "let's skip the Met", "we're staying
+  another hour at MoMA", "נשארים עוד שעה במוזיאון", "anything interesting nearby?").
+- **Closed:** "Skip X (closed)" switch (on; off = keep) + "Or find an alternative nearby": the
+  place finder searches the same kind around the closed place (one Text Search, on tap), pick
+  one → proposed for that day at its cheapest spot with a suggested time; Apply saves it
+  (collection + trip, deduped) and queues the visit.
+- **Staying longer:** the visit gets +30 min (or what was said) on its own switch; later timed
+  visits it now overlaps get new times from its new end (switch each); what no longer fits can be
+  proposed for another day; if today is still too full, long flexible visits can be shortened
+  by 30 min (off by default). Saved places with room can be proposed for today as before.
+- **Skip:** a switch; Apply marks the visit skipped (it stays in the trip and place history).
+- **Saved places near you:** `nearby-saved.ts` + a Today section and a peek alert ("You saved X:
+  ≈ 6 min walk from here"): trip places not on any day, ≤ ≈ 15 min walk from the one location
+  reading, fits-the-free-time first, closed ones left out when hours are already known; Add to
+  today (focused sheet → Apply), Directions, Open, dismiss (per day). Location: read on opening
+  Today live or on "Check what's near me" / "Show my location"; never in the background.
+
+Tests (real runs, 2026-11-19): `pnpm typecheck` clean; shared 58; API 174 (incl. live
+instructions parsing); app logic 240 (incl. `nearby-saved.spec`, live rules en/he, live
+`request.spec`: skip on/off, closed → next visit, longer + re-timing, optional shorten); app
+screens 52 in 15 suites (incl. new `today-live.test.tsx`: nearby saved with why + peek alert +
+Add through Apply only; dismiss; closed → skip switch + alternative search, Apply = status
+skipped; staying longer preview). Not run: real location, Google, Claude, the Simulator.
+
+**Checks (Simulator, local API, Features → Location → Custom Location in SoHo):** a trip day with
+a timed visit later and a wishlist place nearby → Today: peek alert and "Saved places near you" →
+Add to today → Apply; dismiss another; "Something changed?" → It's closed → Search → pick →
+Apply; → We're staying longer → later times move; Hebrew typed requests; airplane mode: skip /
+longer still apply (queued), alternatives need a connection.
+
+**Known limits:** "nearby" uses straight-line walking estimates; hours only when already known;
+one location reading (no updates while walking unless the user refreshes); dismissals are per
+day on this phone; the in-progress visit is projected from the plan's start for today.
+
+## Find a place and plan it in (D1-C; written, uncommitted; Simulator checks pending)
+
+Written 2026-11-19 on the trip assistant. Shared contract (`findPlace`), AI prompt/parser,
+app; no migration, no new endpoint (reuses `/v1/discover/search`, `/v1/places/google`,
+the preview and the change queue).
+
+- **Understanding:** `features/assistant/rules.ts` reads named places, kinds, areas, days,
+  "near the places we're visiting" and "where is it / which day" follow-ups in English and
+  Hebrew (curly apostrophes normalized); the AI understands `findPlace` too (user's words only).
+- **Finding:** `PlaceFinder.tsx` in the trip plan sheet: editable query, "Search Google Maps"
+  (one Text Search, only on tap; destination / named area / circle around planned visits,
+  `place-finder.ts`), "Which one do you mean?" when several match.
+- **Where it is:** map with the place and planned visits, address and type (Google, with
+  attribution), nearest planned visits and the stay with ≈ estimates.
+- **Which day:** `compareDays()` in `trip-plan.ts`: every day as fits / too full / closed / past,
+  travel added, nearest visit, load after vs available, best fit; tap another day (a full day
+  shows a warning). "Check opening hours" = one preview call for that place. No day with room:
+  explained, plus "Just save it to the trip's wishlist".
+- **Proposal:** `addRequests` in `planTrip` (never overloads a day unless the user picked it;
+  never a past day), only that place is proposed, at its cheapest spot in the route
+  (`bestPosition`, never before done visits); the day's other visits keep their order and times
+  unless the user switches those on; the new place's suggested time has its own switch.
+- **Apply:** saves the place (collection + trip, deduped by place ID; online), then the visit
+  and the day order go through the change queue. A place already saved to the trip is planned
+  as is; one already planned says so. "Where is X?" shows no Apply.
+
+Tests (real runs, 2026-11-19): `pnpm typecheck` clean; shared 58 (findPlace schema checks
+added), API 173 (incl. `findPlace` parsing), app logic 228 (incl. `place-finder.spec`, rules,
+`compareDays`/`addRequests`/`bestPosition`), app screens 48 in 14 suites (incl. new
+`find-place.test.tsx`: search only on tap, "which one?", best day + too-full day, Apply saves
+then queues one visit with a time and moves nothing; "where is" changes nothing).
+Not run: real Google search/preview, real Claude, the Simulator.
+
+**Checks (Simulator, local API):** NY trip → Plan the whole trip → "I also want to visit SUMMIT
+One Vanderbilt. Where is it, and which day would be best to add it?" → Search → pick → map and
+≈ distances → day list with "best fit" → tap another day → Apply → the place is in Saved, the
+trip's wishlist/plan on that day, other visits unchanged. Also "Where is the Frick?", "Add
+another shopping stop near SoHo", "תוסיף עוד מסעדה ליד סוהו ביום חמישי", and Profile → Usage (one text
+search per Search tap, one preview per "Check opening hours").
+
+**Known limits:** opening hours are only used after "Check opening hours"; one place per
+request; travel is estimated (≈), not routed; Apply needs a connection (saving the place);
+the area is passed to Google as text ("SoHo, New York"), not a boundary.
+
+## Replan the rest of today (D1-B; written, uncommitted; device checks pending)
+
+Written 2026-11-19 on top of the trip assistant. App + shared contract + API prompt; no migration.
+
+- **Today** (live trip day, something not done): full sheet → "Replan the rest of today"
+  opens the trip plan sheet focused on today (`TripPlanSheet` `focusDay`): only today and
+  the days its changes reach are planned and shown; other days get no order/times.
+- **Behind schedule** (a planned visit whose time has passed): the sheet starts with
+  "I'm running late" already read (`catchUp`). Those visits lose their passed time, stay on
+  today (`keepDay`) and get a new time from now; each has its own switch ("The Met: 10:00 →
+  11:30" / "keep 10:00"). Times still ahead, done and happening-now visits never change;
+  what no longer fits can be proposed for another day. Typed requests work the same way
+  ("we overslept, finish by 6", "אני מאחר"; AI understands `catchUp` too).
+- **Planner fix:** a day start other than the default (today's "not before now", or the
+  user's "start at 10") is now a floor for suggested times also after earlier (done) visits
+  (`projectDay`). Days with the default start behave as before.
+- Apply → change queue (works offline, syncs with conflict checks). Live only (not in
+  Today's preview mode).
+
+Tests (real runs, 2026-11-19): `pnpm typecheck` clean; `pnpm test` exit 0 (app logic 216
+incl. 5 new catch-up/rules tests; app screens 46 in 13 suites incl. new
+`replan-today.test.tsx`; shared 58; API `trip-assistant.spec` 8/8 incl. `catchUp`).
+Not run: anything on a screen or against real Claude.
+
+**Checks (Simulator, on a trip day):** give a stop a time 1 h ago and leave it not done →
+Today → swipe up → "Replan the rest of today" → "I'm running late" box, the late stop with
+a new time, only today shown; switch it off → "keep …"; Apply → the time changes, other
+stops keep theirs; airplane mode → same, syncs later. In Hebrew: type "התעכבנו, לסיים עד 18:00".
+
+## D1 trip assistant (accepted Nov 19 on code + automated tests; uncommitted; device checks pending)
+
+Updated 2026-11-19. Part of the uncommitted D1 working tree (visits/stays, API v2,
+complete trip plan; migration `20261118150000_d1_visits_and_stays` is in the tree,
+its remote status was not checked in this session). Decision P20.
+
+- **Where:** itinerary → "Plan the whole trip" sheet → text field at the top
+  (`features/assistant/AssistantPanel.tsx`, shown by `features/planning/TripPlanning.tsx`).
+- **Reading the request:** `features/assistant/rules.ts` reads common English and
+  Hebrew requests on the phone (free, offline; a weekday that occurs twice asks
+  "Which day?"). Anything else goes once to `POST /v1/assistant/trip`
+  (`apps/api/src/assistant`, `ai/trip-assistant-*.ts`): Claude returns validated
+  instructions or one question; `unavailable` (no key, cap, error) keeps manual planning.
+  Offline, unreadable requests say so and change nothing.
+- **Proposal:** `features/assistant/request.ts` turns instructions into planner input
+  (day limits/windows, pinned visits, requested moves, longer visits) for the existing
+  `trip-plan.ts` → `smart-plan.ts` → `complete-plan.ts`. The sheet shows what each
+  instruction did, "which one?" choices, "Now: …" before each changed day, and every
+  suggestion (moves, adds, longer visits, order, times) on its own switch. Apply
+  queues the chosen changes (`useApplyTripPlan`, incl. `durationMinutes`), so it works
+  offline and syncs with conflict checks. "Find … near" opens Discover only on tap.
+- **Privacy/cost:** Claude gets refs, categories, times, stars, status and the user's
+  own labels only (strict schema); shares the `AI_*` caps; `/v1/assistant/*` is a paid
+  route for rate limits. No Google call is made by the assistant.
+
+Tests (real `pnpm test` / `pnpm typecheck` on the Mac, 2026-11-19): shared 58 (incl.
+2 new trip-assistant schema tests), API 171 (incl. `trip-assistant.spec`), app logic 211
+(incl. `rules.spec`, `request.spec`), app screens 44 in 12 suites (incl.
+`trip-assistant.test.tsx`: rules path offline + Apply through the queue, longer visit,
+offline fallback, and new: AI clarify → answer → plan with no Google IDs sent and no
+changes before Apply, `unavailable`, rules don't call the AI); typecheck clean.
+**Not run:** anything against real Claude, the deployed API, or on a screen.
+
+**Known limits:** "finish by" lowers the day's capacity and suggested times, but a
+visit the user already timed later is kept (not moved or flagged as past the end);
+keep-fixed visits are not given suggested times; Hebrew reading is pattern-based
+(less common phrasing goes to the AI, or is unavailable offline).
+
+**D1 trip assistant checks (Simulator, after deploying the API):** open the NY trip →
+"Plan the whole trip": "Make Tuesday less busy" → "Understood on your phone", moves
+marked "you asked for this", starred/timed visits not moved, "Now: …" line; "Give me
+more time for shopping" → longer-visit switches; "תעביר את המוזיאון ליום אחר" in
+Hebrew; a free-form request online → "Understood by AI" (Usage: AI count +1); turn
+switches off and Apply → only those changes; airplane mode → rules still work, AI
+requests say offline.
+
 ## M16 – Real travel times (Routes API Essentials; written, owner setup pending)
 
 Approved by the owner on Nov 18 (SKU **Routes: Compute Routes Essentials**, 10,000
@@ -455,3 +813,5 @@ a normal terminal on the Mac should simply run `pnpm test` and `pnpm typecheck`.
   `docs/PROGRESS.md`).
 - 2026-11-17: U1 UX/UI redesign (audit + direction + implementation): design
   system doc, flat list-based UI kit, action menu, four tabs, all main screens.
+- 2026-11-19: U4 UX/UI audit pass (app only): less repetition on Today, the plan sheet, Find a
+  place, trip menu, Discover, Usage and Reminders; no Done in Today preview. Tests pass; uncommitted.

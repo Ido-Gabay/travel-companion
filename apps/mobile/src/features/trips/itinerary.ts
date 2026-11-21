@@ -1,14 +1,14 @@
 import type { Trip, TripPlace } from '@travel-companion/shared';
 
 /** Places planned for one day, in their order. */
-export function placesForDay(places: readonly TripPlace[], day: string): TripPlace[] {
+export function placesForDay<T extends TripPlace>(places: readonly T[], day: string): T[] {
   return places
     .filter((place) => place.day === day)
     .sort((a, b) => a.position - b.position || a.addedAt.localeCompare(b.addedAt));
 }
 
 /** Places on the wishlist (not planned for any day), oldest first. */
-export function wishlistPlaces(places: readonly TripPlace[]): TripPlace[] {
+export function wishlistPlaces<T extends TripPlace>(places: readonly T[]): T[] {
   return places.filter((place) => place.day === null);
 }
 
@@ -129,7 +129,7 @@ export function tripMode(trips: readonly Trip[], today: string): TripMode | null
   return next ? { phase: 'before', trip: next, daysUntil: daysBetween(today, next.startDate) } : null;
 }
 
-/** The first stop of the day not yet marked visited. */
-export function nextStop(stops: readonly TripPlace[]): TripPlace | null {
-  return stops.find((stop) => stop.visitedAt === null) ?? null;
+/** The first stop of the day not done yet (D1: nor skipped). */
+export function nextStop<T extends TripPlace & { status?: string | null }>(stops: readonly T[]): T | null {
+  return stops.find((stop) => stop.visitedAt === null && stop.status !== 'skipped') ?? null;
 }

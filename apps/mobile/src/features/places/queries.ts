@@ -6,7 +6,7 @@ import type {
   PlaceList,
   SaveGooglePlacesInput,
   SupportedLocale,
-  TripDetail,
+  TripDetailV2,
   UpdatePlaceInput,
 } from '@travel-companion/shared';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -49,7 +49,7 @@ export function usePlace(id: string) {
     // refreshing fails offline); updatedAt 0 = always refreshed from the server when possible.
     initialDataUpdatedAt: 0,
     initialData: () => {
-      for (const [, detail] of queryClient.getQueriesData<TripDetail>({ queryKey: [...tripsPrefix, 'detail'] })) {
+      for (const [, detail] of queryClient.getQueriesData<TripDetailV2>({ queryKey: [...tripsPrefix, 'detail'] })) {
         const match = detail?.places.find((place) => place.id === id);
         if (match) return match;
       }
@@ -71,15 +71,18 @@ export function useGooglePlace(placeId: string | null) {
   });
 }
 
-/** Google details for many places at once (for maps). Keyed like useGooglePlace, so shared. */
-export function useGooglePlaces(placeIds: readonly string[]): Map<string, GooglePlace> {
+/**
+ * Google details for many places at once (for maps). Keyed like useGooglePlace, so shared.
+ * With `fetch` false, only what's already in memory (no lookups).
+ */
+export function useGooglePlaces(placeIds: readonly string[], fetch = true): Map<string, GooglePlace> {
   const { session } = useAuth();
   const { locale } = useLocale();
   const results = useQueries({
     queries: placeIds.map((placeId) => ({
       queryKey: googlePlaceKey(placeId, locale),
       queryFn: () => api.getGooglePlace(placeId, locale),
-      enabled: session !== null,
+      enabled: session !== null && fetch,
       staleTime: GOOGLE_DETAILS_STALE_MS,
       gcTime: GOOGLE_DETAILS_STALE_MS,
     })),
@@ -111,6 +114,21 @@ export function useSaveGooglePlaces() {
     mutationFn: (body: SaveGooglePlacesInput) => api.saveGooglePlaces(body),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: placeListKey });
+      void queryClient.invalidateQueries({ queryKey: tripsPrefix });
+    },
+  });
+}
+
+/** One of the user's own places → the Google place they picked (online; the server keeps trips and visits). */
+export function useLinkGooglePlace() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ placeId, googlePlaceId }: { placeId: string; googlePlaceId: string }) =>
+      api.linkGooglePlace(placeId, { googlePlaceId }),
+    onSuccess: (place, { placeId }) => {
+      queryClient.setQueryData(placeKey(place.id), place);
+      if (place.id !== placeId) queryClient.removeQueries({ queryKey: placeKey(placeId) });
+      void queryClient.invalidateQueries({ queryKey: placesKey });
       void queryClient.invalidateQueries({ queryKey: tripsPrefix });
     },
   });
@@ -252,5 +270,15 @@ export function useGooglePhoto(name: string | null, maxWidth = 800) {
     staleTime: PHOTO_URL_STALE_MS,
     gcTime: PHOTO_URL_STALE_MS,
     retry: false,
+  });
+}
+
+/** D1: a place's visit history (done visits, also of deleted trips, and the older "visited" mark). */
+export function usePlaceVisits(placeId: string) {
+  const { session } = useAuth();
+  return useQuery({
+    queryKey: [...placesKey, 'visits', placeId],
+    queryFn: () => api.getPlaceVisits(placeId),
+    enabled: session !== null && placeId.length > 0,
   });
 }

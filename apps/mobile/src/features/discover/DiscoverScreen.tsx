@@ -30,13 +30,15 @@ import { distanceMeters, formatDistance, type Bounds } from '@/features/companio
 import { useCurrentLocation } from '@/features/companion/location';
 import { useMe } from '@/features/me/queries';
 import { useGooglePlace, usePrimeGooglePlaces, useSaveGooglePlaces } from '@/features/places/queries';
-import { HotelPinSheet } from '@/features/trips/HotelPinSheet';
+import { primaryStay, stayForNight } from '@/features/trips/model';
+import { useTrip } from '@/features/trips/queries';
+import { StaySheet } from '@/features/trips/StaySheet';
 import { useTrips } from '@/features/trips/queries';
 import { upcomingTrips } from '@/features/trips/upcoming';
 import { useLocale } from '@/i18n/LocaleProvider';
 import { toIsoDate } from '@/lib/dates';
 import { useErrorMessage } from '@/lib/use-error-message';
-import { colors, radii, shadows, spacing, typography } from '@/theme/tokens';
+import { colors, compactHitSlop, hitSlop, radii, shadows, spacing, typography, weights } from '@/theme/tokens';
 import { ContextSheet } from './ContextSheet';
 import { PlacePreviewSheet } from './PlacePreviewSheet';
 import { useDiscoverSearch, useInterpret } from './queries';
@@ -74,9 +76,11 @@ interface DiscoverScreenProps {
   tripId?: string;
   /** "modal" shows a close button (opened from a trip); "tab" is the Discover tab. */
   mode: 'tab' | 'modal';
+  /** D1 trip assistant: a search the user asked for ("dinner near where I finish"), run once on open. */
+  initialSearch?: { plan: SearchPlan; area: SearchArea; label: string };
 }
 
-const SUGGESTION_KEYS = ['suggestion1', 'suggestion2', 'suggestion3', 'suggestion4', 'suggestion5', 'suggestion6'] as const;
+const SUGGESTION_KEYS = ['suggestion1', 'suggestion2', 'suggestion3'] as const;
 
 /**
  * Place discovery. Google Maps search is the standard way (type a name or
@@ -85,7 +89,7 @@ const SUGGESTION_KEYS = ['suggestion1', 'suggestion2', 'suggestion3', 'suggestio
  * real Google results, and the user chooses what to save to the collection
  * and, optionally, a trip's wishlist.
  */
-export function DiscoverScreen({ tripId: initialTripId, mode }: DiscoverScreenProps) {
+export function DiscoverScreen({ tripId: initialTripId, mode, initialSearch }: DiscoverScreenProps) {
   const { t } = useTranslation();
   const { isRtl, locale } = useLocale();
   const errorMessage = useErrorMessage();
@@ -131,9 +135,19 @@ export function DiscoverScreen({ tripId: initialTripId, mode }: DiscoverScreenPr
     targetTrip?.startDate && targetTrip.endDate && targetTrip.startDate <= today && today <= targetTrip.endDate,
   );
 
-  // Where to search. The hotel's real location comes from its pinned Google place.
-  const hotel = useGooglePlace(targetTrip?.basePlaceId ?? null);
-  const hotelLocation: LatLng | null = hotel.data?.location ?? null;
+  // Where to search. D1: the hotel is the stay for tonight (else the trip's main stay):
+  // the user's own pin, or its Google place's real location.
+  const tripView = useTrip(tripId ?? '');
+  const stays = tripView.data?.stays ?? [];
+  const stay = stayForNight(stays, today) ?? primaryStay(stays, targetTrip?.startDate ?? null);
+  const hotelGoogleId = stay ? (stay.place?.googlePlaceId ?? null) : (targetTrip?.basePlaceId ?? null);
+  const hotel = useGooglePlace(hotelGoogleId);
+  const ownPin =
+    stay?.place?.latitude != null && stay.place.longitude != null
+      ? { latitude: stay.place.latitude, longitude: stay.place.longitude }
+      : null;
+  const hotelLocation: LatLng | null = ownPin ?? hotel.data?.location ?? null;
+  const hasHotel = Boolean(stay?.place) || Boolean(!stay && targetTrip?.basePlaceId);
   const wheres = whereOptions(targetTrip ?? null);
   const [where, setWhere] = useState<WhereKey>('anywhere');
   const [whereChosen, setWhereChosen] = useState(false);
@@ -157,6 +171,15 @@ export function DiscoverScreen({ tripId: initialTripId, mode }: DiscoverScreenPr
         return t('discover.whereMap');
     }
   };
+
+  // The assistant's search: the user tapped "Search near there", so it runs once.
+  const ranInitial = useRef(false);
+  useEffect(() => {
+    if (!initialSearch || ranInitial.current) return;
+    ranInitial.current = true;
+    runSearch({ ...initialSearch, source: 'google' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSearch]);
 
   const runSearch = (next: LastSearch) => {
     setError(null);
@@ -194,7 +217,7 @@ export function DiscoverScreen({ tripId: initialTripId, mode }: DiscoverScreenPr
       return { ok: true, area: areaFor('me', targetTrip ?? null, { here: here.coords, hotel: null }) };
     }
     if (key === 'hotel') {
-      if (!targetTrip?.basePlaceId) {
+      if (!hasHotel) {
         setPinOpen(true);
         return { ok: false };
       }
@@ -310,7 +333,7 @@ export function DiscoverScreen({ tripId: initialTripId, mode }: DiscoverScreenPr
     setWhereChosen(true);
     setWhere(key);
     setLocationProblem(null);
-    if (key === 'hotel' && !targetTrip?.basePlaceId) setPinOpen(true);
+    if (key === 'hotel' && !hasHotel) setPinOpen(true);
   };
 
   const isSaved = (result: DiscoverResult) => result.savedPlaceId !== null && (tripId === null || result.inTrip);
@@ -548,7 +571,7 @@ export function DiscoverScreen({ tripId: initialTripId, mode }: DiscoverScreenPr
               ) : null}
             </View>
           ) : null}
-          {searchMode === 'search' && where === 'hotel' && targetTrip && !targetTrip.basePlaceId ? (
+          {searchMode === 'search' && where === 'hotel' && targetTrip && !hasHotel ? (
             <Pressable accessibilityRole="button" onPress={() => setPinOpen(true)} style={styles.notice}>
               <Icon name="bed-outline" size={18} color={colors.accent} />
               <AppText variant="body" style={styles.flex}>
@@ -647,6 +670,7 @@ export function DiscoverScreen({ tripId: initialTripId, mode }: DiscoverScreenPr
                   accessibilityRole="switch"
                   accessibilityState={{ checked: last.plan.openNow }}
                   onPress={toggleOpenNow}
+                  hitSlop={hitSlop}
                   style={[styles.openNow, last.plan.openNow && styles.openNowOn]}
                 >
                   <Icon name="time-outline" size={14} color={last.plan.openNow ? colors.textOnAccent : colors.textSecondary} />
@@ -816,12 +840,14 @@ export function DiscoverScreen({ tripId: initialTripId, mode }: DiscoverScreenPr
         }}
         onClose={() => setPreviewId(null)}
       />
-      {targetTrip ? (
-        <HotelPinSheet
-          trip={targetTrip}
+      {tripView.data ? (
+        <StaySheet
+          trip={tripView.data}
+          stay={stay}
           visible={pinOpen}
           onClose={() => setPinOpen(false)}
-          onPinned={() => {
+          onSaved={(saved) => {
+            if (!saved.place) return;
             setWhereChosen(true);
             setWhere('hotel');
           }}
@@ -847,6 +873,7 @@ function Chip({
       accessibilityRole="button"
       accessibilityState={{ selected: active }}
       onPress={onPress}
+      hitSlop={compactHitSlop}
       style={({ pressed }) => [styles.chip, active && styles.chipActive, pressed && styles.pressed]}
     >
       {icon ? <Icon name={icon} size={14} color={active ? colors.textOnAccent : colors.textSecondary} /> : null}
@@ -879,7 +906,7 @@ function Step({ label, state }: { label: string; state: 'pending' | 'active' | '
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
-  bold: { fontWeight: '600' },
+  bold: { fontWeight: weights.semibold },
   pressed: { opacity: 0.75 },
   dim: { opacity: 0.5 },
   content: { padding: spacing.xl, paddingBottom: 120, gap: spacing.lg },
@@ -925,7 +952,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   goDisabled: { opacity: 0.4 },
-  chipRow: { alignItems: 'center', gap: spacing.sm },
+  chipRow: { alignItems: 'center', gap: spacing.sm, paddingVertical: compactHitSlop.top },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -939,7 +966,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   chipActive: { backgroundColor: colors.accent, borderColor: colors.accent },
-  chipText: { fontWeight: '600', color: colors.textSecondary },
+  chipText: { fontWeight: weights.semibold, color: colors.textSecondary },
   chipTextActive: { color: colors.textOnAccent },
   notice: {
     flexDirection: 'row',
@@ -1000,7 +1027,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   openNowOn: { backgroundColor: colors.accent, borderColor: colors.accent },
-  openNowText: { fontWeight: '600', color: colors.textSecondary },
+  openNowText: { fontWeight: weights.semibold, color: colors.textSecondary },
   openNowTextOn: { color: colors.textOnAccent },
   resultsHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   empty: { alignItems: 'center', gap: spacing.sm, padding: spacing.xxl },
@@ -1016,7 +1043,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     borderRadius: radii.pill,
     backgroundColor: colors.surface,
-    shadowColor: '#14202E',
+    shadowColor: colors.text,
     shadowOpacity: 0.18,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
@@ -1028,7 +1055,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     padding: spacing.lg,
     borderRadius: radii.card,
-    backgroundColor: '#E6F2E9',
+    backgroundColor: colors.successSoft,
   },
   saveBar: {
     flexDirection: 'row',

@@ -9,6 +9,7 @@ import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { TimeZoneNote } from '@/features/trips/TimeZoneNote';
 import {
   AppText,
   Button,
@@ -201,6 +202,9 @@ export default function ProfileScreen() {
           onPress={confirmSignOut}
         />
       </ListGroup>
+
+      {/* Data sources that require attribution (D1: time zone boundaries, ODbL). */}
+      <TimeZoneNote />
 
       <Sheet
         visible={editingName}

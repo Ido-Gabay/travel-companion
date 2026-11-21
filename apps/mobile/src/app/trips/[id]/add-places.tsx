@@ -32,7 +32,7 @@ export default function AddPlacesScreen() {
   const removePlace = useRemoveTripPlace(id);
 
   const inTrip = useMemo(
-    () => new Set(trip.data?.places.map((place) => place.id) ?? []),
+    () => new Set(trip.data?.saved.map((place) => place.id) ?? []),
     [trip.data],
   );
   const busyId = addPlace.isPending

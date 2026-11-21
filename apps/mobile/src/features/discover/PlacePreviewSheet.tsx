@@ -8,7 +8,7 @@ import { AppText, Button, Icon, InlineError, Sheet } from '@/components/ui';
 import { GooglePhotoView } from '@/features/places/GooglePhotoView';
 import { useGooglePlacePreview } from '@/features/places/queries';
 import { useLocale } from '@/i18n/LocaleProvider';
-import { colors, radii, spacing } from '@/theme/tokens';
+import { colors, radii, spacing, weights } from '@/theme/tokens';
 
 interface PlacePreviewSheetProps {
   /** The result to preview; null hides the sheet. */
@@ -232,7 +232,7 @@ export function PlacePreviewSheet({
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   center: { alignItems: 'center', justifyContent: 'center' },
-  bold: { fontWeight: '600' },
+  bold: { fontWeight: weights.semibold },
   heroPlaceholder: { height: 220, borderRadius: radii.card, backgroundColor: colors.surfaceMuted },
   photoRow: { gap: spacing.sm },
   thumb: { width: 160 },

@@ -161,7 +161,7 @@ describe('real routes (M16)', () => {
     const real = suggestTimes(stops, null, undefined, (from, to) =>
       from.latitude === A.latitude && to.latitude === B.latitude ? { minutes: 41, meters: 4100, mode: 'transit', source: 'google' } : null,
     );
-    expect(real.get('b')).toBe('10:45'); // 09:30 + 30 min visit + 41 min, rounded up to 5
+    expect(real.get('b')).toBe('10:50'); // 09:30 + 30 min visit + 41 min + 5 min buffer, rounded up to 5
     expect(estimated.get('b')).not.toBe(real.get('b'));
     expect(leg(A, B, () => ({ minutes: 41, meters: 4100, mode: 'transit', source: 'google' }))).toMatchObject({ source: 'google', known: true });
   });

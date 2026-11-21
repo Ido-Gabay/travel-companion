@@ -1,4 +1,4 @@
-import { googleMapsDirectionsUrl, tripDays, type TripPlace } from '@travel-companion/shared';
+import { googleMapsDirectionsUrl, tripDays } from '@travel-companion/shared';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Alert, Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
@@ -9,7 +9,6 @@ import {
   Button,
   EmptyState,
   ErrorState,
-  Icon,
   IconButton,
   InlineError,
   ListGroup,
@@ -20,19 +19,17 @@ import {
 } from '@/components/ui';
 import { groupByCategory } from '@/features/places/categories';
 import { CollectionMap } from '@/features/places/CollectionMap';
+import { GoogleLinkSheet } from '@/features/places/GoogleLinkSheet';
+import { useLinkGooglePlace } from '@/features/places/queries';
 import { openInMaps } from '@/features/places/open-in-maps';
 import { PlaceCard } from '@/features/places/PlaceCard';
 import { usePlaceDisplay } from '@/features/places/use-place-display';
 import { DayPickerSheet } from '@/features/trips/DayPickerSheet';
-import { HotelPinSheet } from '@/features/trips/HotelPinSheet';
 import { countByDay, dayShort, formatStartTime } from '@/features/trips/itinerary';
+import { isUpcoming, type SavedPlace, type TripItem } from '@/features/trips/model';
+import { StaysSection } from '@/features/trips/StaysSection';
 import { ItineraryView } from '@/features/trips/ItineraryView';
-import {
-  useDeleteTrip,
-  useRemoveTripPlace,
-  useScheduleTripPlace,
-  useTrip,
-} from '@/features/trips/queries';
+import { useDeleteTrip, usePlanVisit, useRemoveTripPlace, useTrip } from '@/features/trips/queries';
 import { OfflineStatus } from '@/features/offline/OfflineStatus';
 import { useLocale } from '@/i18n/LocaleProvider';
 import { formatTripDates } from '@/lib/dates';
@@ -48,31 +45,40 @@ export default function TripScreen() {
   const trip = useTrip(id);
   const removePlace = useRemoveTripPlace(id);
   const deleteTrip = useDeleteTrip();
-  const schedule = useScheduleTripPlace(id);
+  const planVisit = usePlanVisit(id);
 
   const [view, setView] = useState<'plan' | 'places' | 'map'>('plan');
-  const [pinOpen, setPinOpen] = useState(false);
-  const [planning, setPlanning] = useState<{ place: TripPlace; name: string } | null>(null);
+  const [planning, setPlanning] = useState<{ place: SavedPlace; name: string } | null>(null);
+  const [linking, setLinking] = useState<{ place: SavedPlace; name: string } | null>(null);
+  const link = useLinkGooglePlace();
   const days = useMemo(
     () => tripDays(trip.data?.startDate ?? null, trip.data?.endDate ?? null),
     [trip.data?.startDate, trip.data?.endDate],
   );
   const counts = useMemo(() => countByDay(trip.data?.places ?? []), [trip.data?.places]);
   const [hideVisited, setHideVisited] = useState(false);
-  const allPlaces = trip.data?.places ?? [];
-  const visitedCount = allPlaces.filter((place) => place.visitedAt !== null).length;
-  const shownPlaces = hideVisited ? allPlaces.filter((place) => place.visitedAt === null) : allPlaces;
+  // D1: the Places tab lists the places SAVED to the trip (each once), however often they're visited.
+  const allPlaces = trip.data?.saved ?? [];
+  const doneOnce = (place: SavedPlace) => place.visits.some((visit) => visit.status === 'completed');
+  const visitedCount = allPlaces.filter(doneOnce).length;
+  const shownPlaces = hideVisited ? allPlaces.filter((place) => !doneOnce(place)) : allPlaces;
   const openAddPlaces = () =>
     router.push({ pathname: '/trips/[id]/add-places', params: { id } });
   const openDiscover = () => router.push({ pathname: '/trips/[id]/discover', params: { id } });
   const openEdit = () => router.push({ pathname: '/trips/[id]/edit', params: { id } });
-  const openPlace = (place: TripPlace) => router.push({ pathname: '/places/[id]', params: { id: place.id } });
-  const planBadge = (place: TripPlace) =>
-    place.day
-      ? [dayShort(place.day, locale), place.startTime ? formatStartTime(place.startTime, locale) : null]
-          .filter(Boolean)
-          .join(' · ')
-      : null;
+  const openPlace = (place: { id: string }) => router.push({ pathname: '/places/[id]', params: { id: place.id } });
+  const openItem = (item: TripItem) => router.push({ pathname: '/places/[id]', params: { id: item.placeId } });
+  /** Next planned visit ("Tue 24 · 09:30"), else Done, plus how many visits when more than one. */
+  const planBadge = (place: SavedPlace) => {
+    const next = place.visits.find((visit) => isUpcoming(visit.status));
+    const when = next
+      ? [dayShort(next.day, locale), next.startTime ? formatStartTime(next.startTime, locale) : null].filter(Boolean).join(' · ')
+      : doneOnce(place)
+        ? t('visits.done')
+        : null;
+    const count = place.visits.filter((visit) => visit.status !== 'skipped').length;
+    return [when, count > 1 ? t('visits.count', { count }) : null].filter(Boolean).join(' · ') || null;
+  };
 
   const openAddMenu = () =>
     openMenu({
@@ -80,17 +86,35 @@ export default function TripScreen() {
       items: [
         { label: t('tripDetail.searchPlaces'), icon: 'search', onPress: openDiscover },
         { label: t('tripDetail.fromSaved'), icon: 'bookmark-outline', onPress: openAddPlaces },
+        {
+          label: t('tripDetail.importList'),
+          icon: 'document-text-outline',
+          onPress: () => router.push({ pathname: '/trips/[id]/import', params: { id } }),
+        },
       ],
     });
 
+  /** D1 Q4: done visits stay in each place's history, unless the user also deletes that history. */
   const confirmDelete = () => {
-    Alert.alert(t('tripDetail.deleteTripTitle'), t('tripDetail.deleteTripBody'), [
+    const done = trip.data?.places.some((item) => item.status === 'completed') ?? false;
+    const run = (deleteHistory: boolean) => deleteTrip.mutate({ id, deleteHistory }, { onSuccess: () => router.back() });
+    Alert.alert(t('tripDetail.deleteTripTitle'), done ? t('tripDetail.deleteTripBodyHistory') : t('tripDetail.deleteTripBody'), [
       { text: t('common.cancel'), style: 'cancel' },
-      {
-        text: t('common.delete'),
-        style: 'destructive',
-        onPress: () => deleteTrip.mutate(id, { onSuccess: () => router.back() }),
-      },
+      { text: t('common.delete'), style: 'destructive', onPress: () => run(false) },
+      ...(done ? [{ text: t('tripDetail.deleteWithHistory'), style: 'destructive' as const, onPress: () => run(true) }] : []),
+    ]);
+  };
+
+  /** Removing a saved place takes its planned visits; done ones stay in the place's history. */
+  const confirmRemovePlace = (place: SavedPlace) => {
+    const done = place.visits.some((visit) => visit.status === 'completed');
+    if (!done) {
+      removePlace.mutate(place.id);
+      return;
+    }
+    Alert.alert(t('visits.removePlaceTitle'), t('visits.removePlaceBody'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('tripDetail.removeShort'), style: 'destructive', onPress: () => removePlace.mutate(place.id) },
     ]);
   };
 
@@ -107,14 +131,6 @@ export default function TripScreen() {
                   title: trip.data.title,
                   items: [
                     { label: t('editTrip.title'), icon: 'create-outline', onPress: openEdit },
-                    {
-                      label: t('hotelPin.title'),
-                      icon: 'bed-outline',
-                      onPress: () => setPinOpen(true),
-                      hidden: !(trip.data.baseLocation || trip.data.basePlaceId),
-                    },
-                    { label: t('tripDetail.searchPlaces'), icon: 'search', onPress: openDiscover },
-                    { label: t('tripDetail.fromSaved'), icon: 'bookmark-outline', onPress: openAddPlaces },
                     {
                       label: t('journal.recap'),
                       icon: 'book-outline',
@@ -149,21 +165,7 @@ export default function TripScreen() {
                   .filter(Boolean)
                   .join(' · ')}
               </AppText>
-              {trip.data.baseLocation || trip.data.basePlaceId ? (
-                <Pressable accessibilityRole="button" onPress={() => setPinOpen(true)} style={styles.meta}>
-                  <Icon name="bed-outline" size={16} color={colors.textSecondary} />
-                  <AppText variant="caption" color="secondary" style={styles.flexShrink}>
-                    {t('tripDetail.stayingAt', { place: trip.data.baseLocation ?? t('hotelPin.pinnedShort') })}
-                  </AppText>
-                  {trip.data.basePlaceId ? (
-                    <Icon name="location" size={16} color={colors.accent} />
-                  ) : (
-                    <AppText variant="caption" color="accent" style={styles.pinLink}>
-                      {t('hotelPin.pinOnMap')}
-                    </AppText>
-                  )}
-                </Pressable>
-              ) : null}
+              <StaysSection trip={trip.data} />
             </View>
 
             <OfflineStatus savedAt={trip.dataUpdatedAt} stale={trip.isError} />
@@ -174,7 +176,7 @@ export default function TripScreen() {
               accessibilityLabel={t('discover.view')}
               options={[
                 { value: 'plan', label: t('itinerary.plan') },
-                { value: 'places', label: `${t('itinerary.places')} · ${trip.data.places.length}` },
+                { value: 'places', label: `${t('itinerary.places')} · ${trip.data.saved.length}` },
                 { value: 'map', label: t('discover.map') },
               ]}
               value={view}
@@ -184,11 +186,11 @@ export default function TripScreen() {
             {view === 'plan' ? (
               <ItineraryView
                 trip={trip.data}
-                onOpenPlace={openPlace}
+                onOpenPlace={openItem}
                 onDiscover={openDiscover}
                 onEditTrip={openEdit}
               />
-            ) : trip.data.places.length === 0 ? (
+            ) : trip.data.saved.length === 0 ? (
               <EmptyState
                 icon="bookmark-outline"
                 title={t('tripDetail.emptyTitle')}
@@ -226,26 +228,44 @@ export default function TripScreen() {
                           canPlan={days.length > 0}
                           removing={removePlace.isPending && removePlace.variables === place.id}
                           onPlan={(name) => setPlanning({ place, name })}
-                          onRemove={() => removePlace.mutate(place.id)}
+                          onLink={(name) => setLinking({ place, name })}
+                          onRemove={() => confirmRemovePlace(place)}
                         />
                       ))}
                     </ListGroup>
                   ))
                 )}
                 {removePlace.isError ? <InlineError message={errorMessage(removePlace.error)} /> : null}
-                {schedule.isError ? <InlineError message={errorMessage(schedule.error)} /> : null}
+                {planVisit.isError ? <InlineError message={errorMessage(planVisit.error)} /> : null}
               </View>
             )}
 
-            <HotelPinSheet trip={trip.data} visible={pinOpen} onClose={() => setPinOpen(false)} />
+            {linking ? (
+              <GoogleLinkSheet
+                visible
+                name={linking.name}
+                query={[linking.place.name, linking.place.address].filter(Boolean).join(' ') || linking.name}
+                near={trip.data.destination}
+                category={linking.place.category}
+                busy={link.isPending}
+                error={link.isError ? errorMessage(link.error) : null}
+                onPick={(result) =>
+                  link.mutate({ placeId: linking.place.id, googlePlaceId: result.placeId }, { onSuccess: () => setLinking(null) })
+                }
+                onClose={() => setLinking(null)}
+              />
+            ) : null}
+
             <DayPickerSheet
               visible={planning !== null}
+              title={planning && planning.place.visits.length > 0 ? t('visits.againTitle') : undefined}
               placeName={planning?.name ?? ''}
               days={days}
-              current={planning?.place.day ?? null}
+              current={null}
               counts={counts}
+              allowWishlist={false}
               onPick={(day) => {
-                if (planning && day !== planning.place.day) schedule.mutate({ placeId: planning.place.id, day });
+                if (planning && day) planVisit.mutate({ tripPlaceId: planning.place.tripPlaceId, day });
                 setPlanning(null);
               }}
               onClose={() => setPlanning(null)}
@@ -265,13 +285,15 @@ function TripPlaceCard({
   canPlan,
   removing,
   onPlan,
+  onLink,
   onRemove,
 }: {
-  place: TripPlace;
+  place: SavedPlace;
   badge: string | null;
   canPlan: boolean;
   removing: boolean;
   onPlan: (name: string) => void;
+  onLink: (name: string) => void;
   onRemove: () => void;
 }) {
   const { t } = useTranslation();
@@ -303,8 +325,19 @@ function TripPlaceCard({
                     icon: 'information-circle-outline',
                     onPress: () => router.push({ pathname: '/places/[id]', params: { id: place.id } }),
                   },
-                  { label: t('itinerary.pickDay'), icon: 'calendar-outline', onPress: () => onPlan(display.name), hidden: !canPlan },
+                  {
+                    label: place.visits.length > 0 ? t('visits.again') : t('itinerary.pickDay'),
+                    icon: place.visits.length > 0 ? 'repeat-outline' : 'calendar-outline',
+                    onPress: () => onPlan(display.name),
+                    hidden: !canPlan,
+                  },
                   { label: t('places.directions'), icon: 'navigate-outline', onPress: navigate },
+                  {
+                    label: t('googleLink.action'),
+                    icon: 'location-outline',
+                    onPress: () => onLink(display.name),
+                    hidden: place.source !== 'custom' || place.latitude != null || Boolean(place.linkedGooglePlaceId),
+                  },
                   { label: t('tripDetail.removeShort'), icon: 'remove-circle-outline', destructive: true, onPress: onRemove },
                 ],
               })
@@ -320,7 +353,6 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   content: { paddingHorizontal: spacing.xl, paddingBottom: spacing.huge, gap: spacing.xl },
   hero: { gap: spacing.xs },
-  meta: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   placeRow: { flexDirection: 'row', gap: spacing.md, alignItems: 'flex-start' },
   placeText: { flex: 1, gap: spacing.xxs },
   notes: { marginTop: spacing.xs },
@@ -330,8 +362,6 @@ const styles = StyleSheet.create({
   discoverRow: { flexDirection: 'row', gap: spacing.md },
   flex: { flex: 1 },
   group: { gap: spacing.md },
-  flexShrink: { flexShrink: 1 },
-  pinLink: { fontWeight: '600' },
   placesBody: { gap: spacing.lg },
   progressRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.xs },
   toggleText: { fontWeight: '600' },

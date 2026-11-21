@@ -21,6 +21,9 @@ apps/mobile/android/
 *.key
 *.mobileprovision
 
+# D1 local preview database (scripts/preview-db.mjs)
+.preview-db/
+
 # Supabase local state
 supabase/.branches/
 supabase/.temp/
@@ -35,3 +38,9 @@ pnpm-debug.log*
 
 # Local file transfer scratch (Claude sessions)
 .transfer/
+
+# Local AI tooling (per developer, not part of the app)
+.agents/
+.claude/
+.kiro/
+skills-lock.json

@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { jest } from '@jest/globals';
-import type { Me, TripDetail, TripJournal } from '@travel-companion/shared';
+import type { Me, Trip, TripDetailV2, TripJournal } from '@travel-companion/shared';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render } from '@testing-library/react-native';
 import type { ReactElement } from 'react';
@@ -43,16 +43,21 @@ export function setRouteParams(params: Record<string, string>): void {
   (globalThis as { __routeParams?: Record<string, string> }).__routeParams = params;
 }
 
+/** The trip as GET /v1/trips lists it. */
+export function listItem(detail: TripDetailV2): Trip {
+  const stay = detail.stays[0];
+  const { timeZone: _zone, timeZoneSource: _source, ...trip } = detail.trip;
+  return { ...trip, baseLocation: stay?.label ?? null, basePlaceId: stay?.place?.googlePlaceId ?? null };
+}
+
 /** The server answers with these trips (and Google details aren't available). */
-export function serverHas(trips: TripDetail[]): void {
+export function serverHas(trips: TripDetailV2[]): void {
   reportReachable();
   mockApi.getMe.mockImplementation(() => Promise.resolve(me));
-  mockApi.listTrips.mockImplementation(() =>
-    Promise.resolve({ items: trips.map(({ places: _places, ...trip }) => trip) }),
-  );
-  mockApi.getTrip.mockImplementation((...args: never[]) => {
+  mockApi.listTrips.mockImplementation(() => Promise.resolve({ items: trips.map(listItem) }));
+  mockApi.getTripV2.mockImplementation((...args: never[]) => {
     const id = args[0] as unknown as string;
-    const trip = trips.find((item) => item.id === id);
+    const trip = trips.find((item) => item.trip.id === id);
     return trip ? Promise.resolve(structuredClone(trip)) : Promise.reject(new ApiClientError('NOT_FOUND', 404, 'nope'));
   });
   mockApi.getJournal.mockImplementation(() => Promise.resolve({ days: [] }));
@@ -71,7 +76,7 @@ export function goOffline(): void {
 
 /** What a previous online session left on the phone (the M12a saved copy). */
 export async function seedSavedCopy(
-  trips: TripDetail[],
+  trips: TripDetailV2[],
   savedAt: number,
   extra?: {
     ops?: PendingOp[];
@@ -82,9 +87,9 @@ export async function seedSavedCopy(
   },
 ) {
   const pairs: [string, string][] = [
-    [`${prefix}trips`, JSON.stringify({ savedAt, data: { items: trips.map(({ places: _p, ...trip }) => trip) } })],
+    [`${prefix}trips`, JSON.stringify({ savedAt, data: { items: trips.map(listItem) } })],
     [`${prefix}me`, JSON.stringify({ savedAt, data: me })],
-    ...trips.map((trip): [string, string] => [`${prefix}trip.${trip.id}`, JSON.stringify({ savedAt, data: trip })]),
+    ...trips.map((trip): [string, string] => [`${prefix}trip.${trip.trip.id}`, JSON.stringify({ savedAt, data: trip })]),
   ];
   if (extra?.ops) pairs.push([`${prefix}ops`, JSON.stringify(extra.ops)]);
   if (extra?.conflicts) pairs.push([`${prefix}conflicts`, JSON.stringify(extra.conflicts)]);
