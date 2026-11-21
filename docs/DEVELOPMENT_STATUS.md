@@ -1,9 +1,23 @@
 # Development status
 
-**Last updated: 2026-11-18 (M16 real travel times written on main, on top of U2, M15 stage 1 and M14).**
+**Last updated: 2026-11-21 (D1 committed `b692bb1`, migrated, pushed and deployed).**
 Update this file at the end of every milestone or meaningful change.
 
 ## Snapshot
+
+- **2026-11-21 (supersedes the older lines below):** everything (M15, U2, M16, D1, U3–U5,
+  import/link places, CSV picker) is committed as `b692bb1` and pushed to `main`.
+  `npx supabase migration list --linked` showed all migrations through `20261118120000`
+  applied; only `20261118150000_d1_visits_and_stays` was pending. Backup taken first
+  (`psql \copy` of the 7 `app` tables to `~/travel-companion-backups/before-d1-20261121/`,
+  because `supabase db dump` needs Docker); dry run listed only D1; applied with
+  `npx supabase db push --remote --yes`. Backfill check: 12 visits = 12 scheduled
+  memberships, 15 stays, 38 trips. Rollback: `docs/d1/20261118150000_d1_visits_and_stays.down.sql`.
+  Render deployed: `/health` → `{"status":"ok"}`; new routes `POST /v1/places/:id/google`
+  and `POST /v1/assistant/extract-places` return 401 without auth (a fake route returns 404).
+  **Not run:** `pnpm smoke:api` against production (needs the test user's password;
+  owner runs `API_URL=https://travel-companion-api-joqe.onrender.com pnpm smoke:api`).
+  **Native rebuild required** (expo-document-picker, expo-file-system). GitHub CI result not checked.
 
 - **Last commit seen on the Mac:** `9560555` "M14: screen tests + CI"; tag `trip-safe` = `37dbf49` (M12a).
 - **Uncommitted when this was written:** M15 stage 1 (shared, API, app, migration `20261118120000_trip_journal`), U2 (map-first Today, app only), M16 (Routes API: shared, API, app) and these doc updates. Commit them together (see Exact next steps, step 0).
@@ -350,8 +364,8 @@ stops keep theirs; airplane mode → same, syncs later. In Hebrew: type "התע�
 ## D1 trip assistant (accepted Nov 19 on code + automated tests; uncommitted; device checks pending)
 
 Updated 2026-11-19. Part of the uncommitted D1 working tree (visits/stays, API v2,
-complete trip plan; migration `20261118150000_d1_visits_and_stays` is in the tree,
-its remote status was not checked in this session). Decision P20.
+complete trip plan; migration `20261118150000_d1_visits_and_stays` applied to
+production on 2026-11-21, see Snapshot). Decision P20.
 
 - **Where:** itinerary → "Plan the whole trip" sheet → text field at the top
   (`features/assistant/AssistantPanel.tsx`, shown by `features/planning/TripPlanning.tsx`).
@@ -638,9 +652,10 @@ spec files, real code:
 | `20261117150000_trip_base_location` | `trips.base_location` | Applied |
 | `20261117180000_itinerary` | `trip_places.day/start_time/position` | Applied |
 | `20261117200000_trip_base_place_and_usage` | `trips.base_google_place_id`, usage index | Applied (M8 verified) |
-| `20261117220000_visit_duration` | `trip_places.duration_minutes` | **Confirm**: M9 committed; push not confirmed in writing. Check with `npx supabase migration list --linked`. |
-| `20261118090000_place_my_label` | `places.my_label` (user-typed, 1–60 chars, trimmed) | **Not applied** (M12a). Push before deploying the API. |
-| `20261118120000_trip_journal` | `trip_places.highlight`, `app.trip_journal_days` (+ RLS) | **Not applied** (M15). Push before deploying the API. |
+| `20261117220000_visit_duration` | `trip_places.duration_minutes` | Applied (seen in `migration list --linked`, Nov 21) |
+| `20261118090000_place_my_label` | `places.my_label` (user-typed, 1–60 chars, trimmed) | Applied (seen Nov 21) |
+| `20261118120000_trip_journal` | `trip_places.highlight`, `app.trip_journal_days` (+ RLS) | Applied (seen Nov 21) |
+| `20261118150000_d1_visits_and_stays` | Visits/stays (expand + backfill) | Applied 2026-11-21 after a CSV backup; rollback in `docs/d1/` |
 
 M10 adds no migration.
 
@@ -648,7 +663,7 @@ M10 adds no migration.
 
 | Piece | Where | State |
 | --- | --- | --- |
-| API | Render Free, Singapore, `https://travel-companion-api-joqe.onrender.com`, auto-deploys `main` | Running M9 if the M9 push deployed; M10 API change (time zone field) deploys on the next push |
+| API | Render Free, Singapore, `https://travel-companion-api-joqe.onrender.com`, auto-deploys `main` | Running `b692bb1` (D1) since 2026-11-21: health ok, new routes present; smoke test not run |
 | Database + Auth | Supabase Free, project ref `nmerwskzfceigcmedgxo`, Singapore | Running |
 | CI | GitHub Actions (`.github/workflows/ci.yml`): `pnpm test`, `pnpm typecheck` on push | Was red on the M8 commit (one stale test), fixed in `bd777ca`; current state not checked |
 | iPhone | Not installed yet (free Apple ID, 7-day builds) | Planned for Nov 21–22 |
@@ -815,3 +830,6 @@ a normal terminal on the Mac should simply run `pnpm test` and `pnpm typecheck`.
   system doc, flat list-based UI kit, action menu, four tabs, all main screens.
 - 2026-11-19: U4 UX/UI audit pass (app only): less repetition on Today, the plan sheet, Find a
   place, trip menu, Discover, Usage and Reminders; no Done in Today preview. Tests pass; uncommitted.
+- 2026-11-21: CSV file picker for import (T20). Committed `b692bb1` (all D1 work), D1 migration
+  applied after a backup, pushed, Render deployed (health + new routes checked). Tests: app logic 277,
+  screens 72, API 190, shared 60, typecheck clean. Smoke test and Simulator checks not run.

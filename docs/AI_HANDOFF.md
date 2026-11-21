@@ -30,6 +30,11 @@ Google rules), `docs/LIVE_COMPANION.md` (Today + reminders design),
 
 ## 3. Current state
 
+- **2026-11-21 (newest; older lines below are history):** all work is committed (`b692bb1`)
+  and pushed; every migration including D1 `20261118150000` is applied to production
+  (backup in `~/travel-companion-backups/before-d1-20261121/`); Render runs `b692bb1`
+  (health ok, new routes present). Not done: `pnpm smoke:api` against production,
+  native rebuild for `expo-document-picker`, any Simulator check of D1/U3–U5/import/link.
 - `main` on the Mac: M14 committed (`9560555`); tag `trip-safe` = M12a (`37dbf49`).
   **M15 stage 1 is written but uncommitted** (journal + recap; migration
   `20261118120000_trip_journal`). Migrations `my_label` and `trip_journal` may still
@@ -100,6 +105,11 @@ recap stage 1 and U2 map-first Today (written).
 - Later: offline (PowerSync POCs), sharing, background location (opt-in), Android.
 
 ## 7. Exact next task
+
+**Now (Nov 21):** owner runs `API_URL=https://travel-companion-api-joqe.onrender.com pnpm smoke:api`;
+native rebuild (`cd apps/mobile && npx expo prebuild --platform ios && cd ../.. && pnpm ios`);
+then the Simulator checks in DEVELOPMENT_STATUS.md (import with "Choose CSV file", link to
+Google Maps, Saved by trip, plan sheet, Today, en + he). The paragraphs below are older.
 
 First: `pnpm test && pnpm typecheck`, `npx supabase db push --remote` (journal
 migration) before pushing the API, commit M15 + U2 + M16 together, enable Routes API (DEVELOPMENT_STATUS → M16), push, confirm
