@@ -62,6 +62,9 @@ Google rules), `docs/LIVE_COMPANION.md` (Today + reminders design),
   Before deploying: the D1 migration `20261118150000` must be pushed first (owner approval), then the API.
   Real `pnpm test` / `pnpm typecheck` pass; nothing seen on a screen or against real
   Claude; D1 migration `20261118150000` remote status not checked.
+- **Nov 22 (uncommitted):** category from the picked Google result on link (`other` only) and
+  upcoming-vs-active trip (Home card by trip zone; Today preview without live/late signals).
+  DEVELOPMENT_STATUS.md → "Category on link + upcoming vs active trip". Deploy the API before the app.
 - **Nothing from U1 or M12a has been looked at on a screen yet.** Device behavior
   of M9–M11 (Today, reminders) is also unconfirmed in writing.
 - Offline design: docs/ARCHITECTURE.md → "Offline-tolerant trip mode (M12a)".

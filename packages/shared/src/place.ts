@@ -175,5 +175,7 @@ export type SaveGooglePlacesResponse = z.infer<typeof saveGooglePlacesResponseSc
  */
 export const linkGooglePlaceSchema = z.strictObject({
   googlePlaceId: googlePlaceIdSchema,
+  /** Our category for the picked result (from its Google type); only replaces 'other', never the user's choice. */
+  category: placeCategorySchema.optional(),
 });
 export type LinkGooglePlaceInput = z.infer<typeof linkGooglePlaceSchema>;

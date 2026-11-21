@@ -134,7 +134,7 @@ function PlaceDetail({ place }: { place: Place }) {
               error={link.isError ? errorMessage(link.error) : null}
               onPick={(result) =>
                 link.mutate(
-                  { placeId: place.id, googlePlaceId: result.placeId },
+                  { placeId: place.id, googlePlaceId: result.placeId, primaryType: result.primaryType },
                   {
                     onSuccess: (linked) => {
                       setLinking(false);

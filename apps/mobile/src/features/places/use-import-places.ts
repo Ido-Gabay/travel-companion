@@ -1,4 +1,4 @@
-import { PLACE_LABEL_MAX, type TripDetailV2 } from '@travel-companion/shared';
+import { PLACE_LABEL_MAX, type PlaceCategory, type TripDetailV2 } from '@travel-companion/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { placesKey } from '@/features/places/queries';
@@ -23,17 +23,17 @@ export function useImportPlaces(tripId: string) {
             links,
         }: {
             rows: readonly ImportRow[];
-            /** Rows the user linked to a Google Maps result: key → Google place ID. */
-            links: ReadonlyMap<string, string>;
+            /** Rows the user linked to a Google Maps result: key → its Google place ID and our category for it. */
+            links: ReadonlyMap<string, { googlePlaceId: string; category: PlaceCategory }>;
         }): Promise<{ added: number; detail: TripDetailV2 | null }> => {
             let detail: TripDetailV2 | null = null;
             let done = 0;
             setProgress({ done, total: rows.length });
             for (const row of rows) {
-                const googlePlaceId = links.get(row.key);
-                if (googlePlaceId) {
+                const link = links.get(row.key);
+                if (link) {
                     // Deduped by Google place ID on the server, and joined to the trip in the same call.
-                    const { places } = await api.saveGooglePlaces({ items: [{ googlePlaceId, category: 'other' }], tripId });
+                    const { places } = await api.saveGooglePlaces({ items: [link], tripId });
                     const saved = places[0];
                     const own = {
                         ...(row.note && !saved?.notes ? { notes: row.note } : {}),

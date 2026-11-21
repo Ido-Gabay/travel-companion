@@ -463,14 +463,15 @@ function TodayContent({
   const locationUnusual = location.state.status === 'locating' || result.hereIgnored || Boolean(hereAge?.stale);
   const hasEstimates = result.timeline.some((item) => item.travel && item.travel.source !== 'google');
 
-  const alerts = peekAlerts(result, pending, offline, t, clock, nearby[0] ?? null);
+  const alerts = peekAlerts(result, pending, offline, t, clock, nearby[0] ?? null, live);
   // The note is only needed while a straight line is drawn (a real route needs no caveat).
   const hasLines = (mapModel.nextLeg !== null && !mapModel.nextLegIsRoute) || mapModel.laterPath.length > 1;
   const topPadding = insets.top + TOP_BAR + (hasLines ? 28 : 0);
 
   const peek = (
     <View style={styles.peek}>
-      {result.total > 0 ? (
+      {/* Before the trip (or any preview) there is no "now": no progress, lateness or live prompts, just the plan. */}
+      {live && result.total > 0 ? (
         <View style={styles.progressRow} accessible accessibilityLabel={t('tripMode.doneOf', { done: result.done, total: result.total })}>
           <View style={styles.track}>
             <View style={[styles.fill, { width: `${Math.round((result.done / result.total) * 100)}%` }]} />
@@ -481,7 +482,7 @@ function TodayContent({
         </View>
       ) : null}
 
-      {result.current ? (
+      {live && result.current ? (
         <View style={styles.currentRow}>
           <Icon name="location" size={18} color={colors.success} />
           <AppText variant="body" style={styles.flex}>
@@ -518,7 +519,7 @@ function TodayContent({
             </View>
             <Icon name={CATEGORY_ICONS[result.next.stop.category]} size={22} color={colors.accent} />
           </View>
-          <LeaveLine next={result.next} nowMinutes={nowMinutes} clock={clock} />
+          <LeaveLine next={result.next} nowMinutes={nowMinutes} clock={clock} live={live} />
           <AppText variant="caption" color={result.next.travel ? 'secondary' : 'tertiary'} testID="today-travel">
             {result.next.travel
               ? `${travelText(result.next.travel)} · ${originText(result.next.origin)}`
@@ -765,17 +766,19 @@ function TodayContent({
         {setStatus.isError ? <InlineError message={errorMessage(setStatus.error)} /> : null}
 
         {/* Should I consider changing my plan? (Nothing changes until the user picks an action.) */}
-        {result.hints.map((hint) => (
-          <HintRow
-            key={hint.id}
-            hint={hint}
-            clock={clock}
-            busy={act.isPending}
-            actionLabel={actionLabel}
-            onAction={(action) => act.mutate(action)}
-            onDismiss={() => dismiss(hint.id)}
-          />
-        ))}
+        {live
+          ? result.hints.map((hint) => (
+              <HintRow
+                key={hint.id}
+                hint={hint}
+                clock={clock}
+                busy={act.isPending}
+                actionLabel={actionLabel}
+                onAction={(action) => act.mutate(action)}
+                onDismiss={() => dismiss(hint.id)}
+              />
+            ))
+          : null}
 
         {/* The whole rest of the day at once (a proposal; Apply is a separate tap). */}
         {live && result.done < result.total ? (
@@ -904,6 +907,7 @@ function TodayContent({
                   number={index + 1}
                   last={index === result.timeline.length - 1}
                   selected={item.stop.id === selectedId}
+                  live={live}
                   clock={clock}
                   travelText={travelText}
                   onPress={() =>
@@ -927,7 +931,7 @@ function TodayContent({
         </View>
 
         {/* What can I do now with the time available? */}
-        {result.free || result.suggestions.length > 0 ? (
+        {live && (result.free || result.suggestions.length > 0) ? (
           <View style={styles.section}>
             <AppText variant="heading" accessibilityRole="header">
               {t('today.timeAvailable')}
@@ -1030,12 +1034,13 @@ function peekAlerts(
   t: TFn,
   clock: (minutes: number) => string,
   nearby: NearbySaved | null,
+  live: boolean,
 ): PeekAlert[] {
   const alerts: PeekAlert[] = [];
   if (pending.conflicts.length > 0) {
     alerts.push({ id: 'conflicts', tone: 'danger', icon: 'alert-circle-outline', text: t('offline.conflicts', { count: pending.conflicts.length }) });
   }
-  for (const hint of result.hints) {
+  for (const hint of live ? result.hints : []) {
     alerts.push(
       hint.kind === 'late'
         ? { id: hint.id, tone: 'danger', icon: 'hourglass-outline', text: t('today.hintLate', { min: hint.lateBy, name: hint.stopName }) }
@@ -1054,7 +1059,7 @@ function peekAlerts(
       text: pending.ops.length > 0 ? t('today.alertOfflinePending', { count: pending.ops.length }) : t('today.alertOffline'),
     });
   }
-  if (result.free) {
+  if (live && result.free) {
     const duration = formatDurationShort(result.free.minutes, t);
     alerts.push({
       id: 'free',
@@ -1073,12 +1078,25 @@ function LeaveLine({
   next,
   nowMinutes,
   clock,
+  live,
 }: {
   next: NonNullable<TodayResult['next']>;
   nowMinutes: number;
   clock: (minutes: number) => string;
+  live: boolean;
 }) {
   const { t } = useTranslation();
+  if (!live) {
+    // A preview's time is pretend: say when the plan has you there, never "leave now" or "behind".
+    return next.stop.startTime !== null ? (
+      <View style={styles.leave} testID="today-be-there">
+        <Icon name="flag-outline" size={20} color={colors.accent} />
+        <AppText variant="heading" color="accent" style={[styles.flex, styles.tabular]}>
+          {t('today.beThereBy', { time: clock(toMinutes(next.stop.startTime)) })}
+        </AppText>
+      </View>
+    ) : null;
+  }
   if (next.lateBy > 0) {
     return (
       <View style={styles.leave}>
@@ -1229,6 +1247,7 @@ function TimelineRow({
   number,
   last,
   selected,
+  live,
   clock,
   travelText,
   onPress,
@@ -1237,6 +1256,7 @@ function TimelineRow({
   number: number;
   last: boolean;
   selected: boolean;
+  live: boolean;
   clock: (minutes: number) => string;
   travelText: (travel: TravelEstimate) => string;
   onPress: () => void;
@@ -1249,7 +1269,7 @@ function TimelineRow({
       : item.projectedStart !== null
         ? `≈ ${clock(item.projectedStart)}`
         : null;
-  const status = item.status === 'now' ? t('today.statusNow') : item.status === 'next' ? t('today.statusNext') : null;
+  const status = item.status === 'now' && live ? t('today.statusNow') : item.status === 'next' ? t('today.statusNext') : null;
   return (
     <View>
       {item.travel && !done ? (

@@ -58,6 +58,22 @@ describe('Home', () => {
     expect(router.push).toHaveBeenCalledWith({ pathname: '/today', params: { tripId: trip.trip.id, preview: '1' } });
   });
 
+  it("upcoming until the first day begins in the trip's time zone, even if the phone's date is already there", async () => {
+    // 03:00 UTC on Nov 23 is still Nov 22, 22:00 in New York: the trip hasn't started.
+    jest.setSystemTime(new Date('2026-11-23T03:00:00Z'));
+    const zoned = { ...trip, trip: { ...trip.trip, timeZone: 'America/New_York', timeZoneSource: 'user' as const } };
+    serverHas([zoned]);
+    await renderApp(<HomeScreen />);
+    expect(await screen.findByText(i18n.t('tripMode.tomorrow'))).toBeTruthy();
+    expect(screen.getByText(i18n.t('tripMode.previewToday'))).toBeTruthy();
+    // No live day: no progress, next stop, Done or Open Today.
+    expect(screen.queryByText(i18n.t('tripMode.openToday'))).toBeNull();
+    expect(screen.queryByText(new RegExp(i18n.t('tripMode.doneShort', { done: 0, total: 2 })))).toBeNull();
+    expect(screen.queryByLabelText(/^Directions or done for /)).toBeNull();
+    await fireEvent.press(screen.getByText('New York'));
+    expect(router.push).toHaveBeenCalledWith({ pathname: '/today', params: { tripId: trip.trip.id, preview: '1' } });
+  });
+
   it('opens offline from the saved copy and says so (cold launch, airplane mode)', async () => {
     await seedSavedCopy([trip], Date.parse('2026-11-23T08:30:00Z'));
     goOffline();

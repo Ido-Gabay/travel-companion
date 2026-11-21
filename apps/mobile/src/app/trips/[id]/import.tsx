@@ -1,4 +1,4 @@
-import { MAX_IMPORT_PLACES, MAX_IMPORT_TEXT } from '@travel-companion/shared';
+import { MAX_IMPORT_PLACES, MAX_IMPORT_TEXT, categoryForGoogleType, type PlaceCategory } from '@travel-companion/shared';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
@@ -54,7 +54,7 @@ export default function ImportPlacesScreen() {
   const [added, setAdded] = useState<number | null>(null);
   const [truncated, setTruncated] = useState(false);
   // Rows the user linked to a Google Maps result (in memory only until saved, by place ID).
-  const [links, setLinks] = useState<ReadonlyMap<string, { placeId: string; name: string }>>(new Map());
+  const [links, setLinks] = useState<ReadonlyMap<string, { placeId: string; name: string; category: PlaceCategory }>>(new Map());
   const [linkingKey, setLinkingKey] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
@@ -142,7 +142,7 @@ export default function ImportPlacesScreen() {
 
   const save = () =>
     importer.mutate(
-      { rows: chosen, links: new Map([...links].map(([key, link]) => [key, link.placeId])) },
+      { rows: chosen, links: new Map([...links].map(([key, link]) => [key, { googlePlaceId: link.placeId, category: link.category }])) },
       { onSuccess: ({ added: count }) => setAdded(count) },
     );
   const linkingRow = linkingKey ? rows.find((row) => row.key === linkingKey) : undefined;
@@ -347,7 +347,13 @@ export default function ImportPlacesScreen() {
           near={trip.data?.destination ?? null}
           category="other"
           onPick={(result) => {
-            setLinks((current) => new Map(current).set(linkingRow.key, { placeId: result.placeId, name: result.name }));
+            setLinks((current) =>
+              new Map(current).set(linkingRow.key, {
+                placeId: result.placeId,
+                name: result.name,
+                category: categoryForGoogleType(result.primaryType),
+              }),
+            );
             setSelected((current) => new Set(current).add(linkingRow.key));
             setLinkingKey(null);
           }}

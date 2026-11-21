@@ -106,6 +106,27 @@ were not.
 nearby row menu), plan sheet "How this plan works", Find a place → pick → Change, trip "…"
 menu, day picker, stay sheet, Discover AI examples, Usage toggle.
 
+## Category on link + upcoming vs active trip (written 2026-11-22, uncommitted; Simulator checks pending)
+
+- **Category on link:** `linkGooglePlaceSchema` gains optional `category`. The app sends
+  `categoryForGoogleType(result.primaryType)` for the picked result (place details, trip Places menu)
+  and import's linked rows save with it instead of `other`. Server (`PlacesService.linkGoogle`): it
+  replaces only `other`; a chosen category stays (also when merging into an already-saved Google place).
+  `saveGoogle`: saving an already-saved place again fills an `other` category, never a chosen one.
+  No Google call, no migration. **The API must be deployed before the app** (the old API rejects the new
+  field: strict schema → 400).
+- **Upcoming vs active:** Home's `TripModeCard` re-derives the phase with the trip's own "today"
+  (stored zone, else the hotel's) via `tripMode`, so a trip is active only once its first day has started
+  where the trip is. Today's preview (before/after the trip or `preview=1`) shows the plan only: no
+  progress, "You're at", "now" status, leave-by / "behind", late / may-not-fit hints or time-available
+  suggestions; the next stop shows "Be there by". No new strings.
+
+Tests (real runs, 2026-11-22): `pnpm typecheck` clean; shared 60; app logic 278 (+1 `itinerary.spec`
+zone case); app screens 75 in 18 suites (+3: Today preview has no late/leave/progress/free time; Home
+upcoming in the trip's zone while the phone's date is day 1; unclassified place shows Food after linking;
+updated: link sends the category, import link saves `outdoors`); API 193 (+3 in `places-d1.spec.ts`).
+The two new screen tests were also run against the old code and failed there. Not seen on a screen.
+
 ## Link places to Google Maps + Saved by trip (written 2026-11-21, uncommitted; Simulator checks pending)
 
 - **API** `POST /v1/places/:id/google` `{ googlePlaceId }` (`linkGooglePlaceSchema`, `PlacesService.linkGoogle`):
@@ -834,6 +855,9 @@ a normal terminal on the Mac should simply run `pnpm test` and `pnpm typecheck`.
   runner (passes locally). Screen tests now use `testTimeout` 20 s and RNTL `asyncUtilTimeout` 5 s.
   CI #20 green. Owner ran `pnpm smoke:api` against the deployed API (D1 build): all checks passed
   (v1, v2 visits/stays, AI interpret, Google search/save/preview).
+- 2026-11-22: linking to Google fills an unclassified (`other`) category from the picked result;
+  Home's card is active only from the trip's first day in its zone; Today's preview shows no live/late
+  signals. Tests pass; uncommitted; API deploy needed before the app.
 - 2026-11-21: CSV file picker for import (T20). Committed `b692bb1` (all D1 work), D1 migration
   applied after a backup, pushed, Render deployed (health + new routes checked). Tests: app logic 277,
   screens 72, API 190, shared 60, typecheck clean. Smoke test and Simulator checks not run.

@@ -25,7 +25,7 @@ export class PlacesService {
   constructor(
     private readonly db: DatabaseService,
     private readonly timeZones: TimeZonesService,
-  ) {}
+  ) { }
 
   list(user: AuthUser): Promise<PlaceList> {
     return this.db.asUser(user, async (tx) => {
@@ -89,7 +89,10 @@ export class PlacesService {
           values (${user.id}, ${item.googlePlaceId}, ${item.category})
           on conflict (owner_id, google_place_id) where google_place_id is not null
           do update set
-            category = case when app.places.deleted_at is null then app.places.category else excluded.category end,
+            category = case
+              when app.places.deleted_at is null and app.places.category <> 'other' then app.places.category
+              else excluded.category
+            end,
             deleted_at = null
           returning id
         `;
@@ -199,6 +202,8 @@ export class PlacesService {
       }
       const label = current.my_label ?? (current.name ? current.name.slice(0, PLACE_LABEL_MAX).trim() : null);
       const notes = joinText(current.notes, current.address, PLACE_NOTES_MAX);
+      // 'other' means unclassified: take the Google place's category; a category the user chose stays.
+      const category = current.category !== 'other' ? current.category : (input.category ?? 'other');
       const [existing] = await tx<{ id: string }[]>`
         select id from app.places
         where owner_id = ${user.id} and google_place_id = ${input.googlePlaceId}
@@ -209,7 +214,7 @@ export class PlacesService {
           update app.places
           set google_place_id = ${input.googlePlaceId}, name = null, address = null,
               latitude = null, longitude = null, linked_google_place_id = null,
-              my_label = ${label}, notes = ${notes}
+              my_label = ${label}, notes = ${notes}, category = ${category}
           where id = ${placeId} and owner_id = ${user.id} and deleted_at is null
         `;
         return toPlace(await findPlace(tx, user, placeId));
@@ -221,6 +226,7 @@ export class PlacesService {
         set deleted_at = null,
             my_label = coalesce(my_label, ${label}),
             notes = coalesce(notes, ${notes}),
+            category = case when category = 'other' then ${category} else category end,
             visited_at = least(visited_at, ${current.visited_at})
         where id = ${target} and owner_id = ${user.id}
       `;

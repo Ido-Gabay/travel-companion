@@ -78,7 +78,13 @@ tests, so it can move to `packages/shared` if the server ever needs it.
   If the phone is more than 50 km from every place in the plan, it's ignored and
   the hotel is used instead (handy when testing at home).
 - **Preview mode:** outside the trip dates (or with `preview=1`), Today shows a
-  chosen day and time, labeled "Preview", with location optional.
+  chosen day and time, labeled "Preview", with location optional. Since Nov 22 a
+  preview is the plan only: no progress, "You're at", "now" status, leave-by/"behind",
+  late or may-not-fit hints, or free-time suggestions (the time is pretend); the next
+  stop shows "Be there by" its planned time. Offline and sync alerts still show.
+- **Active vs upcoming:** Home's card counts the trip as active only once its first
+  day has started in the trip's time zone (stored zone, else the pinned hotel's);
+  until then it stays in countdown/planning mode and opens the preview.
 - **Time zone:** planned times are the destination's local times. Today's
   "today" and "now" use the trip's time zone (pinned hotel) since M11, so they
   are right even while the phone is on home time; without a pinned hotel, the

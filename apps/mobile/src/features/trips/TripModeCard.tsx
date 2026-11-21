@@ -13,7 +13,7 @@ import { useLocale } from '@/i18n/LocaleProvider';
 import { formatTripDates } from '@/lib/dates';
 import { useErrorMessage } from '@/lib/use-error-message';
 import { colors, radii, spacing } from '@/theme/tokens';
-import { countByDay, formatStartTime, nextStop, placesForDay, wishlistPlaces, type TripMode } from './itinerary';
+import { countByDay, formatStartTime, nextStop, placesForDay, tripMode, wishlistPlaces, type TripMode } from './itinerary';
 import { storedZoneFor, type TripItem } from './model';
 import { useSetVisitStatus, useTrip } from './queries';
 
@@ -23,14 +23,16 @@ import { useSetVisitStatus, useTrip } from './queries';
  * one primary action (keep planning). During the trip: the day's progress, the next
  * stop (its Directions and Done in a "…" menu), Open Today and a link to the itinerary.
  */
-export function TripModeCard({ mode, today }: { mode: TripMode; today: string }) {
+export function TripModeCard({ mode: phoneMode, today }: { mode: TripMode; today: string }) {
   const { t } = useTranslation();
   const { locale } = useLocale();
-  const detail = useTrip(mode.trip.id);
+  const detail = useTrip(phoneMode.trip.id);
   // During the trip, "today" is the trip's day (pinned hotel's time zone), not the phone's.
   const hotel = useGooglePlace(detail.data?.basePlaceId ?? null);
   const zone = (detail.data ? storedZoneFor(detail.data, today) : null) ?? hotel.data?.timeZone ?? null;
   const tripToday = zone ? zonedNow(Date.now(), zone).day : null;
+  // Active only once the trip's first day has begun where the trip is (the phone may be a day ahead).
+  const mode = (tripToday ? tripMode([phoneMode.trip], tripToday) : null) ?? phoneMode;
   const openTrip = () => router.push({ pathname: '/trips/[id]', params: { id: mode.trip.id } });
   const openToday = () =>
     router.push({

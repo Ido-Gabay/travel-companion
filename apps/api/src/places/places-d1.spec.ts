@@ -134,4 +134,40 @@ describe('linking your own place to Google Maps', () => {
     const error = await apiError(() => api.places.linkGoogle(asAuthUser(USER_B), place.id, { googlePlaceId: gid('katz') }));
     expect(error.status).toBe(404);
   });
+
+  it("an unclassified place takes the Google result's category; the user's own choice stays", async () => {
+    const { api } = await setup();
+    const unsorted = await api.places.create(user, { name: 'Katz', address: null, notes: null, category: 'other' });
+    const linked = await api.places.linkGoogle(user, unsorted.id, { googlePlaceId: gid('katz'), category: 'food' });
+    expect(linked.category).toBe('food');
+    expect((await api.places.list(user)).items.find((item) => item.id === unsorted.id)?.category).toBe('food');
+
+    const chosen = await api.places.create(user, { name: 'Cafe Lalo', address: null, notes: null, category: 'sights' });
+    expect((await api.places.linkGoogle(user, chosen.id, { googlePlaceId: gid('lalo'), category: 'coffee' })).category).toBe('sights');
+    // An older app sends no category: unclassified stays unclassified.
+    const old = await api.places.create(user, { name: 'Bench', address: null, notes: null, category: 'other' });
+    expect((await api.places.linkGoogle(user, old.id, { googlePlaceId: gid('bench') })).category).toBe('other');
+  });
+
+  it('merging into a saved Google place: fills its category only when it is unclassified', async () => {
+    const { api } = await setup();
+    const { places } = await api.places.saveGoogle(user, {
+      items: [{ googlePlaceId: gid('katz'), category: 'other' }, { googlePlaceId: gid('moma'), category: 'sights' }],
+    });
+    const katz = await api.places.create(user, { name: 'Katz', address: null, notes: null, category: 'other' });
+    expect((await api.places.linkGoogle(user, katz.id, { googlePlaceId: gid('katz'), category: 'food' })).category).toBe('food');
+    const moma = await api.places.create(user, { name: 'MoMA', address: null, notes: null, category: 'other' });
+    const merged = await api.places.linkGoogle(user, moma.id, { googlePlaceId: gid('moma'), category: 'shopping' });
+    expect([merged.id, merged.category]).toEqual([places[1]!.id, 'sights']);
+  });
+
+  it('saving a Google place again (e.g. a linked import row) fills an unclassified category, never a chosen one', async () => {
+    const { api } = await setup();
+    const { places } = await api.places.saveGoogle(user, { items: [{ googlePlaceId: gid('katz'), category: 'other' }] });
+    const again = await api.places.saveGoogle(user, { items: [{ googlePlaceId: gid('katz'), category: 'food' }] });
+    expect(again.places[0]!.category).toBe('food');
+    await api.places.update(user, places[0]!.id, { category: 'nightlife' });
+    const third = await api.places.saveGoogle(user, { items: [{ googlePlaceId: gid('katz'), category: 'coffee' }] });
+    expect(third.places[0]!.category).toBe('nightlife');
+  });
 });

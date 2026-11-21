@@ -304,11 +304,16 @@ place per user: saving again returns the same place (a deleted one is revived).
 ```
 
 1–20 items. Returns `201 { "places": [Place, …] }`. `404` if the trip isn't the caller's.
+Saving a place that is already saved keeps its category, unless it is `other` (unclassified):
+then the sent category replaces it.
 
 ### `POST /v1/places/:id/google`
 
 Link one of the caller's own places (saved by name, e.g. imported) to the Google place they
-picked: `{ "googlePlaceId": "ChIJ…" }`. Returns `200` with the place as it now is:
+picked: `{ "googlePlaceId": "ChIJ…", "category"?: "food" }`. `category` is the app's category for
+the picked result (`categoryForGoogleType` of its Google type); it replaces only `other`
+(unclassified), never a category the user chose; without it the category is unchanged.
+Returns `200` with the place as it now is:
 
 - the Google place isn't saved yet → the **same** place (same id, trips and visits), now
   `source: "google"`; the user's name becomes `myLabel`, their address is added to `notes`;

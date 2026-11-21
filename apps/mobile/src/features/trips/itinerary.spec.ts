@@ -1,5 +1,6 @@
 import type { Trip, TripPlace } from '@travel-companion/shared';
 import { describe, expect, it } from 'vitest';
+import { zonedNow } from '../companion/zoned-time';
 import {
   countByDay,
   dayTitle,
@@ -108,6 +109,12 @@ describe('trip mode', () => {
     expect(tripMode([ny, later], '2026-11-23')).toEqual({ phase: 'during', trip: ny, dayNumber: 1, totalDays: 7 });
     expect(tripMode([ny], '2026-11-29')).toMatchObject({ phase: 'during', dayNumber: 7 });
     expect(tripMode([ny], '2026-11-30')).toBeNull();
+  });
+
+  it("is upcoming until the first day in the trip's zone (the phone may already be a day ahead)", () => {
+    const at = Date.parse('2026-11-23T03:00:00Z');
+    expect(tripMode([ny], zonedNow(at, 'Asia/Jerusalem').day)).toMatchObject({ phase: 'during', dayNumber: 1 });
+    expect(tripMode([ny], zonedNow(at, 'America/New_York').day)).toEqual({ phase: 'before', trip: ny, daysUntil: 1 });
   });
 
   it('finds the next stop not yet visited', () => {

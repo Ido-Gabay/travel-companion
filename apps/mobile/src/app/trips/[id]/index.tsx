@@ -250,7 +250,10 @@ export default function TripScreen() {
                 busy={link.isPending}
                 error={link.isError ? errorMessage(link.error) : null}
                 onPick={(result) =>
-                  link.mutate({ placeId: linking.place.id, googlePlaceId: result.placeId }, { onSuccess: () => setLinking(null) })
+                  link.mutate(
+                    { placeId: linking.place.id, googlePlaceId: result.placeId, primaryType: result.primaryType },
+                    { onSuccess: () => setLinking(null) },
+                  )
                 }
                 onClose={() => setLinking(null)}
               />

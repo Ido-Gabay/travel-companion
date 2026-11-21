@@ -187,7 +187,8 @@ describe('Import places', () => {
 
     await fireEvent.press(screen.getByTestId('import-add'));
     expect(await screen.findByText(t('importPlaces.addedTitle', { count: 2 }))).toBeTruthy();
-    expect(mockApi.saveGooglePlaces.mock.calls[0]?.[0]).toEqual({ items: [{ googlePlaceId: 'ChIJhighline0001', category: 'other' }], tripId: uuid(1) });
+    // Linked: saved with the category of the picked result (park → outdoors), not 'other'.
+    expect(mockApi.saveGooglePlaces.mock.calls[0]?.[0]).toEqual({ items: [{ googlePlaceId: 'ChIJhighline0001', category: 'outdoors' }], tripId: uuid(1) });
     // The user's own words stay theirs: their name as the label, their note.
     expect(mockApi.updatePlace.mock.calls[0]?.[1]).toEqual({ notes: 'sunset walk', myLabel: 'High Line' });
     // Only the unlinked row became a place saved by name.

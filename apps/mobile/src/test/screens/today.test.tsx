@@ -174,6 +174,33 @@ describe('Today (map first)', () => {
     expect(screen.queryByText(t('tripMode.done'))).toBeNull();
   });
 
+  it('before the trip, the preview is the plan only: no running late, leave now, progress or free time', async () => {
+    jest.setSystemTime(new Date(2026, 10, 10, 9, 0));
+    setRouteParams({ tripId: uuid(1), preview: '1' });
+    // At the preview's 10:00 the 09:00 coffee isn't done yet: live, that would be "about 65 min behind".
+    const plan = tripDetail([
+      tripPlace(1, { startTime: '09:00', category: 'coffee' }),
+      tripPlace(2, { startTime: '12:30', myLabel: 'The Met' }),
+    ]);
+    await seedSavedCopy([plan], SAVED_AT, { coords });
+    goOffline();
+    await renderApp(<TodayRoute />);
+    expect(await screen.findByText(new RegExp(`^${t('today.previewLabel')} · 10:00`))).toBeTruthy();
+    // The next stop and its planned time, never a live instruction.
+    expect(screen.getByTestId('today-be-there')).toBeTruthy();
+    expect(screen.queryByTestId('today-leave')).toBeNull();
+    expect(screen.queryByText(/min behind/)).toBeNull();
+    expect(screen.queryByText(/^Running about \d+ min late/)).toBeNull();
+    expect(screen.queryByText(t('tripMode.doneOf', { done: 0, total: 2 }))).toBeNull();
+    expect(screen.queryByText(t('today.timeAvailable'))).toBeNull();
+    expect(screen.queryByText(t('today.statusNow'))).toBeNull();
+    // Still the whole plan for that day.
+    expect(screen.getByTestId(`today-row-${uuid(101)}`)).toBeTruthy();
+    expect(screen.getByTestId(`today-row-${uuid(102)}`)).toBeTruthy();
+    // Offline is still said (it isn't a live alert).
+    expect(screen.getByText(t('today.alertOffline'))).toBeTruthy();
+  });
+
   describe('real travel times (M16)', () => {
     it('online: uses the Google route for the next leg (no ≈) and the leave-by follows it', async () => {
       await seedSavedCopy([day()], SAVED_AT, { coords });

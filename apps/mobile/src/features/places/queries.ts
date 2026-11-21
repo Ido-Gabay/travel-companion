@@ -9,6 +9,7 @@ import type {
   TripDetailV2,
   UpdatePlaceInput,
 } from '@travel-companion/shared';
+import { categoryForGoogleType } from '@travel-companion/shared';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { useAuth } from '@/features/auth/AuthProvider';
@@ -119,12 +120,15 @@ export function useSaveGooglePlaces() {
   });
 }
 
-/** One of the user's own places → the Google place they picked (online; the server keeps trips and visits). */
+/**
+ * One of the user's own places → the Google place they picked (online; the server keeps trips and visits).
+ * The result's Google type sets the category of an unclassified place (the server keeps a chosen one).
+ */
 export function useLinkGooglePlace() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ placeId, googlePlaceId }: { placeId: string; googlePlaceId: string }) =>
-      api.linkGooglePlace(placeId, { googlePlaceId }),
+    mutationFn: ({ placeId, googlePlaceId, primaryType }: { placeId: string; googlePlaceId: string; primaryType: string | null }) =>
+      api.linkGooglePlace(placeId, { googlePlaceId, category: categoryForGoogleType(primaryType) }),
     onSuccess: (place, { placeId }) => {
       queryClient.setQueryData(placeKey(place.id), place);
       if (place.id !== placeId) queryClient.removeQueries({ queryKey: placeKey(placeId) });

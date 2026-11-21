@@ -8,6 +8,15 @@ import i18n from '@/i18n/i18n';
 import { mockApi, renderApp, resetAll, serverHas, setRouteParams } from '../render';
 
 const t = i18n.t.bind(i18n);
+/** The category chip (a button) whose label is this text. */
+function chip(label: string) {
+  for (const text of screen.getAllByText(label)) {
+    let node: typeof text | null = text;
+    while (node && node.props.accessibilityRole !== 'button') node = node.parent;
+    if (node) return node;
+  }
+  throw new Error(`No chip labeled ${label}`);
+}
 const custom = (n: number, name: string, extra: Partial<ReturnType<typeof tripPlace>> = {}) =>
   tripPlace(n, { source: 'custom', googlePlaceId: null, name, day: null, ...extra });
 const result = (placeId: string, name: string): DiscoverResult => ({
@@ -53,8 +62,33 @@ describe('Link a place saved by name to Google Maps', () => {
     expect((mockApi.discoverSearch.mock.calls[0]?.[0] as unknown as { plan: { textQuery: string } }).plan.textQuery).toBe("Katz's Lower East Side");
     await fireEvent.press(await screen.findByLabelText("Katz's Delicatessen"));
     await waitFor(() => expect(mockApi.linkGooglePlace).toHaveBeenCalledTimes(1));
-    expect(mockApi.linkGooglePlace.mock.calls[0]).toEqual([katz.id, { googlePlaceId: 'ChIJkatz0000001' }]);
+    expect(mockApi.linkGooglePlace.mock.calls[0]).toEqual([katz.id, { googlePlaceId: 'ChIJkatz0000001', category: 'food' }]);
     expect(mockApi.saveGooglePlaces).not.toHaveBeenCalled();
+  });
+
+  it("an unclassified place shows the Google result's category right after linking", async () => {
+    const katz = custom(1, "Katz's", { category: 'other' }) as unknown as Place;
+    serverHas([]);
+    setRouteParams({ id: katz.id });
+    mockApi.getPlace.mockImplementation(() => Promise.resolve(katz));
+    mockApi.getPlaceVisits.mockImplementation(() => Promise.resolve({ items: [] }));
+    mockApi.listTrips.mockImplementation(() => Promise.resolve({ items: [] }));
+    mockApi.discoverSearch.mockImplementation(() => Promise.resolve({ results: [result('ChIJkatz0000001', "Katz's Delicatessen")] }));
+    // Like the server: the sent category replaces 'other'.
+    mockApi.linkGooglePlace.mockImplementation(((_id: string, body: { googlePlaceId: string; category?: string }) => {
+      const linked = { ...katz, source: 'google', googlePlaceId: body.googlePlaceId, name: null, myLabel: "Katz's", category: body.category ?? 'other' };
+      mockApi.getPlace.mockImplementation(() => Promise.resolve(linked));
+      return Promise.resolve(linked);
+    }) as never);
+    await renderApp(<PlaceScreen />);
+    await fireEvent.press(await screen.findByText(t('places.moreDetails')));
+    expect(chip(t('categories.other')).props.accessibilityState).toMatchObject({ selected: true });
+    await fireEvent.press(screen.getByText(t('googleLink.action')));
+    await fireEvent.press(await screen.findByText(t('googleLink.search')));
+    await fireEvent.press(await screen.findByLabelText("Katz's Delicatessen"));
+    await waitFor(() => expect(mockApi.linkGooglePlace).toHaveBeenCalledTimes(1));
+    expect(mockApi.linkGooglePlace.mock.calls[0]?.[1]).toEqual({ googlePlaceId: 'ChIJkatz0000001', category: 'food' });
+    await waitFor(() => expect(chip(t('categories.food')).props.accessibilityState).toMatchObject({ selected: true }));
   });
 
   it('a Google place (or your own pin) offers no link', async () => {
