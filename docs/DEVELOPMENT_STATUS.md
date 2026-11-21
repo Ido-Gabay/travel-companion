@@ -832,6 +832,8 @@ a normal terminal on the Mac should simply run `pnpm test` and `pnpm typecheck`.
   place, trip menu, Discover, Usage and Reminders; no Done in Today preview. Tests pass; uncommitted.
 - 2026-11-21: CI #18/#19 red: `import-places.test.tsx` hit Jest's 5 s timeout on the slower GitHub
   runner (passes locally). Screen tests now use `testTimeout` 20 s and RNTL `asyncUtilTimeout` 5 s.
+  CI #20 green. Owner ran `pnpm smoke:api` against the deployed API (D1 build): all checks passed
+  (v1, v2 visits/stays, AI interpret, Google search/save/preview).
 - 2026-11-21: CSV file picker for import (T20). Committed `b692bb1` (all D1 work), D1 migration
   applied after a backup, pushed, Render deployed (health + new routes checked). Tests: app logic 277,
   screens 72, API 190, shared 60, typecheck clean. Smoke test and Simulator checks not run.
