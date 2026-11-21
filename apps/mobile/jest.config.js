@@ -7,4 +7,6 @@ module.exports = {
   setupFilesAfterEnv: ['<rootDir>/src/test/setup.ts'],
   moduleNameMapper: { '^@/(.*)$': '<rootDir>/src/$1' },
   clearMocks: true,
+  // CI runners are several times slower than a Mac; full-screen renders can pass 5 s there.
+  testTimeout: 20000,
 };

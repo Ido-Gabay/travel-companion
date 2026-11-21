@@ -5,7 +5,11 @@
  * Tests drive the fakes through `src/test/render.tsx`.
  */
 import { jest } from '@jest/globals';
+import { configure } from '@testing-library/react-native';
 import '@/i18n/i18n';
+
+// findBy*/waitFor default to 1 s, too short on a loaded CI runner.
+configure({ asyncUtilTimeout: 5000 });
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
