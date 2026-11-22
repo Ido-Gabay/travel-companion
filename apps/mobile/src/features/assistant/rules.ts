@@ -105,6 +105,8 @@ export type Picks = Readonly<Record<number, string>>;
 
 type Clause =
   | { instruction: AssistantInstruction }
+  /** One clause that sets several days differently ("day one at 16, the rest at 8"). */
+  | { instructions: AssistantInstruction[] }
   | { pickDay: { weekday: number; days: string[] } }
   /** "Where is it?" / "which day is best?" about the place named just before. */
   | { followUp: 'locate' | 'add' }
@@ -207,6 +209,37 @@ function readFindPlace(text: string, days: DayRead): FindPlace | { pickDay: { we
     day: days.days[0] ?? null,
     intent: locate ? 'locate' : 'add',
   };
+}
+
+/** "Day one" / "the first day" and "the rest" / "other days" (Hebrew too; not "יום ראשון", which is Sunday). */
+const FIRST_DAY = /\b(?:day\s*(?:one|1)|(?:the\s+)?first\s+day)\b|ב?ה?יום\s+הראשון|ב?יום\s*1(?!\d)/i;
+const REST_DAYS =
+  /\b(?:(?:all\s+)?the\s+rest(?:\s+of\s+the\s+(?:days|trip))?|(?:all\s+)?(?:the\s+)?other\s+days|(?:the\s+)?remaining\s+days|the\s+others)\b|ב?(?:שאר|יתר)\s+(?:ה)?ימים|בשאר|ביתר|השאר/i;
+
+/**
+ * "Start day one at 16:00 and the rest at 8": the trip's first day and the
+ * other days each get their own time. Null when the clause isn't about the
+ * first day; an empty list when it is but a time can't be read (then the AI reads it).
+ */
+function firstAndRest(text: string, kind: 'dayStart' | 'dayEnd', tripDays: readonly string[]): AssistantInstruction[] | null {
+  const first = FIRST_DAY.exec(text);
+  const firstDay = tripDays[0];
+  if (!first || !firstDay) return null;
+  const rest = REST_DAYS.exec(text);
+  const clean = (part: string) => part.replace(FIRST_DAY, ' ').replace(REST_DAYS, ' ').replace(/\d{4}-\d{2}-\d{2}/g, '');
+  const time = (part: string) => timeIn(clean(part), kind === 'dayEnd');
+  const restAt = rest ? rest.index : text.length;
+  const firstPart = first.index < restAt ? text.slice(first.index, restAt) : text.slice(first.index);
+  // "Start at 16:00 on day one": the time comes before the words.
+  const firstTime = time(firstPart) ?? time(text.slice(0, Math.min(first.index, restAt)));
+  if (!firstTime) return [];
+  const out: AssistantInstruction[] = [{ kind, time: firstTime, days: [firstDay] }];
+  if (rest) {
+    const restTime = time(first.index < rest.index ? text.slice(rest.index) : text.slice(rest.index, first.index));
+    if (!restTime) return [];
+    if (tripDays.length > 1) out.push({ kind, time: restTime, days: tripDays.slice(1) });
+  }
+  return out;
 }
 
 function readClause(text: string, tripDays: readonly string[], today: string | null, picks: Picks): Clause {
@@ -340,6 +373,8 @@ function readClause(text: string, tripDays: readonly string[], today: string | n
   // Start / finish times.
   const scope = () => (days.every || days.days.length === 0 ? [] : days.days);
   if (/(start|begin|leave|head out|get going|first (stop|visit))/.test(lower) || /(להתחיל|מתחיל|מתחילים|נתחיל|תתחיל|התחלה|לצאת|יוצאים|נצא)/.test(text)) {
+    const split = firstAndRest(text, 'dayStart', tripDays);
+    if (split) return split.length > 0 ? { instructions: split } : null;
     const time = timeIn(text.replace(/\d{4}-\d{2}-\d{2}/g, ''), false);
     if (time) {
       if (days.ambiguous && days.days.length === 0 && !days.every) return { pickDay: days.ambiguous };
@@ -347,6 +382,8 @@ function readClause(text: string, tripDays: readonly string[], today: string | n
     }
   }
   if (/(finish|end|be back|done|wrap up|stop by|back at)/.test(lower) || /(לסיים|מסיימים|נסיים|תסיים|לחזור|חוזרים|נחזור|סיום|לגמור)/.test(text)) {
+    const split = firstAndRest(text, 'dayEnd', tripDays);
+    if (split) return split.length > 0 ? { instructions: split } : null;
     const time = timeIn(text.replace(/\d{4}-\d{2}-\d{2}/g, ''), true);
     if (time) {
       if (days.ambiguous && days.days.length === 0 && !days.every) return { pickDay: days.ambiguous };
@@ -363,7 +400,9 @@ function readClause(text: string, tripDays: readonly string[], today: string | n
 /** Splits "make Wednesday lighter and start at 10" into its requests. */
 export function clauses(message: string): string[] {
   return message
-    .split(/[;\n]|,\s+|[.?!]\s+|\s+and\s+(?=(?:make|start|keep|give|move|find|leave|finish|end|let|don'?t)\b)|\s+וגם\s+|\s+ו(?=(?:ת|ל|ת)[א-ת]{2,})/i)
+    .split(
+      /[;\n]|,\s+(?!(?:and\s+|ו)?(?:the rest|all the rest|the other days|other days|remaining days|the others|ל?שאר|בשאר|ל?יתר|ביתר))|[.?!]\s+|\s+and\s+(?=(?:make|start|keep|give|move|find|leave|finish|end|let|don'?t)\b)|\s+וגם\s+|\s+ו(?=(?:ת|ל|ת)[א-ת]{2,})(?!ל?(?:שאר|יתר))/i,
+    )
     .map((part) => part.trim())
     .filter((part) => part.length > 1);
 }
@@ -379,6 +418,10 @@ export function readRequest(message: string, tripDays: readonly string[], today:
     const read = readClause(clause, tripDays, today, picks);
     if (!read) return null;
     if ('pickDay' in read) return { kind: 'pickDay', ...read.pickDay };
+    if ('instructions' in read) {
+      instructions.push(...read.instructions);
+      continue;
+    }
     const last = instructions[instructions.length - 1];
     if ('followUp' in read) {
       // "Where is it?" needs a place named before it; "which day?" means plan it in.

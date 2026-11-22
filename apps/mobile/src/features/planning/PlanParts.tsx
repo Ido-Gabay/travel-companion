@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { AppText, Icon } from '@/components/ui';
 import { formatDurationShort } from '@/features/trips/TimeSheet';
@@ -93,6 +93,131 @@ export function ChangeRow({
   );
 }
 
+/**
+ * One stop in a day's plan: travel to it, its time, its name and tags. A stop
+ * the plan proposes (new or moved here) carries its own on/off: the whole row is
+ * the switch, so each place appears once per day.
+ */
+export function PlanVisitRow({
+  time,
+  timeTone = 'secondary',
+  timeStrong = false,
+  travel = null,
+  travelMode = 'walk',
+  name,
+  tags = [],
+  done = false,
+  toggle = null,
+}: {
+  time: string | null;
+  timeTone?: 'accent' | 'secondary' | 'tertiary';
+  timeStrong?: boolean;
+  travel?: string | null;
+  travelMode?: 'walk' | 'transit';
+  name: string;
+  tags?: readonly (string | null | undefined | false)[];
+  done?: boolean;
+  /** A proposed stop: its label for VoiceOver ("Add Zoo"), whether it's in, and the switch. */
+  toggle?: { label: string; value: boolean; onChange: (value: boolean) => void } | null;
+}) {
+  const { t } = useTranslation();
+  const off = toggle !== null && !toggle.value;
+  const content = (
+    <>
+      <View style={styles.lead}>
+        {toggle ? (
+          <Icon name={toggle.value ? 'checkmark-circle' : 'ellipse-outline'} size={22} color={toggle.value ? colors.accent : colors.textTertiary} />
+        ) : (
+          <View style={[styles.dot, done && styles.dotDone]} />
+        )}
+      </View>
+      <AppText
+        variant="caption"
+        color={off ? 'tertiary' : timeTone}
+        style={[styles.time, timeStrong && !off ? styles.strong : null]}
+        numberOfLines={1}
+      >
+        {off || time === null ? '—' : time}
+      </AppText>
+      <View style={styles.flex}>
+        <AppText variant="body" color={off || done ? 'tertiary' : 'primary'} numberOfLines={1}>
+          {name}
+        </AppText>
+        {off ? (
+          <AppText variant="caption" color="tertiary">
+            {t('tripPlan.leftOut')}
+          </AppText>
+        ) : (
+          <Tags labels={tags} tone="accent" />
+        )}
+      </View>
+    </>
+  );
+  return (
+    <View style={styles.visit}>
+      {travel && !off ? (
+        <View style={styles.travel}>
+          <Icon name={travelMode === 'transit' ? 'train-outline' : 'walk-outline'} size={14} color={colors.textTertiary} />
+          <AppText variant="caption" color="tertiary">
+            {travel}
+          </AppText>
+        </View>
+      ) : null}
+      {toggle ? (
+        <Pressable
+          accessibilityRole="switch"
+          accessibilityState={{ checked: toggle.value }}
+          accessibilityLabel={toggle.label}
+          accessibilityHint={toggle.value ? t('tripPlan.changeOnHint') : t('tripPlan.changeOffHint')}
+          onPress={() => toggle.onChange(!toggle.value)}
+          hitSlop={compactHitSlop}
+          style={({ pressed }) => [styles.visitRow, styles.touch, pressed && styles.pressed]}
+        >
+          {content}
+        </Pressable>
+      ) : (
+        <View style={styles.visitRow}>{content}</View>
+      )}
+    </View>
+  );
+}
+
+/** Jump to one day of a long plan (or see them all). */
+export function DayPills({
+  days,
+  selected,
+  onSelect,
+}: {
+  days: readonly { day: string; label: string; title: string }[];
+  selected: string | null;
+  onSelect: (day: string | null) => void;
+}) {
+  const { t } = useTranslation();
+  const pill = (key: string, label: string, on: boolean, a11y: string, press: () => void) => (
+    <Pressable
+      key={key}
+      accessibilityRole="tab"
+      accessibilityState={{ selected: on }}
+      accessibilityLabel={a11y}
+      onPress={press}
+      hitSlop={compactHitSlop}
+      style={[styles.pill, on && styles.pillOn]}
+    >
+      <AppText variant="caption" style={[styles.strong, on ? styles.pillTextOn : null]}>
+        {label}
+      </AppText>
+    </Pressable>
+  );
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pills}>
+      {pill('all', t('tripPlan.allDays'), selected === null, t('tripPlan.allDays'), () => onSelect(null))}
+      {days.map((item) =>
+        pill(item.day, item.label, selected === item.day, t('tripPlan.dayFilterA11y', { day: item.title }), () => onSelect(item.day)),
+      )}
+    </ScrollView>
+  );
+}
+
 const toneStyles = {
   neutral: StyleSheet.create({ bg: { backgroundColor: colors.surfaceMuted }, text: { color: colors.textSecondary } }),
   accent: StyleSheet.create({ bg: { backgroundColor: colors.accentSoft }, text: { color: colors.accent } }),
@@ -112,4 +237,17 @@ const styles = StyleSheet.create({
   fillOver: { backgroundColor: colors.danger },
   loadText: { fontWeight: weights.semibold },
   change: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md, paddingVertical: spacing.sm, minHeight: 44 },
+  visit: { gap: spacing.xxs },
+  travel: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingStart: 22 + 64 + spacing.sm * 2 },
+  visitRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
+  touch: { minHeight: 44, paddingVertical: spacing.xxs },
+  lead: { width: 22, alignItems: 'center', paddingTop: 1 },
+  dot: { width: 8, height: 8, borderRadius: 4, marginTop: 6, backgroundColor: colors.accent },
+  dotDone: { backgroundColor: colors.textTertiary },
+  time: { width: 64, paddingTop: 2 },
+  strong: { fontWeight: weights.semibold },
+  pills: { gap: spacing.xs, paddingVertical: compactHitSlop.top },
+  pill: { paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderRadius: radii.pill, backgroundColor: colors.surface },
+  pillOn: { backgroundColor: colors.accent },
+  pillTextOn: { color: colors.textOnAccent },
 });

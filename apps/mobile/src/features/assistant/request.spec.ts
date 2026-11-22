@@ -100,6 +100,22 @@ describe('trip assistant → planner input', () => {
     expect(effect.notes[0]).toMatchObject({ kind: 'dayStart', flexible: 4, shiftDays: 0 });
   });
 
+  it('"Start day one at 16:00 and the rest at 8": 16:00 on the first day, 08:00 on every other day', () => {
+    const effect = resolveRequest(
+      [
+        { kind: 'dayStart', time: '16:00', days: [D1] },
+        { kind: 'dayStart', time: '08:00', days: [D2, D3] },
+      ],
+      base,
+      items,
+    );
+    expect(effect.input.days.map((item) => item.dayStart)).toEqual([toMinutes('16:00'), toMinutes('08:00'), toMinutes('08:00')]);
+    const plan = proposal(effect.input);
+    expect(plan.days[0]?.visits[0]?.start).toBeGreaterThanOrEqual(toMinutes('16:00'));
+    // The free day picks up the moved visits and starts at 08:00, not 16:00.
+    expect(plan.days[2]?.visits[0]?.start).toBe(toMinutes('08:00'));
+  });
+
   it('every visit already has a time: says so, and offers to move the whole day (off until chosen, gaps kept)', () => {
     const timed: TripPlanInput = {
       ...base,

@@ -1,7 +1,7 @@
 import { tripDays, visitMinutes, type DiscoverResult, type LatLng, type PlaceCategory, type TripAssistantRequest } from '@travel-companion/shared';
 import { router } from 'expo-router';
 import { useMemo, useState, type ReactNode } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { GoogleAttribution } from '@/components/GoogleAttribution';
@@ -20,14 +20,14 @@ import { alternativeFor } from '@/features/assistant/place-finder';
 import { formatDurationShort } from '@/features/trips/TimeSheet';
 import { useLocale } from '@/i18n/LocaleProvider';
 import { useErrorMessage } from '@/lib/use-error-message';
-import { colors, radii, spacing, weights } from '@/theme/tokens';
+import { colors, compactHitSlop, radii, spacing, weights } from '@/theme/tokens';
 import type { PlanStop } from './day-planner';
 import { dayWindows, type OpenWindow } from './opening-hours';
 import { completePlan, isOn, orderKey, retimeKey, timesKey, type CompletePlan, type DayDraft, type PlannedVisit } from './complete-plan';
 import { problemText, warningText } from './DayPlanning';
 import { checkDay, DEFAULT_DAY_START_MIN, toTime, type Leg } from './day-planner';
 import { compareDays, dayCapacity, planTrip, type DayStatus, type TripChange, type TripPlanInput, type Unplaced, type Why } from './trip-plan';
-import { ChangeRow, LoadBar, Tag, Tags, type TagTone } from './PlanParts';
+import { ChangeRow, DayPills, LoadBar, PlanVisitRow, Tag, Tags, type TagTone } from './PlanParts';
 import { planOutcome } from './plan-summary';
 
 const newTimeKey = (id: string) => `newTime:${id}`;
@@ -265,11 +265,10 @@ function statusTag(status: DayStatus, day: DayDraft, t: TFunction): { label: str
   }
 }
 
-function unplacedText(item: Unplaced, nameOf: (id: string) => string, t: TFunction): string {
-  const name = nameOf(item.id);
-  if (item.reason === 'closedAllDays') return t('tripPlan.unplacedClosed', { name });
-  if (item.reason === 'noDays') return t('tripPlan.unplacedNoDays', { name });
-  return t('tripPlan.unplacedNoRoom', { name });
+function unplacedReason(item: Unplaced, t: TFunction): string {
+  if (item.reason === 'closedAllDays') return t('tripPlan.reasonClosed');
+  if (item.reason === 'noDays') return t('tripPlan.reasonNoDays');
+  return t('tripPlan.reasonNoRoom');
 }
 
 /** Travel to a visit, always marked as an estimate (no paid routes here). */
@@ -337,6 +336,9 @@ export function TripPlanSheet({
   const [chosenDay, setChosenDay] = useState<{ day: string; allowOver: boolean } | null>(null);
   const [placeHours, setPlaceHours] = useState(false);
   const [showHow, setShowHow] = useState(false);
+  // A long plan: one day at a time (null = all), and "Doesn't fit" folded until asked.
+  const [dayFilter, setDayFilter] = useState<string | null>(null);
+  const [showUnfit, setShowUnfit] = useState(false);
   const saveFound = useSaveFoundPlace(trip.id);
   const keepFound = useSaveFoundPlace(trip.id);
   const preview = useGooglePlacePreview(placeHours && picked ? picked.placeId : null);
@@ -519,19 +521,14 @@ export function TripPlanSheet({
     setApplied(count);
   };
 
-  const changeRow = (change: TripChange) => (
-    <ChangeRow
-      key={change.key}
-      label={
-        change.kind === 'add'
-          ? t('tripPlan.add', { name: name(change.itemId) })
-          : t('tripPlan.move', { name: name(change.itemId), day: dayName(change.fromDay ?? '') })
-      }
-      tags={[...change.why.map((why) => whyTag(why, name, t, locale)), change.cause === 'area' ? t('tripPlan.optional') : null]}
-      value={on(change.key, change.defaultOn)}
-      onChange={set(change.key)}
-    />
-  );
+  const changeLabel = (change: TripChange) =>
+    change.kind === 'add'
+      ? t('tripPlan.add', { name: name(change.itemId) })
+      : t('tripPlan.move', { name: name(change.itemId), day: dayName(change.fromDay ?? '') });
+  const changeTags = (change: TripChange) => [
+    ...change.why.map((why) => whyTag(why, name, t, locale)),
+    change.cause === 'area' ? t('tripPlan.optional') : null,
+  ];
 
   const outcome = planOutcome(complete, { durations: applyBody.durations.length + shiftTimes.length, skips: skipsOn.length });
   // One new place and nothing else (Find a place, Today's "Add to today"): say exactly that.
@@ -731,9 +728,19 @@ export function TripPlanSheet({
         </AppText>
       ) : null}
 
-      {shownDays.map((day) => {
+      {shownDays.length > 2 && !nothing ? (
+        <DayPills
+          days={shownDays.map((day) => ({ day: day.day, label: dayShort(day.day, locale), title: dayName(day.day) }))}
+          selected={dayFilter}
+          onSelect={setDayFilter}
+        />
+      ) : null}
+
+      {shownDays.filter((day) => dayFilter === null || day.day === dayFilter).map((day) => {
         const status = statusTag(day.status, day, t);
-        const incoming = byDay.filter((change) => change.toDay === day.day);
+        // Every proposal that lands on this day (including "add anyway"), keyed by the place it brings.
+        const landing = new Map(plan.changes.filter((change) => change.toDay === day.day).map((change) => [change.itemId, change]));
+        const leftOut = byDay.filter((change) => change.toDay === day.day && !on(change.key, change.defaultOn));
         const outgoing = byDay.filter((change) => change.fromDay === day.day && on(change.key, change.defaultOn));
         const zone = zones.size > 1 ? data.zoneOf(day.day) : null;
         const load = day.check.visitMinutes + day.check.travelMinutes;
@@ -783,9 +790,8 @@ export function TripPlanSheet({
               </AppText>
             ) : null}
 
-            {incoming.length > 0 || day.order || day.timesCount > 0 || day.retimes.length > 0 ? (
+            {day.order || day.timesCount > 0 || day.retimes.length > 0 ? (
               <View style={styles.changes}>
-                {incoming.map(changeRow)}
                 {day.order ? (
                   <ChangeRow label={t('tripPlan.bestOrder')} tags={orderTags} value={day.orderOn} onChange={set(orderKey(day.day))} />
                 ) : null}
@@ -804,41 +810,38 @@ export function TripPlanSheet({
               </View>
             ) : null}
 
-            {day.visits.length > 0 ? (
+            {day.visits.length > 0 || leftOut.length > 0 ? (
               <View style={styles.timeline}>
-                {day.visits.map((visit) => (
-                  <View key={visit.id} style={styles.visitBlock}>
-                    {visit.travel ? (
-                      <View style={[styles.row, styles.travel]}>
-                        <Icon name={visit.travel.mode === 'transit' ? 'train-outline' : 'walk-outline'} size={14} color={colors.textTertiary} />
-                        <AppText variant="caption" color="tertiary">
-                          {travelText(visit.travel, t)}
-                        </AppText>
-                      </View>
-                    ) : null}
-                    <View style={styles.visitRow}>
-                      <AppText
-                        variant="caption"
-                        color={visit.time === 'suggested' || visit.time === 'retimed' ? 'accent' : visit.time === 'approx' ? 'tertiary' : 'secondary'}
-                        style={[styles.time, visit.time === 'suggested' || visit.time === 'retimed' ? styles.bold : null]}
-                      >
-                        {timeLabel(visit)}
-                      </AppText>
-                      <View style={styles.visitText}>
-                        <AppText variant="body" color={visit.done ? 'tertiary' : 'primary'} numberOfLines={1}>
-                          {name(visit.id)}
-                        </AppText>
-                        <Tags
-                          labels={[
-                            visit.arriving === 'new' ? t('tripPlan.badgeNew') : visit.arriving === 'moved' ? t('tripPlan.badgeMoved') : null,
-                            visit.starred ? t('planning.starred') : null,
-                            visit.done ? t('tripPlan.badgeDone') : null,
-                          ]}
-                          tone="accent"
-                        />
-                      </View>
-                    </View>
-                  </View>
+                {day.visits.map((visit) => {
+                  const change = landing.get(visit.id);
+                  const suggested = visit.time === 'suggested' || visit.time === 'retimed';
+                  return (
+                    <PlanVisitRow
+                      key={visit.id}
+                      time={timeLabel(visit)}
+                      timeTone={suggested ? 'accent' : visit.time === 'approx' ? 'tertiary' : 'secondary'}
+                      timeStrong={suggested}
+                      travel={visit.travel ? travelText(visit.travel, t) : null}
+                      travelMode={visit.travel?.mode === 'transit' ? 'transit' : 'walk'}
+                      name={name(visit.id)}
+                      done={visit.done}
+                      tags={[
+                        visit.arriving === 'new' ? t('tripPlan.badgeNew') : visit.arriving === 'moved' ? t('tripPlan.badgeMoved') : null,
+                        visit.starred ? t('planning.starred') : null,
+                        visit.done ? t('tripPlan.badgeDone') : null,
+                        ...(change ? changeTags(change).slice(0, 2) : []),
+                      ]}
+                      toggle={change ? { label: changeLabel(change), value: true, onChange: set(change.key) } : null}
+                    />
+                  );
+                })}
+                {leftOut.map((change) => (
+                  <PlanVisitRow
+                    key={change.key}
+                    time={null}
+                    name={name(change.itemId)}
+                    toggle={{ label: changeLabel(change), value: false, onChange: set(change.key) }}
+                  />
                 ))}
               </View>
             ) : null}
@@ -859,35 +862,73 @@ export function TripPlanSheet({
 
       {(!focus && (plan.unplaced.length > 0 || plan.closedNoDay.length > 0)) || overloaded.length > 0 ? (
         <View style={styles.problems}>
-          <AppText variant="bodyStrong">{t('tripPlan.doesntFit')}</AppText>
-          {(focus ? [] : plan.unplaced).map((item) => {
-            const alternative = plan.changes.find((change) => change.key === `alt:${item.id}`);
-            return (
-              <View key={item.id} style={styles.problems}>
+          {/* Folded by default: one line until the user wants the list. */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded: showUnfit }}
+            onPress={() => setShowUnfit((value) => !value)}
+            hitSlop={compactHitSlop}
+            style={({ pressed }) => [styles.row, styles.unfitHeader, pressed && styles.pressed]}
+            testID="plan-doesnt-fit"
+          >
+            <Icon name="alert-circle-outline" size={18} color={colors.textSecondary} />
+            <AppText variant="bodyStrong" style={styles.flex}>
+              {t('tripPlan.doesntFitCount', {
+                count: (focus ? 0 : plan.unplaced.length + plan.closedNoDay.length) + overloaded.length,
+              })}
+            </AppText>
+            <Icon name={showUnfit ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textTertiary} />
+          </Pressable>
+          {showUnfit ? (
+            <>
+              {!focus && plan.unplaced.length > 0 ? (
                 <AppText variant="caption" color="secondary">
-                  {unplacedText(item, name, t)}
+                  {t('tripPlan.doesntFitHelp')}
                 </AppText>
-                {alternative ? (
-                  <ChangeRow
-                    label={t('tripPlan.addAnyway', { name: name(item.id), day: dayName(alternative.toDay) })}
-                    tags={alternative.why.map((why) => whyTag(why, name, t, locale))}
-                    value={on(alternative.key, alternative.defaultOn)}
-                    onChange={set(alternative.key)}
-                  />
-                ) : null}
-              </View>
-            );
-          })}
-          {(focus ? [] : plan.closedNoDay).map((id) => (
-            <AppText key={id} variant="caption" color="secondary">
-              {t('planning.problemClosedNoDay', { name: name(id) })}
-            </AppText>
-          ))}
-          {overloaded.map((day) => (
-            <AppText key={day} variant="caption" color="secondary">
-              {t('tripPlan.stillOverloaded', { day: dayName(day) })}
-            </AppText>
-          ))}
+              ) : null}
+              {(focus ? [] : plan.unplaced).map((item) => {
+                const alternative = plan.changes.find((change) => change.key === `alt:${item.id}`);
+                const chosen = alternative ? on(alternative.key, alternative.defaultOn) : false;
+                return (
+                  <View key={item.id} style={[styles.row, styles.unfitRow]}>
+                    <AppText variant="body" numberOfLines={1} style={styles.flex}>
+                      {name(item.id)}
+                    </AppText>
+                    {alternative ? (
+                      <Pressable
+                        accessibilityRole="switch"
+                        accessibilityState={{ checked: chosen }}
+                        accessibilityLabel={t('tripPlan.addAnyway', { name: name(item.id), day: dayName(alternative.toDay) })}
+                        onPress={() => set(alternative.key)(!chosen)}
+                        hitSlop={compactHitSlop}
+                        style={({ pressed }) => [styles.addPill, chosen && styles.addPillOn, pressed && styles.pressed]}
+                      >
+                        <Icon name={chosen ? 'checkmark' : 'add'} size={14} color={chosen ? colors.textOnAccent : colors.accent} />
+                        <AppText variant="caption" style={[styles.bold, chosen ? styles.onAccent : styles.accentText]}>
+                          {t('tripPlan.addToDay', { day: dayShort(alternative.toDay, locale) })}
+                        </AppText>
+                      </Pressable>
+                    ) : (
+                      <Tag label={unplacedReason(item, t)} />
+                    )}
+                  </View>
+                );
+              })}
+              {(focus ? [] : plan.closedNoDay).map((id) => (
+                <View key={id} style={[styles.row, styles.unfitRow]}>
+                  <AppText variant="body" numberOfLines={1} style={styles.flex}>
+                    {name(id)}
+                  </AppText>
+                  <Tag label={t('tripPlan.reasonClosedDay')} />
+                </View>
+              ))}
+              {overloaded.map((day) => (
+                <AppText key={day} variant="caption" color="secondary">
+                  {t('tripPlan.stillOverloaded', { day: dayName(day) })}
+                </AppText>
+              ))}
+            </>
+          ) : null}
         </View>
       ) : null}
 
@@ -1232,10 +1273,20 @@ const styles = StyleSheet.create({
   options: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   footer: { gap: spacing.sm },
   outcome: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: spacing.xs },
-  visitBlock: { gap: spacing.xxs },
-  travel: { paddingStart: 76 + spacing.sm },
-  visitRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
-  visitText: { flex: 1, gap: spacing.xxs },
-  time: { width: 76 },
   bold: { fontWeight: weights.semibold },
+  pressed: { opacity: 0.7 },
+  unfitHeader: { minHeight: 44 },
+  unfitRow: { minHeight: 36 },
+  addPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xxs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xxs,
+    borderRadius: radii.pill,
+    backgroundColor: colors.accentSoft,
+  },
+  addPillOn: { backgroundColor: colors.accent },
+  onAccent: { color: colors.textOnAccent },
+  accentText: { color: colors.accent },
 });

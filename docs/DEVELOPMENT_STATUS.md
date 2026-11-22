@@ -106,6 +106,27 @@ were not.
 nearby row menu), plan sheet "How this plan works", Find a place → pick → Change, trip "…"
 menu, day picker, stay sheet, Discover AI examples, Usage toggle.
 
+## Plan sheet compact + map in "Find on Google Maps" (written 2026-11-22, uncommitted; Simulator checks pending)
+
+- **Find on Google Maps:** a List / Map switch once results are back. The map draws the results' own
+  coordinates from the one search as numbered pins (the list is numbered the same) plus the trip's stay
+  for reference (own pin or coordinates already saved on the phone; never a lookup). Tapping a pin shows
+  that result under the map with Link. No extra Google call (`GoogleLinkSheet.tsx`, `useStayPin`).
+- **Plan my entire trip:** each day is one list (`PlanVisitRow`): travel, time, name, tags; a proposed
+  stop (new / moved here / added anyway) is its own on/off row, and a left-out one stays in its day with
+  no time. Day pills (All days / each day) when there are 3+ days. "Doesn't fit (N)" is folded; open,
+  one helper line and one row per place (name + "Add to Tue, Nov 24" or a short reason).
+- **Start times:** "Start day one at 16:00 and the rest at 8" (also "the first day … the other days",
+  Hebrew "היום הראשון … שאר הימים", and the same for finish times) now gives day one 16:00 and the other
+  days 08:00 (`rules.ts` `firstAndRest`). Before, the whole clause became one start for every day.
+  A time it can't read sends the message to the AI instead of guessing.
+
+Tests (real runs, 2026-11-22): `pnpm typecheck` clean; shared 60; app logic 280 (+1 `rules.spec`, +1
+`request.spec`); app screens 80 in 19 suites (new `google-link-map.test.tsx` ×2; `trip-plan.test.tsx`
++3: day pills, folded "Doesn't fit", day one 4 PM / other days 8 AM; existing ones updated for one row
+per stop); API 193. The day-one screen test also ran against the old `rules.ts` and failed there.
+App only (JS): no API deploy, no migration, no native rebuild; a new Release build is needed for the phone.
+
 ## Category on link + upcoming vs active trip (written 2026-11-22, uncommitted; Simulator checks pending)
 
 - **Category on link:** `linkGooglePlaceSchema` gains optional `category`. The app sends

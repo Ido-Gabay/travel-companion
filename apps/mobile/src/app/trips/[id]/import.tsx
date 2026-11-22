@@ -19,7 +19,7 @@ import {
   type ImportRow,
 } from '@/features/places/place-import';
 import { useGooglePlaces, usePlaces } from '@/features/places/queries';
-import { GoogleLinkSheet } from '@/features/places/GoogleLinkSheet';
+import { GoogleLinkSheet, useStayPin } from '@/features/places/GoogleLinkSheet';
 import { useImportPlaces } from '@/features/places/use-import-places';
 import { pickCsvFile } from '@/features/places/pick-csv';
 import { useTrip } from '@/features/trips/queries';
@@ -44,6 +44,7 @@ export default function ImportPlacesScreen() {
   const connection = useConnection();
   const { id = '' } = useLocalSearchParams<{ id: string }>();
   const trip = useTrip(id);
+  const stayPin = useStayPin(trip.data);
   const places = usePlaces();
   const importer = useImportPlaces(id);
   const [mode, setMode] = useState<Mode>('paste');
@@ -345,6 +346,7 @@ export default function ImportPlacesScreen() {
           name={linkingRow.name}
           query={[linkingRow.name, linkingRow.area].filter(Boolean).join(' ')}
           near={trip.data?.destination ?? null}
+          stay={stayPin}
           category="other"
           onPick={(result) => {
             setLinks((current) =>

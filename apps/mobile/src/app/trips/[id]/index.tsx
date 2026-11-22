@@ -19,7 +19,7 @@ import {
 } from '@/components/ui';
 import { groupByCategory } from '@/features/places/categories';
 import { CollectionMap } from '@/features/places/CollectionMap';
-import { GoogleLinkSheet } from '@/features/places/GoogleLinkSheet';
+import { GoogleLinkSheet, useStayPin } from '@/features/places/GoogleLinkSheet';
 import { useLinkGooglePlace } from '@/features/places/queries';
 import { openInMaps } from '@/features/places/open-in-maps';
 import { PlaceCard } from '@/features/places/PlaceCard';
@@ -43,6 +43,7 @@ export default function TripScreen() {
   const { id = '' } = useLocalSearchParams<{ id: string }>();
   const openMenu = useActionMenu();
   const trip = useTrip(id);
+  const stayPin = useStayPin(trip.data);
   const removePlace = useRemoveTripPlace(id);
   const deleteTrip = useDeleteTrip();
   const planVisit = usePlanVisit(id);
@@ -246,6 +247,7 @@ export default function TripScreen() {
                 name={linking.name}
                 query={[linking.place.name, linking.place.address].filter(Boolean).join(' ') || linking.name}
                 near={trip.data.destination}
+                stay={stayPin}
                 category={linking.place.category}
                 busy={link.isPending}
                 error={link.isError ? errorMessage(link.error) : null}

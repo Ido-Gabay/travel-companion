@@ -36,6 +36,27 @@ describe('trip assistant rules: English', () => {
     ]);
   });
 
+  it('day one and the rest get their own start (and end) times', () => {
+    const rest = WEEK.slice(1);
+    const split = [
+      { kind: 'dayStart', time: '16:00', days: ['2026-11-23'] },
+      { kind: 'dayStart', time: '08:00', days: rest },
+    ];
+    expect(plan('Start day one at 16:00 and the rest at 8:00')).toEqual(split);
+    expect(plan('Start the first day at 4pm, the other days at 8am')).toEqual(split);
+    expect(plan('Start at 16:00 on day 1 and the rest at 8')).toEqual(split);
+    expect(plan('להתחיל את היום הראשון ב-16:00 ואת שאר הימים ב-8')).toEqual(split);
+    expect(plan('Start day one at 16:00')).toEqual([{ kind: 'dayStart', time: '16:00', days: ['2026-11-23'] }]);
+    expect(plan('Finish day one by 9 and the rest by 10')).toEqual([
+      { kind: 'dayEnd', time: '21:00', days: ['2026-11-23'] },
+      { kind: 'dayEnd', time: '22:00', days: rest },
+    ]);
+    // A time it can't read goes to the AI instead of being guessed.
+    expect(plan('Start day one at 16:00 and the rest early')).toBeNull();
+    // Unchanged: no first day named.
+    expect(plan('Start every day at 8')).toEqual([{ kind: 'dayStart', time: '08:00', days: [] }]);
+  });
+
   it('asks which day when a weekday is in the trip twice, and uses the answer', () => {
     const twoWeeks = [...WEEK, '2026-11-30', '2026-12-01', '2026-12-02'];
     expect(read('Make Wednesday less busy', twoWeeks)).toEqual({ kind: 'pickDay', weekday: 3, days: ['2026-11-25', '2026-12-02'] });
